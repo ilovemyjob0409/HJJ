@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum LeaveStatus {
+  APPROVED
+}
+
+enum MakeupType {
+  INSERTION
+  ONE_ON_ONE
+}
+
+enum MakeupStatus {
+  PENDING_ADMIN
+  APPROVED
+  REJECTED
+}
+
+enum SubstituteStatus {
+  PENDING_ASSIGNMENT
+  ASSIGNED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role
+  createdAt DateTime @default(now())
+  teacher   Teacher?
+  student   Student?
+}
+
+model Teacher {
+  id                          String                @id @default(cuid())
+  userId                      String                @unique
+  user                        User                  @relation(fields: [userId], references: [id])
+  subjects                    String
+  phone                       String?
+  classes                     Class[]
+  availabilities              TeacherAvailability[]
+  oneOnOneMakeups             MakeupRequest[]       @relation("OneOnOneTeacher")
+  substituteRequestsOriginal  SubstituteRequest[]   @relation("OriginalTeacher")
+  substituteRequestsAssigned  SubstituteRequest[]   @relation("SubstituteTeacher")
+}
+
+model Student {
+  id            String            @id @default(cuid())
+  userId        String            @unique
+  user          User              @relation(fields: [userId], references: [id])
+  parentPhone   String?
+  enrollments   ClassEnrollment[]
+  leaveRequests LeaveRequest[]
+}
+
+model Class {
+  id              String              @id @default(cuid())
+  name            String
+  subject         String
+  level           String
+  teacherId       String
+  teacher         Teacher             @relation(fields: [teacherId], references: [id])
+  weekday         Int
+  startTime       String
+  endTime         String
+  enrollments     ClassEnrollment[]
+  leaveRequests   LeaveRequest[]
+  substituteReqs  SubstituteRequest[]
+  insertionTargets MakeupRequest[]    @relation("TargetClass")
+}
+
+model ClassEnrollment {
+  id        String  @id @default(cuid())
+  studentId String
+  classId   String
+  student   Student @relation(fields: [studentId], references: [id])
+  class     Class   @relation(fields: [classId], references: [id])
+
+  @@unique([studentId, classId])
+}
+
+model TeacherAvailability {
+  id        String  @id @default(cuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
+  weekday   Int
+  startTime String
+  endTime   String
+}
+
+model LeaveRequest {
+  id            String         @id @default(cuid())
+  studentId     String
+  student       Student        @relation(fields: [studentId], references: [id])
+  classId       String
+  class         Class          @relation(fields: [classId], references: [id])
+  date          DateTime
+  reason        String
+  status        LeaveStatus    @default(APPROVED)
+  createdAt     DateTime       @default(now())
+  makeupRequest MakeupRequest?
+}
+
+model MakeupRequest {
+  id             String       @id @default(cuid())
+  leaveRequestId String       @unique
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id])
+  type           MakeupType
+  status         MakeupStatus @default(PENDING_ADMIN)
+
+  targetClassId  String?
+  targetClass    Class?       @relation("TargetClass", fields: [targetClassId], references: [id])
+  targetDate     DateTime?
+
+  teacherId      String?
+  teacher        Teacher?     @relation("OneOnOneTeacher", fields: [teacherId], references: [id])
+  slotDate       DateTime?
+  slotStartTime  String?
+  slotEndTime    String?
+
+  createdAt      DateTime     @default(now())
+}
+
+model SubstituteRequest {
+  id                  String           @id @default(cuid())
+  classId             String
+  class               Class            @relation(fields: [classId], references: [id])
+  originalTeacherId   String
+  originalTeacher     Teacher          @relation("OriginalTeacher", fields: [originalTeacherId], references: [id])
+  date                DateTime
+  reason              String
+  substituteTeacherId String?
+  substituteTeacher   Teacher?         @relation("SubstituteTeacher", fields: [substituteTeacherId], references: [id])
+  status              SubstituteStatus @default(PENDING_ASSIGNMENT)
+  createdAt           DateTime         @default(now())
+}
