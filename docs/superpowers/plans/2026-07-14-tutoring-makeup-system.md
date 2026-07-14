@@ -20,6 +20,7 @@
 - One-on-one slot must fall entirely within one of the chosen teacher's weekly availability windows, and must not overlap another `PENDING_ADMIN`/`APPROVED` one-on-one request for that same teacher.
 - **Amended after Task 2:** `npm install prisma @prisma/client` resolved to Prisma 7.8.0, which requires an explicit driver adapter for SQLite (a bare `new PrismaClient()` throws). The project uses `@prisma/adapter-better-sqlite3` + `better-sqlite3`, wired through `prisma.config.ts` and `src/lib/db.ts` (see Task 5). Every later task still imports `prisma` from `@/lib/db` exactly as originally planned — this only changes how that one file constructs the client.
 - **Amended after Task 6 review:** never query a `User` relation with `include: { user: true }` (or nested equivalents) — that leaks the bcrypt password hash into API responses. Always `select` only safe fields (`{ name: true, email: true }`, conventionally named `SAFE_USER_SELECT`) instead. This applies to Tasks 6, 7, 8, 11, 14 (all updated in this doc); Task 9's `leaveRequestService` never included `user` in the first place.
+- **Amended after Task 8:** `vitest.config.ts` must set `fileParallelism: false` (see Task 1). All service test files share one physical SQLite file (`prisma/test.db`) with destructive `beforeEach` cleanup on overlapping tables — running test files in parallel (Vitest's default) races those cleanups and produces nondeterministic failures.
 - Three roles share one login mechanism: `ADMIN`, `TEACHER`, `STUDENT`.
 
 ---
@@ -116,6 +117,8 @@ npm install -D vitest tsx @types/bcryptjs vite-tsconfig-paths dotenv
 
 - [ ] **Step 3: Add Vitest config**
 
+> **Amended after Task 8:** every service test file shares one physical SQLite file (`prisma/test.db`) and each does destructive `deleteMany()` cleanup in `beforeEach` on overlapping tables. Vitest's default parallel file execution races these cleanups against each other, causing nondeterministic failures (confirmed: repeated runs failed a different number of tests each time). `fileParallelism: false` forces test files to run sequentially, eliminating the race — required given the shared-database design, not optional.
+
 `vitest.config.ts`:
 ```typescript
 import { defineConfig } from 'vitest/config';
@@ -127,6 +130,7 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.ts'],
+    fileParallelism: false,
   },
 });
 ```
