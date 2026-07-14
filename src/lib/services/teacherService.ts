@@ -9,6 +9,8 @@ export interface CreateTeacherInput {
   phone?: string;
 }
 
+const SAFE_USER_SELECT = { name: true, email: true } as const;
+
 export async function createTeacher(input: CreateTeacherInput) {
   const hashed = await bcrypt.hash(input.password, 10);
   const user = await prisma.user.create({
@@ -16,10 +18,13 @@ export async function createTeacher(input: CreateTeacherInput) {
   });
   return prisma.teacher.create({
     data: { userId: user.id, subjects: input.subjects, phone: input.phone },
-    include: { user: true },
+    select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } },
   });
 }
 
 export function listTeachers() {
-  return prisma.teacher.findMany({ include: { user: true }, orderBy: { user: { name: 'asc' } } });
+  return prisma.teacher.findMany({
+    select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } },
+    orderBy: { user: { name: 'asc' } },
+  });
 }
