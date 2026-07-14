@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher, listTeachers } from './teacherService';
 
 beforeEach(async () => {
+  await prisma.leaveRequest.deleteMany();
   await prisma.classEnrollment.deleteMany();
   await prisma.class.deleteMany();
   await prisma.teacherAvailability.deleteMany();
