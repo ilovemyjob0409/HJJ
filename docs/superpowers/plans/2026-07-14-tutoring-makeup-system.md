@@ -18,6 +18,7 @@
 - "季" (quarter) = calendar quarter: Q1 Jan-Mar, Q2 Apr-Jun, Q3 Jul-Sep, Q4 Oct-Dec. One-on-one makeup quota = 1 per student per quarter, counted against requests with status `PENDING_ADMIN` or `APPROVED` (rejected requests free the quota).
 - One-on-one makeup request goes straight to `PENDING_ADMIN` on submission — there is no separate teacher-approval step; the teacher's only input is maintaining their own weekly `TeacherAvailability` windows in advance.
 - One-on-one slot must fall entirely within one of the chosen teacher's weekly availability windows, and must not overlap another `PENDING_ADMIN`/`APPROVED` one-on-one request for that same teacher.
+- **Amended after Task 2:** `npm install prisma @prisma/client` resolved to Prisma 7.8.0, which requires an explicit driver adapter for SQLite (a bare `new PrismaClient()` throws). The project uses `@prisma/adapter-better-sqlite3` + `better-sqlite3`, wired through `prisma.config.ts` and `src/lib/db.ts` (see Task 5). Every later task still imports `prisma` from `@/lib/db` exactly as originally planned — this only changes how that one file constructs the client.
 - Three roles share one login mechanism: `ADMIN`, `TEACHER`, `STUDENT`.
 
 ---
@@ -647,13 +648,21 @@ git commit -m "feat: add time-window overlap and availability helpers"
 
 - [ ] **Step 1: Prisma client singleton**
 
+> **Note (post-Task-2 adaptation):** Task 2 installed Prisma 7.8.0, which requires an explicit driver adapter for SQLite — a bare `new PrismaClient()` will throw. Task 2's `prisma/seed.ts` already uses `@prisma/adapter-better-sqlite3`; this singleton must use the same adapter, reading `DATABASE_URL` at construction time so `vitest.setup.ts`'s override (`file:./prisma/test.db`) still takes effect per test run.
+
 `src/lib/db.ts`:
 ```typescript
 import { PrismaClient } from '@prisma/client';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
+function createPrismaClient() {
+  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL || 'file:./prisma/dev.db' });
+  return new PrismaClient({ adapter });
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
