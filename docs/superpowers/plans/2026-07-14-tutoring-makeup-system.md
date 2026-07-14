@@ -19,6 +19,7 @@
 - One-on-one makeup request goes straight to `PENDING_ADMIN` on submission — there is no separate teacher-approval step; the teacher's only input is maintaining their own weekly `TeacherAvailability` windows in advance.
 - One-on-one slot must fall entirely within one of the chosen teacher's weekly availability windows, and must not overlap another `PENDING_ADMIN`/`APPROVED` one-on-one request for that same teacher.
 - **Amended after Task 2:** `npm install prisma @prisma/client` resolved to Prisma 7.8.0, which requires an explicit driver adapter for SQLite (a bare `new PrismaClient()` throws). The project uses `@prisma/adapter-better-sqlite3` + `better-sqlite3`, wired through `prisma.config.ts` and `src/lib/db.ts` (see Task 5). Every later task still imports `prisma` from `@/lib/db` exactly as originally planned — this only changes how that one file constructs the client.
+- **Amended after Task 6 review:** never query a `User` relation with `include: { user: true }` (or nested equivalents) — that leaks the bcrypt password hash into API responses. Always `select` only safe fields (`{ name: true, email: true }`, conventionally named `SAFE_USER_SELECT`) instead. This applies to Tasks 6, 7, 8, 11, 14 (all updated in this doc); Task 9's `leaveRequestService` never included `user` in the first place.
 - Three roles share one login mechanism: `ADMIN`, `TEACHER`, `STUDENT`.
 
 ---
@@ -967,6 +968,8 @@ export interface CreateTeacherInput {
   phone?: string;
 }
 
+const SAFE_USER_SELECT = { name: true, email: true } as const;
+
 export async function createTeacher(input: CreateTeacherInput) {
   const hashed = await bcrypt.hash(input.password, 10);
   const user = await prisma.user.create({
@@ -974,14 +977,19 @@ export async function createTeacher(input: CreateTeacherInput) {
   });
   return prisma.teacher.create({
     data: { userId: user.id, subjects: input.subjects, phone: input.phone },
-    include: { user: true },
+    select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } },
   });
 }
 
 export function listTeachers() {
-  return prisma.teacher.findMany({ include: { user: true }, orderBy: { user: { name: 'asc' } } });
+  return prisma.teacher.findMany({
+    select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } },
+    orderBy: { user: { name: 'asc' } },
+  });
 }
 ```
+
+> **Security note:** never `include: { user: true }` — that pulls the bcrypt password hash into API responses. Always `select` only the safe fields (`name`, `email`) via a `SAFE_USER_SELECT`-style constant. This applies to every service in this plan that touches a `User` relation (Tasks 7, 8, 11, 14 — Task 9's `leaveRequestService` never includes `user`, so it's unaffected).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1168,6 +1176,8 @@ export interface CreateStudentInput {
   parentPhone?: string;
 }
 
+const SAFE_USER_SELECT = { name: true, email: true } as const;
+
 export async function createStudent(input: CreateStudentInput) {
   const hashed = await bcrypt.hash(input.password, 10);
   const user = await prisma.user.create({
@@ -1175,14 +1185,19 @@ export async function createStudent(input: CreateStudentInput) {
   });
   return prisma.student.create({
     data: { userId: user.id, parentPhone: input.parentPhone },
-    include: { user: true },
+    select: { id: true, parentPhone: true, user: { select: SAFE_USER_SELECT } },
   });
 }
 
 export function listStudents() {
-  return prisma.student.findMany({ include: { user: true }, orderBy: { user: { name: 'asc' } } });
+  return prisma.student.findMany({
+    select: { id: true, parentPhone: true, user: { select: SAFE_USER_SELECT } },
+    orderBy: { user: { name: 'asc' } },
+  });
 }
 ```
+
+> **Security note:** never `include: { user: true }` — see the same note in Task 6. Use `select` with a `SAFE_USER_SELECT`-style constant (`{ name: true, email: true }`) instead.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1384,13 +1399,26 @@ export interface CreateClassInput {
   endTime: string;
 }
 
+const SAFE_USER_SELECT = { name: true, email: true } as const;
+const CLASS_WITH_TEACHER_SELECT = {
+  id: true,
+  name: true,
+  subject: true,
+  level: true,
+  weekday: true,
+  startTime: true,
+  endTime: true,
+  teacher: { select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } } },
+  enrollments: true,
+} as const;
+
 export function createClass(input: CreateClassInput) {
   return prisma.class.create({ data: input });
 }
 
 export function listClasses() {
   return prisma.class.findMany({
-    include: { teacher: { include: { user: true } }, enrollments: true },
+    select: CLASS_WITH_TEACHER_SELECT,
     orderBy: { name: 'asc' },
   });
 }
@@ -1402,7 +1430,7 @@ export function listClassesBySubjectAndLevel(subject: string, level: string, exc
       level,
       ...(excludeClassId ? { id: { not: excludeClassId } } : {}),
     },
-    include: { teacher: { include: { user: true } }, enrollments: true },
+    select: CLASS_WITH_TEACHER_SELECT,
     orderBy: { name: 'asc' },
   });
 }
@@ -2261,13 +2289,28 @@ export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
   });
 }
 
+const SAFE_USER_SELECT = { name: true, email: true } as const;
+
 export function listPendingMakeupRequests() {
   return prisma.makeupRequest.findMany({
     where: { status: 'PENDING_ADMIN' },
-    include: {
-      leaveRequest: { include: { student: { include: { user: true } }, class: true } },
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      targetDate: true,
+      slotDate: true,
+      slotStartTime: true,
+      slotEndTime: true,
+      createdAt: true,
+      leaveRequest: {
+        select: {
+          student: { select: { user: { select: SAFE_USER_SELECT } } },
+          class: true,
+        },
+      },
       targetClass: true,
-      teacher: { include: { user: true } },
+      teacher: { select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } } },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -2799,10 +2842,20 @@ export function createSubstituteRequest(input: CreateSubstituteRequestInput) {
   return prisma.substituteRequest.create({ data: { ...input, status: 'PENDING_ASSIGNMENT' } });
 }
 
+const SAFE_USER_SELECT = { name: true, email: true } as const;
+
 export function listPendingSubstituteRequests() {
   return prisma.substituteRequest.findMany({
     where: { status: 'PENDING_ASSIGNMENT' },
-    include: { class: true, originalTeacher: { include: { user: true } } },
+    select: {
+      id: true,
+      date: true,
+      reason: true,
+      status: true,
+      createdAt: true,
+      class: true,
+      originalTeacher: { select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } } },
+    },
     orderBy: { date: 'asc' },
   });
 }
