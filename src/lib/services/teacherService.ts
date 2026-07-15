@@ -28,3 +28,12 @@ export function listTeachers() {
     orderBy: { user: { name: 'asc' } },
   });
 }
+
+// Narrower field set for students picking a teacher for a one-on-one makeup
+// request (see src/app/student/makeup-request/page.tsx) — no phone or email.
+export function listTeachersForBooking() {
+  return prisma.teacher.findMany({
+    select: { id: true, subjects: true, user: { select: { name: true } } },
+    orderBy: { user: { name: 'asc' } },
+  });
+}

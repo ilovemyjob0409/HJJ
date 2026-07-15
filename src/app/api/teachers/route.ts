@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createTeacher, listTeachers } from '@/lib/services/teacherService';
+import { createTeacher, listTeachers, listTeachersForBooking } from '@/lib/services/teacherService';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   // Students need this list too, to pick a teacher for a one-on-one makeup
-  // request (see src/app/student/makeup-request/page.tsx).
+  // request (see src/app/student/makeup-request/page.tsx), but only get the
+  // narrow field set (no phone/email) — admins keep the full management view.
   if (!session || (session.user.role !== 'ADMIN' && session.user.role !== 'STUDENT')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const teachers = await listTeachers();
+  const teachers = session.user.role === 'STUDENT' ? await listTeachersForBooking() : await listTeachers();
   return NextResponse.json(teachers);
 }
 
