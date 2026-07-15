@@ -6,6 +6,7 @@ import { createClass } from './classService';
 import { createLeaveRequest, listLeaveRequestsForStudent } from './leaveRequestService';
 
 beforeEach(async () => {
+  await prisma.makeupRequest.deleteMany();
   await prisma.leaveRequest.deleteMany();
   await prisma.classEnrollment.deleteMany();
   await prisma.class.deleteMany();

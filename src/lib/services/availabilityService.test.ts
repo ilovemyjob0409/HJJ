@@ -4,6 +4,7 @@ import { createTeacher } from './teacherService';
 import { setTeacherAvailability, listTeacherAvailability } from './availabilityService';
 
 beforeEach(async () => {
+  await prisma.makeupRequest.deleteMany();
   await prisma.leaveRequest.deleteMany();
   await prisma.classEnrollment.deleteMany();
   await prisma.class.deleteMany();
