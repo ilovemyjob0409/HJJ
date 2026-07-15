@@ -31,50 +31,57 @@ export interface CreateOneOnOneInput {
 }
 
 export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
-  const { start, end } = getQuarterRange(new Date());
-  const quotaUsed = await prisma.makeupRequest.count({
-    where: {
-      type: 'ONE_ON_ONE',
-      status: { in: ['PENDING_ADMIN', 'APPROVED'] },
-      leaveRequest: { studentId: input.studentId },
-      createdAt: { gte: start, lte: end },
-    },
-  });
-  if (quotaUsed > 0) throw new Error('QUOTA_EXCEEDED');
+  // Quota count, conflict check, and create must be atomic: without a
+  // transaction, two concurrent requests for the same student/slot can
+  // both pass their checks before either create() commits (TOCTOU race).
+  // Wrapping them in one transaction serializes concurrent calls against
+  // the single SQLite connection, so the loser re-reads post-commit state.
+  return prisma.$transaction(async (tx) => {
+    const { start, end } = getQuarterRange(new Date());
+    const quotaUsed = await tx.makeupRequest.count({
+      where: {
+        type: 'ONE_ON_ONE',
+        status: { in: ['PENDING_ADMIN', 'APPROVED'] },
+        leaveRequest: { studentId: input.studentId },
+        createdAt: { gte: start, lte: end },
+      },
+    });
+    if (quotaUsed > 0) throw new Error('QUOTA_EXCEEDED');
 
-  // Derived from slotDate rather than trusted from the caller, so a
-  // mismatched weekday/date pair can't be used to slip past the check.
-  const weekday = input.slotDate.getDay();
-  const availabilities = await listTeacherAvailability(input.teacherId);
-  const withinAvailability = isWithinAvailability(
-    { weekday, startTime: input.slotStartTime, endTime: input.slotEndTime },
-    availabilities
-  );
-  if (!withinAvailability) throw new Error('OUTSIDE_AVAILABILITY');
+    // Derived from slotDate rather than trusted from the caller, so a
+    // mismatched weekday/date pair can't be used to slip past the check.
+    const weekday = input.slotDate.getDay();
+    const availabilities = await listTeacherAvailability(input.teacherId);
+    const withinAvailability = isWithinAvailability(
+      { weekday, startTime: input.slotStartTime, endTime: input.slotEndTime },
+      availabilities
+    );
+    if (!withinAvailability) throw new Error('OUTSIDE_AVAILABILITY');
 
-  const sameDayRequests = await prisma.makeupRequest.findMany({
-    where: {
-      type: 'ONE_ON_ONE',
-      teacherId: input.teacherId,
-      slotDate: input.slotDate,
-      status: { in: ['PENDING_ADMIN', 'APPROVED'] },
-    },
-  });
-  const conflict = sameDayRequests.some((r) =>
-    slotsOverlap({ startTime: input.slotStartTime, endTime: input.slotEndTime }, { startTime: r.slotStartTime!, endTime: r.slotEndTime! })
-  );
-  if (conflict) throw new Error('SLOT_CONFLICT');
+    const sameDayRequests = await tx.makeupRequest.findMany({
+      where: {
+        type: 'ONE_ON_ONE',
+        teacherId: input.teacherId,
+        slotDate: input.slotDate,
+        status: { in: ['PENDING_ADMIN', 'APPROVED'] },
+      },
+    });
+    const conflict = sameDayRequests.some((r) =>
+      slotsOverlap({ startTime: input.slotStartTime, endTime: input.slotEndTime }, { startTime: r.slotStartTime!, endTime: r.slotEndTime! })
+    );
+    if (conflict) throw new Error('SLOT_CONFLICT');
 
-  return prisma.makeupRequest.create({
-    data: {
-      leaveRequestId: input.leaveRequestId,
-      type: 'ONE_ON_ONE',
-      status: 'PENDING_ADMIN',
-      teacherId: input.teacherId,
-      slotDate: input.slotDate,
-      slotStartTime: input.slotStartTime,
-      slotEndTime: input.slotEndTime,
-    },
+    return tx.makeupRequest.create({
+      data: {
+        leaveRequestId: input.leaveRequestId,
+        type: 'ONE_ON_ONE',
+        status: 'PENDING_ADMIN',
+        teacherId: input.teacherId,
+        slotDate: input.slotDate,
+        slotStartTime: input.slotStartTime,
+        slotEndTime: input.slotEndTime,
+      },
+    });
   });
 }
 

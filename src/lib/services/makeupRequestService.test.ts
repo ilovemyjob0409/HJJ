@@ -128,6 +128,76 @@ describe('createOneOnOneMakeupRequest', () => {
       })
     ).rejects.toThrow('QUOTA_EXCEEDED');
   });
+
+  it('allows only one of two concurrent requests for the same teacher/slot to succeed', async () => {
+    const { teacher, student, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    const classA = await prisma.class.findFirstOrThrow();
+    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '事假' });
+
+    const slotInput = {
+      teacherId: teacher.id,
+      slotDate: new Date(2026, 6, 15),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    };
+
+    const results = await Promise.allSettled([
+      createOneOnOneMakeupRequest({ leaveRequestId: leave.id, studentId: student.id, ...slotInput }),
+      createOneOnOneMakeupRequest({ leaveRequestId: otherLeave.id, studentId: otherStudent.id, ...slotInput }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.message).toBe('SLOT_CONFLICT');
+
+    const created = await prisma.makeupRequest.count({
+      where: { type: 'ONE_ON_ONE', teacherId: teacher.id, slotDate: slotInput.slotDate },
+    });
+    expect(created).toBe(1);
+  });
+
+  it('allows only one of two concurrent requests to succeed under the per-quarter quota', async () => {
+    const { teacher, student, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    const classA = await prisma.class.findFirstOrThrow();
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+
+    const results = await Promise.allSettled([
+      createOneOnOneMakeupRequest({
+        leaveRequestId: leave.id,
+        studentId: student.id,
+        teacherId: teacher.id,
+        slotDate: new Date(2026, 6, 15),
+        slotStartTime: '16:00',
+        slotEndTime: '17:00',
+      }),
+      createOneOnOneMakeupRequest({
+        leaveRequestId: secondLeave.id,
+        studentId: student.id,
+        teacherId: teacher.id,
+        slotDate: new Date(2026, 6, 29),
+        slotStartTime: '17:00',
+        slotEndTime: '18:00',
+      }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.message).toBe('QUOTA_EXCEEDED');
+
+    const created = await prisma.makeupRequest.count({
+      where: { type: 'ONE_ON_ONE', leaveRequest: { studentId: student.id } },
+    });
+    expect(created).toBe(1);
+  });
 });
 
 describe('listPendingMakeupRequests / decideMakeupRequest', () => {
