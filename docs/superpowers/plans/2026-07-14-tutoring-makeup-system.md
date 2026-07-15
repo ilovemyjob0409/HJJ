@@ -3172,6 +3172,13 @@ export default function StudentDashboard() {
 Run: `npm test`
 Expected: all tests across `src/lib/**/*.test.ts` pass.
 
+> **Amended after Task 14:** `npm test` only runs Vitest against the service layer — it never exercises Next.js's own build/lint/type pipeline. A malformed dynamic-route directory name (`\[id\]` instead of `[id]`) and two ESLint `no-explicit-any` errors both went undetected through 9 tasks' worth of `npm test` runs and were only caught when a reviewer thought to run a full build. Add this as its own required step before the manual smoke test:
+
+- [ ] **Step 5b: Full production build**
+
+Run: `npx next build`
+Expected: `✓ Compiled successfully`, no ESLint errors, no TypeScript errors, and every expected route (including all dynamic `[id]` routes) appears in the build's route table.
+
 - [ ] **Step 6: Manual smoke test (golden path)**
 
 Run: `npm run dev`, then in a browser:
