@@ -13,6 +13,7 @@ import {
 } from './makeupRequestService';
 
 beforeEach(async () => {
+  await prisma.substituteRequest.deleteMany();
   await prisma.makeupRequest.deleteMany();
   await prisma.leaveRequest.deleteMany();
   await prisma.teacherAvailability.deleteMany();
