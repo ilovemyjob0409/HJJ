@@ -51,7 +51,7 @@ export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
     // Derived from slotDate rather than trusted from the caller, so a
     // mismatched weekday/date pair can't be used to slip past the check.
     const weekday = input.slotDate.getDay();
-    const availabilities = await listTeacherAvailability(input.teacherId);
+    const availabilities = await listTeacherAvailability(input.teacherId, tx);
     const withinAvailability = isWithinAvailability(
       { weekday, startTime: input.slotStartTime, endTime: input.slotEndTime },
       availabilities
