@@ -6,6 +6,15 @@ import { listClassesBySubjectAndLevel } from '@/lib/services/classService';
 import { listTeacherAvailability } from '@/lib/services/availabilityService';
 import { createInsertionMakeupRequest, createOneOnOneMakeupRequest } from '@/lib/services/makeupRequestService';
 
+// Fetches the leave request and verifies it belongs to the given student.
+// Returns null (rather than throwing) when missing or owned by someone else,
+// so callers can respond with a generic 404 instead of confirming the ID exists.
+async function findOwnLeaveRequest(leaveRequestId: string, studentId: string) {
+  const leave = await prisma.leaveRequest.findUnique({ where: { id: leaveRequestId }, include: { class: true } });
+  if (!leave || leave.studentId !== studentId) return null;
+  return leave;
+}
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'STUDENT') {
@@ -21,7 +30,10 @@ export async function GET(req: NextRequest) {
   const leaveRequestId = req.nextUrl.searchParams.get('leaveRequestId');
   if (!leaveRequestId) return NextResponse.json({ error: 'leaveRequestId or teacherId required' }, { status: 400 });
 
-  const leave = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: leaveRequestId }, include: { class: true } });
+  const student = await prisma.student.findUniqueOrThrow({ where: { userId: session.user.id } });
+  const leave = await findOwnLeaveRequest(leaveRequestId, student.id);
+  if (!leave) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
   const eligibleClasses = await listClassesBySubjectAndLevel(leave.class.subject, leave.class.level, leave.classId);
   return NextResponse.json({ eligibleClasses });
 }
@@ -33,6 +45,9 @@ export async function POST(req: NextRequest) {
   }
   const student = await prisma.student.findUniqueOrThrow({ where: { userId: session.user.id } });
   const body = await req.json();
+
+  const leave = await findOwnLeaveRequest(body.leaveRequestId, student.id);
+  if (!leave) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   try {
     if (body.type === 'INSERTION') {
