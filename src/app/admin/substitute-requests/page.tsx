@@ -1,6 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Select from '@/components/ui/Select';
+import DataTable, { Column } from '@/components/ui/DataTable';
+import StatusBadge from '@/components/ui/StatusBadge';
 
 interface TeacherOption {
   id: string;
@@ -37,39 +43,38 @@ export default function AdminSubstituteRequestsPage() {
     load();
   }
 
+  const columns: Column<PendingRow>[] = [
+    { header: '班級', render: (r) => r.class.name },
+    { header: '原老師', render: (r) => r.originalTeacher.user.name },
+    { header: '日期', render: (r) => new Date(r.date).toLocaleDateString() },
+    { header: '原因', render: (r) => r.reason },
+    { header: '狀態', render: () => <StatusBadge status="PENDING_ASSIGNMENT" /> },
+    {
+      header: '指派代課',
+      render: (r) => (
+        <div className="flex items-center gap-2">
+          <Select onChange={(e) => setSelected({ ...selected, [r.id]: e.target.value })}>
+            <option value="">選擇代課老師</option>
+            {teachers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.user.name}
+              </option>
+            ))}
+          </Select>
+          <Button className="px-3 py-1 text-xs" onClick={() => assign(r.id)}>
+            指派
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">待安排代課</h1>
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-2">班級</th>
-            <th className="p-2">原老師</th>
-            <th className="p-2">日期</th>
-            <th className="p-2">原因</th>
-            <th className="p-2">指派代課</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="border-b">
-              <td className="p-2">{r.class.name}</td>
-              <td className="p-2">{r.originalTeacher.user.name}</td>
-              <td className="p-2">{new Date(r.date).toLocaleDateString()}</td>
-              <td className="p-2">{r.reason}</td>
-              <td className="p-2">
-                <select className="border p-2" onChange={(e) => setSelected({ ...selected, [r.id]: e.target.value })}>
-                  <option value="">選擇代課老師</option>
-                  {teachers.map((t) => (
-                    <option key={t.id} value={t.id}>{t.user.name}</option>
-                  ))}
-                </select>
-                <button className="ml-2 bg-black px-3 py-1 text-white" onClick={() => assign(r.id)}>指派</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <AppShell role="ADMIN">
+      <h1 className="mb-4 text-xl font-bold text-ink">待安排代課</h1>
+      <Card>
+        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} />
+      </Card>
+    </AppShell>
   );
 }

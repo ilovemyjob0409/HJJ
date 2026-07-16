@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import DataTable, { Column } from '@/components/ui/DataTable';
+import StatusBadge from '@/components/ui/StatusBadge';
 
 interface PendingRow {
   id: string;
@@ -31,38 +36,39 @@ export default function AdminMakeupRequestsPage() {
     load();
   }
 
+  const columns: Column<PendingRow>[] = [
+    { header: '學生', render: (r) => r.leaveRequest.student.user.name },
+    { header: '原班級', render: (r) => r.leaveRequest.class.name },
+    { header: '類型', render: (r) => (r.type === 'INSERTION' ? '插班' : '一對一') },
+    {
+      header: '目標',
+      render: (r) =>
+        r.type === 'INSERTION'
+          ? `${r.targetClass?.name} @ ${r.targetDate ? new Date(r.targetDate).toLocaleDateString() : ''}`
+          : `${r.teacher?.user.name} @ ${r.slotDate ? new Date(r.slotDate).toLocaleDateString() : ''} ${r.slotStartTime}-${r.slotEndTime}`,
+    },
+    { header: '狀態', render: () => <StatusBadge status="PENDING_ADMIN" /> },
+    {
+      header: '操作',
+      render: (r) => (
+        <div className="flex gap-2">
+          <Button className="px-3 py-1 text-xs" onClick={() => decide(r.id, 'APPROVED')}>
+            核准
+          </Button>
+          <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => decide(r.id, 'REJECTED')}>
+            拒絕
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">待確認補課申請</h1>
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-2">學生</th>
-            <th className="p-2">原班級</th>
-            <th className="p-2">類型</th>
-            <th className="p-2">目標</th>
-            <th className="p-2">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="border-b">
-              <td className="p-2">{r.leaveRequest.student.user.name}</td>
-              <td className="p-2">{r.leaveRequest.class.name}</td>
-              <td className="p-2">{r.type === 'INSERTION' ? '插班' : '一對一'}</td>
-              <td className="p-2">
-                {r.type === 'INSERTION'
-                  ? `${r.targetClass?.name} @ ${r.targetDate ? new Date(r.targetDate).toLocaleDateString() : ''}`
-                  : `${r.teacher?.user.name} @ ${r.slotDate ? new Date(r.slotDate).toLocaleDateString() : ''} ${r.slotStartTime}-${r.slotEndTime}`}
-              </td>
-              <td className="p-2">
-                <button className="mr-2 bg-black px-3 py-1 text-white" onClick={() => decide(r.id, 'APPROVED')}>核准</button>
-                <button className="bg-white border px-3 py-1" onClick={() => decide(r.id, 'REJECTED')}>拒絕</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <AppShell role="ADMIN">
+      <h1 className="mb-4 text-xl font-bold text-ink">待確認補課申請</h1>
+      <Card>
+        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} />
+      </Card>
+    </AppShell>
   );
 }
