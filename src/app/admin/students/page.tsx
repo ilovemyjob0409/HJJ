@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import DataTable, { Column } from '@/components/ui/DataTable';
 
 interface StudentRow {
   id: string;
@@ -28,36 +33,35 @@ export default function StudentsPage() {
     load();
   }
 
-  return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">學生名單</h1>
-      <table className="mb-6 w-full border-collapse">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-2">姓名</th>
-            <th className="p-2">Email</th>
-            <th className="p-2">家長電話</th>
-          </tr>
-        </thead>
-        <tbody>
-          {students.map((s) => (
-            <tr key={s.id} className="border-b">
-              <td className="p-2">{s.user.name}</td>
-              <td className="p-2">{s.user.email}</td>
-              <td className="p-2">{s.parentPhone}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+  const columns: Column<StudentRow>[] = [
+    { header: '姓名', render: (s) => s.user.name },
+    { header: 'Email', render: (s) => s.user.email },
+    { header: '家長電話', render: (s) => s.parentPhone ?? '-' },
+  ];
 
-      <h2 className="mb-2 font-bold">新增學生</h2>
-      <form onSubmit={handleSubmit} className="flex max-w-md flex-col gap-2">
-        <input className="border p-2" placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-        <input className="border p-2" placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-        <input className="border p-2" placeholder="初始密碼" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-        <input className="border p-2" placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
-        <button className="bg-black p-2 text-white" type="submit">新增</button>
-      </form>
-    </div>
+  return (
+    <AppShell role="ADMIN">
+      <h1 className="mb-4 text-xl font-bold text-ink">學生名單</h1>
+      <Card className="mb-6">
+        <DataTable columns={columns} rows={students} keyField={(s) => s.id} />
+      </Card>
+
+      <Card className="max-w-md">
+        <h2 className="mb-3 font-bold text-ink">新增學生</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+          <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+          <Input
+            placeholder="初始密碼"
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            required
+          />
+          <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
+          <Button type="submit">新增</Button>
+        </form>
+      </Card>
+    </AppShell>
   );
 }
