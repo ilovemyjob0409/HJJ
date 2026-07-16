@@ -1,6 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import DataTable, { Column } from '@/components/ui/DataTable';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -46,52 +52,47 @@ export default function ClassesPage() {
     load();
   }
 
-  return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">班級名單</h1>
-      <table className="mb-6 w-full border-collapse">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-2">班名</th>
-            <th className="p-2">科目/等級</th>
-            <th className="p-2">老師</th>
-            <th className="p-2">時間</th>
-            <th className="p-2">人數</th>
-          </tr>
-        </thead>
-        <tbody>
-          {classes.map((c) => (
-            <tr key={c.id} className="border-b">
-              <td className="p-2">{c.name}</td>
-              <td className="p-2">{c.subject} / {c.level}</td>
-              <td className="p-2">{c.teacher.user.name}</td>
-              <td className="p-2">週{WEEKDAYS[c.weekday]} {c.startTime}-{c.endTime}</td>
-              <td className="p-2">{c.enrollments.length}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+  const columns: Column<ClassRow>[] = [
+    { header: '班名', render: (c) => c.name },
+    { header: '科目/等級', render: (c) => `${c.subject} / ${c.level}` },
+    { header: '老師', render: (c) => c.teacher.user.name },
+    { header: '時間', render: (c) => `週${WEEKDAYS[c.weekday]} ${c.startTime}-${c.endTime}` },
+    { header: '人數', render: (c) => c.enrollments.length },
+  ];
 
-      <h2 className="mb-2 font-bold">新增班級</h2>
-      <form onSubmit={handleSubmit} className="flex max-w-md flex-col gap-2">
-        <input className="border p-2" placeholder="班名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-        <input className="border p-2" placeholder="科目" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} required />
-        <input className="border p-2" placeholder="等級" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} required />
-        <select className="border p-2" value={form.teacherId} onChange={(e) => setForm({ ...form, teacherId: e.target.value })} required>
-          <option value="">選擇老師</option>
-          {teachers.map((t) => (
-            <option key={t.id} value={t.id}>{t.user.name}</option>
-          ))}
-        </select>
-        <select className="border p-2" value={form.weekday} onChange={(e) => setForm({ ...form, weekday: e.target.value })}>
-          {WEEKDAYS.map((w, i) => (
-            <option key={i} value={i}>週{w}</option>
-          ))}
-        </select>
-        <input className="border p-2" type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
-        <input className="border p-2" type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
-        <button className="bg-black p-2 text-white" type="submit">新增</button>
-      </form>
-    </div>
+  return (
+    <AppShell role="ADMIN">
+      <h1 className="mb-4 text-xl font-bold text-ink">班級名單</h1>
+      <Card className="mb-6">
+        <DataTable columns={columns} rows={classes} keyField={(c) => c.id} />
+      </Card>
+
+      <Card className="max-w-md">
+        <h2 className="mb-3 font-bold text-ink">新增班級</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+          <Input placeholder="班名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          <Input placeholder="科目" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} required />
+          <Input placeholder="等級" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} required />
+          <Select value={form.teacherId} onChange={(e) => setForm({ ...form, teacherId: e.target.value })} required>
+            <option value="">選擇老師</option>
+            {teachers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.user.name}
+              </option>
+            ))}
+          </Select>
+          <Select value={form.weekday} onChange={(e) => setForm({ ...form, weekday: e.target.value })}>
+            {WEEKDAYS.map((w, i) => (
+              <option key={i} value={i}>
+                週{w}
+              </option>
+            ))}
+          </Select>
+          <Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
+          <Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
+          <Button type="submit">新增</Button>
+        </form>
+      </Card>
+    </AppShell>
   );
 }
