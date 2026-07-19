@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -108,54 +113,69 @@ export default function MakeupRequestPage() {
   const leavesWithoutMakeup = leaves.filter((l) => !l.makeupRequest);
 
   return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">申請補課</h1>
+    <AppShell role="STUDENT">
+      <h1 className="mb-4 text-xl font-bold text-ink">申請補課</h1>
 
-      <select className="mb-4 border p-2" value={selectedLeaveId} onChange={(e) => setSelectedLeaveId(e.target.value)}>
+      <Select className="mb-4" value={selectedLeaveId} onChange={(e) => setSelectedLeaveId(e.target.value)}>
         <option value="">選擇要補課的請假紀錄</option>
         {leavesWithoutMakeup.map((l) => (
           <option key={l.id} value={l.id}>
             {l.class.name} - {new Date(l.date).toLocaleDateString()}
           </option>
         ))}
-      </select>
+      </Select>
 
       {selectedLeaveId && (
-        <>
-          <div className="mb-4 flex gap-4">
-            <label>
+        <Card className="max-w-md">
+          <div className="mb-4 flex gap-4 text-sm text-ink">
+            <label className="flex items-center gap-1">
               <input type="radio" checked={makeupType === 'INSERTION'} onChange={() => setMakeupType('INSERTION')} /> 插班補課
             </label>
-            <label>
+            <label className="flex items-center gap-1">
               <input type="radio" checked={makeupType === 'ONE_ON_ONE'} onChange={() => setMakeupType('ONE_ON_ONE')} /> 一對一補課
             </label>
           </div>
 
           {makeupType === 'INSERTION' && (
-            <form onSubmit={submitInsertion} className="flex max-w-md flex-col gap-2">
-              <select className="border p-2" value={insertionForm.targetClassId} onChange={(e) => setInsertionForm({ ...insertionForm, targetClassId: e.target.value })} required>
+            <form onSubmit={submitInsertion} className="flex flex-col gap-2">
+              <Select
+                value={insertionForm.targetClassId}
+                onChange={(e) => setInsertionForm({ ...insertionForm, targetClassId: e.target.value })}
+                required
+              >
                 <option value="">選擇班級</option>
                 {eligibleClasses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}（週{WEEKDAYS[c.weekday]} {c.startTime}-{c.endTime}，目前 {c.enrollments.length} 人）
                   </option>
                 ))}
-              </select>
-              <input className="border p-2" type="date" value={insertionForm.targetDate} onChange={(e) => setInsertionForm({ ...insertionForm, targetDate: e.target.value })} required />
-              <button className="bg-black p-2 text-white" type="submit">送出插班申請</button>
+              </Select>
+              <Input
+                type="date"
+                value={insertionForm.targetDate}
+                onChange={(e) => setInsertionForm({ ...insertionForm, targetDate: e.target.value })}
+                required
+              />
+              <Button type="submit">送出插班申請</Button>
             </form>
           )}
 
           {makeupType === 'ONE_ON_ONE' && (
-            <form onSubmit={submitOneOnOne} className="flex max-w-md flex-col gap-2">
-              <select className="border p-2" value={oneOnOneForm.teacherId} onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, teacherId: e.target.value })} required>
+            <form onSubmit={submitOneOnOne} className="flex flex-col gap-2">
+              <Select
+                value={oneOnOneForm.teacherId}
+                onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, teacherId: e.target.value })}
+                required
+              >
                 <option value="">選擇老師</option>
                 {teachers.map((t) => (
-                  <option key={t.id} value={t.id}>{t.user.name}（{t.subjects}）</option>
+                  <option key={t.id} value={t.id}>
+                    {t.user.name}（{t.subjects}）
+                  </option>
                 ))}
-              </select>
+              </Select>
               {oneOnOneForm.teacherId && (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-inkMuted">
                   可補課時段：
                   {availability.length === 0
                     ? '尚未設定'
@@ -167,18 +187,31 @@ export default function MakeupRequestPage() {
                       ))}
                 </p>
               )}
-              <input className="border p-2" type="date" value={oneOnOneForm.slotDate} onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotDate: e.target.value })} required />
+              <Input
+                type="date"
+                value={oneOnOneForm.slotDate}
+                onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotDate: e.target.value })}
+                required
+              />
               <div className="flex gap-2">
-                <input className="border p-2" type="time" value={oneOnOneForm.slotStartTime} onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotStartTime: e.target.value })} />
-                <input className="border p-2" type="time" value={oneOnOneForm.slotEndTime} onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotEndTime: e.target.value })} />
+                <Input
+                  type="time"
+                  value={oneOnOneForm.slotStartTime}
+                  onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotStartTime: e.target.value })}
+                />
+                <Input
+                  type="time"
+                  value={oneOnOneForm.slotEndTime}
+                  onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotEndTime: e.target.value })}
+                />
               </div>
-              <button className="bg-black p-2 text-white" type="submit">送出一對一申請</button>
+              <Button type="submit">送出一對一申請</Button>
             </form>
           )}
-        </>
+        </Card>
       )}
 
-      {message && <p className="mt-4">{message}</p>}
-    </div>
+      {message && <p className="mt-4 text-sm text-ink">{message}</p>}
+    </AppShell>
   );
 }
