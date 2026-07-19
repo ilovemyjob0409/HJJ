@@ -48,6 +48,16 @@ describe('listClassesBySubjectAndLevel', () => {
     const result = await listClassesBySubjectAndLevel('數學', '國一', classA.id);
     expect(result.map((c) => c.id)).toEqual([classB.id]);
   });
+
+  it('excludes classes with the same subject but a different level', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-filter-level-chen@example.com', password: 'x', subjects: '數學' });
+    const classA = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const classB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    await createClass({ name: '數學高一班', subject: '數學', level: '高一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+
+    const result = await listClassesBySubjectAndLevel('數學', '國一', classA.id);
+    expect(result.map((c) => c.id)).toEqual([classB.id]);
+  });
 });
 
 describe('enrollStudent', () => {
