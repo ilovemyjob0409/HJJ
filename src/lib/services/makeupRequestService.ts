@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { isDriverAdapterError } from '@prisma/driver-adapter-utils';
 import { prisma } from '@/lib/db';
 import { getQuarterRange } from '@/lib/quarter';
 import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
@@ -38,10 +39,16 @@ export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
   // Postgres's default READ COMMITTED isolation does NOT prevent this by
   // itself (unlike SQLite's single-writer lock), so this uses Serializable
   // isolation, which makes Postgres abort one of the two transactions with
-  // a serialization failure (P2034) instead of letting both through. The
-  // retry wrapper re-runs the aborted transaction, which then re-reads the
-  // now-committed conflicting row and returns the correct friendly error
-  // (QUOTA_EXCEEDED / SLOT_CONFLICT) instead of a raw P2034.
+  // a serialization failure instead of letting both through. With the `pg`
+  // driver adapter, that failure surfaces as a `DriverAdapterError` whose
+  // `.cause.kind` is `'TransactionWriteConflict'` — NOT as a classic
+  // `PrismaClientKnownRequestError` with code P2034 (that mapping is for
+  // Prisma's built-in query engine, not the driver-adapter path this
+  // project uses; confirmed empirically by forcing the race and inspecting
+  // the actual thrown error, not by assumption). The retry wrapper checks
+  // both shapes and re-runs the aborted transaction, which then re-reads
+  // the now-committed conflicting row and returns the correct friendly
+  // error (QUOTA_EXCEEDED / SLOT_CONFLICT) instead of a raw conflict error.
   return runSerializableWithRetry(() => createOneOnOneMakeupRequestTx(input));
 }
 
@@ -50,7 +57,9 @@ async function runSerializableWithRetry<T>(fn: () => Promise<T>, attempts = 3): 
     try {
       return await fn();
     } catch (err) {
-      const isSerializationFailure = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034';
+      const isSerializationFailure =
+        (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') ||
+        (isDriverAdapterError(err) && err.cause.kind === 'TransactionWriteConflict');
       if (!isSerializationFailure || attempt === attempts) throw err;
     }
   }
