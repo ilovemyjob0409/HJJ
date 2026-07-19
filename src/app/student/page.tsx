@@ -1,13 +1,19 @@
 import Link from 'next/link';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
 
 export default function StudentDashboard() {
   return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">學生首頁</h1>
-      <nav className="flex flex-col gap-2">
-        <Link className="underline" href="/student/leave-request">請假申請與紀錄</Link>
-        <Link className="underline" href="/student/makeup-request">申請補課</Link>
-      </nav>
-    </div>
+    <AppShell role="STUDENT">
+      <h1 className="mb-4 text-xl font-bold text-ink">學生首頁</h1>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Link href="/student/leave-request">
+          <Card className="text-ink transition-shadow hover:shadow-md">請假申請與紀錄</Card>
+        </Link>
+        <Link href="/student/makeup-request">
+          <Card className="text-ink transition-shadow hover:shadow-md">申請補課</Card>
+        </Link>
+      </div>
+    </AppShell>
   );
 }

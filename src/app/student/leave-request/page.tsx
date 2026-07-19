@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import DataTable, { Column } from '@/components/ui/DataTable';
+import StatusBadge from '@/components/ui/StatusBadge';
 
 interface ClassOption {
   id: string;
@@ -38,44 +45,41 @@ export default function StudentLeaveRequestPage() {
     load();
   }
 
-  return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">請假申請</h1>
-      <form onSubmit={handleSubmit} className="mb-6 flex max-w-md flex-col gap-2">
-        <select className="border p-2" value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })} required>
-          <option value="">選擇班級</option>
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <input className="border p-2" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
-        <input className="border p-2" placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
-        <button className="bg-black p-2 text-white" type="submit">送出請假</button>
-      </form>
+  const columns: Column<LeaveRow>[] = [
+    { header: '班級', render: (l) => l.class.name },
+    { header: '日期', render: (l) => new Date(l.date).toLocaleDateString() },
+    { header: '原因', render: (l) => l.reason },
+    { header: '狀態', render: (l) => <StatusBadge status={l.status} /> },
+    {
+      header: '補課狀態',
+      render: (l) =>
+        l.makeupRequest ? <StatusBadge status={l.makeupRequest.status} /> : <span className="text-inkMuted">尚未申請</span>,
+    },
+  ];
 
-      <h2 className="mb-2 font-bold">我的請假紀錄</h2>
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="p-2">班級</th>
-            <th className="p-2">日期</th>
-            <th className="p-2">原因</th>
-            <th className="p-2">狀態</th>
-            <th className="p-2">補課狀態</th>
-          </tr>
-        </thead>
-        <tbody>
-          {leaves.map((l) => (
-            <tr key={l.id} className="border-b">
-              <td className="p-2">{l.class.name}</td>
-              <td className="p-2">{new Date(l.date).toLocaleDateString()}</td>
-              <td className="p-2">{l.reason}</td>
-              <td className="p-2">{l.status}</td>
-              <td className="p-2">{l.makeupRequest ? `${l.makeupRequest.type} / ${l.makeupRequest.status}` : '尚未申請'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+  return (
+    <AppShell role="STUDENT">
+      <h1 className="mb-4 text-xl font-bold text-ink">請假申請</h1>
+      <Card className="mb-6 max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+          <Select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })} required>
+            <option value="">選擇班級</option>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+          <Input placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
+          <Button type="submit">送出請假</Button>
+        </form>
+      </Card>
+
+      <h2 className="mb-2 font-bold text-ink">我的請假紀錄</h2>
+      <Card>
+        <DataTable columns={columns} rows={leaves} keyField={(l) => l.id} />
+      </Card>
+    </AppShell>
   );
 }
