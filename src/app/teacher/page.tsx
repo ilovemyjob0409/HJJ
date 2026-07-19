@@ -11,7 +11,7 @@ export default function TeacherDashboard() {
           <Card className="text-ink transition-shadow hover:shadow-md">請假/調課申請</Card>
         </Link>
         <Link href="/teacher/availability">
-          <Card className="text-ink transition-shadow hover:shadow-md">設定我的可補課時段</Card>
+          <Card className="text-ink transition-shadow hover:shadow-md">設定可補課時段</Card>
         </Link>
       </div>
     </AppShell>
