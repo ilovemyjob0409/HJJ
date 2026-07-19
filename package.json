@@ -7,17 +7,18 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "prisma generate",
     "test": "npm run test:dbpush && vitest run",
-    "test:dbpush": "cross-env DATABASE_URL=file:./prisma/test.db npx prisma db push",
+    "test:dbpush": "cross-env DATABASE_URL=postgresql://postgres:postgres@localhost:5432/tutoring_makeup_system_test npx prisma db push --accept-data-loss",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.11.1",
     "next": "14.2.35",
     "next-auth": "^4.24.14",
+    "pg": "^8.22.0",
     "prisma": "^7.8.0",
     "react": "^18",
     "react-dom": "^18"
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^6.0.3",

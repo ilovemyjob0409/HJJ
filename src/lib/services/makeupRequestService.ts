@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getQuarterRange } from '@/lib/quarter';
 import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
@@ -31,11 +32,32 @@ export interface CreateOneOnOneInput {
 }
 
 export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
-  // Quota count, conflict check, and create must be atomic: without a
-  // transaction, two concurrent requests for the same student/slot can
-  // both pass their checks before either create() commits (TOCTOU race).
-  // Wrapping them in one transaction serializes concurrent calls against
-  // the single SQLite connection, so the loser re-reads post-commit state.
+  // Quota count, conflict check, and create must be atomic: without
+  // isolation, two concurrent requests for the same student/slot can both
+  // pass their checks before either create() commits (TOCTOU race).
+  // Postgres's default READ COMMITTED isolation does NOT prevent this by
+  // itself (unlike SQLite's single-writer lock), so this uses Serializable
+  // isolation, which makes Postgres abort one of the two transactions with
+  // a serialization failure (P2034) instead of letting both through. The
+  // retry wrapper re-runs the aborted transaction, which then re-reads the
+  // now-committed conflicting row and returns the correct friendly error
+  // (QUOTA_EXCEEDED / SLOT_CONFLICT) instead of a raw P2034.
+  return runSerializableWithRetry(() => createOneOnOneMakeupRequestTx(input));
+}
+
+async function runSerializableWithRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isSerializationFailure = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034';
+      if (!isSerializationFailure || attempt === attempts) throw err;
+    }
+  }
+  throw new Error('unreachable');
+}
+
+function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
   return prisma.$transaction(async (tx) => {
     const { start, end } = getQuarterRange(new Date());
     const quotaUsed = await tx.makeupRequest.count({
@@ -82,7 +104,7 @@ export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
         slotEndTime: input.slotEndTime,
       },
     });
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 const SAFE_USER_SELECT = { name: true, email: true } as const;

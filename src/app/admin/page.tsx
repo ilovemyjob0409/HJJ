@@ -4,6 +4,11 @@ import Link from 'next/link';
 import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 
+// Without this, Next.js prerenders the pending counts once at build time
+// (this page has no cookie/header access to auto-trigger dynamic rendering)
+// and serves that frozen snapshot to every admin until the next deploy.
+export const dynamic = 'force-dynamic';
+
 export default async function AdminDashboard() {
   const [pendingMakeups, pendingSubstitutes] = await Promise.all([
     listPendingMakeupRequests(),
