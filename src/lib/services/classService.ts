@@ -43,6 +43,24 @@ export function createClass(input: CreateClassInput) {
   return prisma.class.create({ data: input });
 }
 
+export interface UpdateClassInput {
+  name?: string;
+  subject?: string;
+  level?: string;
+  teacherId?: string;
+  weekday?: number;
+  startTime?: string;
+  endTime?: string;
+}
+
+export function updateClass(id: string, input: UpdateClassInput) {
+  return prisma.class.update({
+    where: { id },
+    data: input,
+    select: CLASS_WITH_TEACHER_SELECT,
+  });
+}
+
 export function listClasses() {
   return prisma.class.findMany({
     select: CLASS_WITH_TEACHER_SELECT,

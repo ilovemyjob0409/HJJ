@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createClass, listClasses, listClassesBySubjectAndLevel, enrollStudent } from './classService';
+import { createClass, listClasses, listClassesBySubjectAndLevel, enrollStudent, updateClass } from './classService';
 
 beforeEach(async () => {
   await prisma.substituteRequest.deleteMany();
@@ -69,5 +69,19 @@ describe('enrollStudent', () => {
     const enrollment = await enrollStudent(cls.id, student.id);
     expect(enrollment.studentId).toBe(student.id);
     expect(enrollment.classId).toBe(cls.id);
+  });
+});
+
+describe('updateClass', () => {
+  it('updates only the provided fields, leaving others unchanged', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-update-chen@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    const updated = await updateClass(cls.id, { startTime: '20:00', endTime: '22:00' });
+
+    expect(updated.startTime).toBe('20:00');
+    expect(updated.endTime).toBe('22:00');
+    expect(updated.name).toBe('數學A班');
+    expect(updated.weekday).toBe(1);
   });
 });
