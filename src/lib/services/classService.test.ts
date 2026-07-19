@@ -2,7 +2,16 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createClass, listClasses, listClassesBySubjectAndLevel, enrollStudent, updateClass } from './classService';
+import {
+  createClass,
+  listClasses,
+  listClassesBySubjectAndLevel,
+  enrollStudent,
+  updateClass,
+  setStudentEnrollments,
+  unenrollStudent,
+  listStudentEnrolledClasses,
+} from './classService';
 
 beforeEach(async () => {
   await prisma.substituteRequest.deleteMany();
@@ -83,5 +92,54 @@ describe('updateClass', () => {
     expect(updated.endTime).toBe('22:00');
     expect(updated.name).toBe('數學A班');
     expect(updated.weekday).toBe(1);
+  });
+});
+
+describe('setStudentEnrollments', () => {
+  it('adds new enrollments and removes dropped ones, leaving unchanged ones alone', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-enroll-set-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-enroll-set-ming@example.com', password: 'x' });
+    const classA = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const classB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    const classC = await createClass({ name: '數學C班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+
+    await setStudentEnrollments(student.id, [classA.id, classB.id]);
+    const originalEnrollmentA = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: classA.id } });
+
+    await setStudentEnrollments(student.id, [classA.id, classC.id]);
+
+    const finalEnrollments = await prisma.classEnrollment.findMany({ where: { studentId: student.id } });
+    expect(finalEnrollments.map((e) => e.classId).sort()).toEqual([classA.id, classC.id].sort());
+
+    const stillA = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: classA.id } });
+    expect(stillA.id).toBe(originalEnrollmentA.id);
+  });
+});
+
+describe('unenrollStudent', () => {
+  it('removes a specific enrollment', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-unenroll-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-unenroll-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+
+    await unenrollStudent(cls.id, student.id);
+
+    const remaining = await prisma.classEnrollment.findMany({ where: { studentId: student.id, classId: cls.id } });
+    expect(remaining).toHaveLength(0);
+  });
+});
+
+describe('listStudentEnrolledClasses', () => {
+  it('returns only classes the student is enrolled in', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-list-enrolled-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-list-enrolled-ming@example.com', password: 'x' });
+    const classA = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(classA.id, student.id);
+
+    const result = await listStudentEnrolledClasses(student.id);
+
+    expect(result.map((c) => c.id)).toEqual([classA.id]);
   });
 });

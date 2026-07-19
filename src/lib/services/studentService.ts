@@ -30,7 +30,12 @@ export async function createStudent(input: CreateStudentInput) {
 
 export function listStudents() {
   return prisma.student.findMany({
-    select: { id: true, parentPhone: true, user: { select: SAFE_USER_SELECT } },
+    select: {
+      id: true,
+      parentPhone: true,
+      user: { select: SAFE_USER_SELECT },
+      enrollments: { select: { classId: true } },
+    },
     orderBy: { user: { name: 'asc' } },
   });
 }

@@ -20,7 +20,7 @@ const CLASS_WITH_TEACHER_SELECT = {
   startTime: true,
   endTime: true,
   teacher: { select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } } },
-  enrollments: true,
+  enrollments: { select: { id: true, studentId: true, student: { select: { user: { select: { name: true } } } } } },
 } as const;
 
 // Narrower field set for students/teachers picking a class for a leave or
@@ -95,4 +95,30 @@ export function listClassesBySubjectAndLevel(subject: string, level: string, exc
 
 export function enrollStudent(classId: string, studentId: string) {
   return prisma.classEnrollment.create({ data: { classId, studentId } });
+}
+
+export async function setStudentEnrollments(studentId: string, classIds: string[]) {
+  const current = await prisma.classEnrollment.findMany({ where: { studentId }, select: { classId: true } });
+  const currentIds = new Set(current.map((e) => e.classId));
+  const desiredIds = new Set(classIds);
+
+  const toAdd = classIds.filter((id) => !currentIds.has(id));
+  const toRemove = Array.from(currentIds).filter((id) => !desiredIds.has(id));
+
+  await prisma.$transaction([
+    ...(toRemove.length > 0 ? [prisma.classEnrollment.deleteMany({ where: { studentId, classId: { in: toRemove } } })] : []),
+    ...toAdd.map((classId) => prisma.classEnrollment.create({ data: { studentId, classId } })),
+  ]);
+}
+
+export function unenrollStudent(classId: string, studentId: string) {
+  return prisma.classEnrollment.delete({ where: { studentId_classId: { studentId, classId } } });
+}
+
+export function listStudentEnrolledClasses(studentId: string) {
+  return prisma.class.findMany({
+    where: { enrollments: { some: { studentId } } },
+    select: CLASS_BOOKING_SELECT,
+    orderBy: { name: 'asc' },
+  });
 }
