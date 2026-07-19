@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import AppShell from '@/components/ui/AppShell';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -40,26 +45,34 @@ export default function AvailabilityPage() {
   }
 
   return (
-    <div className="p-6">
-      <h1 className="mb-4 text-xl font-bold">我的每週可補課時段</h1>
-      <div className="flex flex-col gap-2">
-        {windows.map((w, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <select className="border p-2" value={w.weekday} onChange={(e) => updateWindow(i, { weekday: Number(e.target.value) })}>
-              {WEEKDAYS.map((label, idx) => (
-                <option key={idx} value={idx}>週{label}</option>
-              ))}
-            </select>
-            <input className="border p-2" type="time" value={w.startTime} onChange={(e) => updateWindow(i, { startTime: e.target.value })} />
-            <input className="border p-2" type="time" value={w.endTime} onChange={(e) => updateWindow(i, { endTime: e.target.value })} />
-            <button className="text-red-600" onClick={() => removeWindow(i)}>刪除</button>
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex gap-2">
-        <button className="border p-2" onClick={addWindow}>新增時段</button>
-        <button className="bg-black p-2 text-white" onClick={save}>儲存</button>
-      </div>
-    </div>
+    <AppShell role="TEACHER">
+      <h1 className="mb-4 text-xl font-bold text-ink">我的每週可補課時段</h1>
+      <Card className="max-w-lg">
+        <div className="flex flex-col gap-2">
+          {windows.map((w, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Select value={w.weekday} onChange={(e) => updateWindow(i, { weekday: Number(e.target.value) })}>
+                {WEEKDAYS.map((label, idx) => (
+                  <option key={idx} value={idx}>
+                    週{label}
+                  </option>
+                ))}
+              </Select>
+              <Input type="time" value={w.startTime} onChange={(e) => updateWindow(i, { startTime: e.target.value })} />
+              <Input type="time" value={w.endTime} onChange={(e) => updateWindow(i, { endTime: e.target.value })} />
+              <button className="text-rejected" onClick={() => removeWindow(i)}>
+                刪除
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button variant="secondary" onClick={addWindow}>
+            新增時段
+          </Button>
+          <Button onClick={save}>儲存</Button>
+        </div>
+      </Card>
+    </AppShell>
   );
 }
