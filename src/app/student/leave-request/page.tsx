@@ -53,7 +53,14 @@ export default function StudentLeaveRequestPage() {
     {
       header: '補課狀態',
       render: (l) =>
-        l.makeupRequest ? <StatusBadge status={l.makeupRequest.status} /> : <span className="text-inkMuted">尚未申請</span>,
+        l.makeupRequest ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-inkMuted">{l.makeupRequest.type === 'INSERTION' ? '插班' : '一對一'}</span>
+            <StatusBadge status={l.makeupRequest.status} />
+          </div>
+        ) : (
+          <span className="text-inkMuted">尚未申請</span>
+        ),
     },
   ];
 
