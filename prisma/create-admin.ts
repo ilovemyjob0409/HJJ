@@ -4,7 +4,9 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING;
-const adapter = new PrismaPg({ connectionString });
+const isLocal = !connectionString || /localhost|127\.0\.0\.1/.test(connectionString);
+const ssl = isLocal ? undefined : { rejectUnauthorized: false };
+const adapter = new PrismaPg({ connectionString, ssl });
 const prisma = new PrismaClient({ adapter });
 
 const ADMIN_EMAIL = 'hjjdaya@gmail.com';
