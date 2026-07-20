@@ -23,11 +23,16 @@ export async function POST(req: NextRequest) {
   if (!student) return NextResponse.json({ error: 'Not a student' }, { status: 400 });
 
   const body = await req.json();
-  const leave = await createLeaveRequest({
-    studentId: student.id,
-    classId: body.classId,
-    date: new Date(body.date),
-    reason: body.reason,
-  });
-  return NextResponse.json(leave, { status: 201 });
+  try {
+    const leave = await createLeaveRequest({
+      studentId: student.id,
+      classId: body.classId,
+      date: new Date(body.date),
+      reason: body.reason,
+    });
+    return NextResponse.json(leave, { status: 201 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 }
