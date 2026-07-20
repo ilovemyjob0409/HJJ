@@ -75,6 +75,20 @@ export default function StudentsPage() {
     load();
   }
 
+  async function handleDelete() {
+    if (!editing) return;
+    if (!confirm(`確定要刪除學生「${editing.user.name}」嗎？此操作無法復原。`)) return;
+    setEditError('');
+    const res = await fetch(`/api/students/${editing.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json();
+      setEditError(data.error === 'STUDENT_HAS_RECORDS' ? '此學生仍有請假紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
+      return;
+    }
+    setEditing(null);
+    load();
+  }
+
   const columns: Column<StudentRow>[] = [
     { header: '姓名', render: (s) => s.user.name },
     { header: 'Email', render: (s) => s.user.email },
@@ -151,6 +165,9 @@ export default function StudentsPage() {
           {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit">儲存</Button>
         </form>
+        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+          刪除學生
+        </button>
       </Modal>
     </AppShell>
   );

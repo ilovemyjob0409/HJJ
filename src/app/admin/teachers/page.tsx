@@ -58,6 +58,20 @@ export default function TeachersPage() {
     load();
   }
 
+  async function handleDelete() {
+    if (!editing) return;
+    if (!confirm(`確定要刪除老師「${editing.user.name}」嗎？此操作無法復原。`)) return;
+    setEditError('');
+    const res = await fetch(`/api/teachers/${editing.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json();
+      setEditError(data.error === 'TEACHER_HAS_RECORDS' ? '此老師仍有帶班或代課紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
+      return;
+    }
+    setEditing(null);
+    load();
+  }
+
   const columns: Column<TeacherRow>[] = [
     { header: '姓名', render: (t) => t.user.name },
     { header: 'Email', render: (t) => t.user.email },
@@ -124,6 +138,9 @@ export default function TeachersPage() {
           {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit">儲存</Button>
         </form>
+        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+          刪除老師
+        </button>
       </Modal>
     </AppShell>
   );

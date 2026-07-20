@@ -122,3 +122,24 @@ export function listStudentEnrolledClasses(studentId: string) {
     orderBy: { name: 'asc' },
   });
 }
+
+// Blocks deletion when the class has leave-request or substitute-request
+// history — those are records and must survive. Enrollments are current
+// state, not history, so they're cleared as part of the delete. Any
+// makeup request that targets this class (an optional reference) keeps
+// its own row but loses the target-class link.
+export async function deleteClass(id: string) {
+  const [leaveRequestCount, substituteRequestCount] = await Promise.all([
+    prisma.leaveRequest.count({ where: { classId: id } }),
+    prisma.substituteRequest.count({ where: { classId: id } }),
+  ]);
+  if (leaveRequestCount > 0 || substituteRequestCount > 0) {
+    throw new Error('CLASS_HAS_RECORDS');
+  }
+
+  await prisma.$transaction([
+    prisma.classEnrollment.deleteMany({ where: { classId: id } }),
+    prisma.makeupRequest.updateMany({ where: { targetClassId: id }, data: { targetClassId: null } }),
+    prisma.class.delete({ where: { id } }),
+  ]);
+}

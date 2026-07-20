@@ -109,6 +109,20 @@ export default function ClassesPage() {
     if (updatedEditing) setEditing(updatedEditing);
   }
 
+  async function handleDelete() {
+    if (!editing) return;
+    if (!confirm(`確定要刪除班級「${editing.name}」嗎？此操作無法復原。`)) return;
+    setEditError('');
+    const res = await fetch(`/api/classes/${editing.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json();
+      setEditError(data.error === 'CLASS_HAS_RECORDS' ? '此班級仍有請假或代課紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
+      return;
+    }
+    setEditing(null);
+    load();
+  }
+
   const columns: Column<ClassRow>[] = [
     { header: '班名', render: (c) => c.name },
     { header: '科目/等級', render: (c) => `${c.subject} / ${c.level}` },
@@ -184,6 +198,9 @@ export default function ClassesPage() {
           {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit">儲存</Button>
         </form>
+        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+          刪除班級
+        </button>
 
         {editing && (
           <div className="mt-4 border-t border-gray-200 pt-3">

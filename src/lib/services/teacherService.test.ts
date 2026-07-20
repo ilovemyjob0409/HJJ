@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
-import { createTeacher, listTeachers, updateTeacher } from './teacherService';
+import { createTeacher, listTeachers, updateTeacher, deleteTeacher } from './teacherService';
+import { createClass } from './classService';
+import { createSubstituteRequest } from './substituteRequestService';
 
 beforeEach(async () => {
   await prisma.substituteRequest.deleteMany();
@@ -81,5 +83,36 @@ describe('updateTeacher', () => {
     const other = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'secret123', subjects: '數學' });
 
     await expect(updateTeacher(other.id, { email: 'chen@example.com' })).rejects.toThrow();
+  });
+});
+
+describe('deleteTeacher', () => {
+  it('deletes a teacher with no classes or substitute history, clearing the login account', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'teacher-delete-chen@example.com', password: 'secret123', subjects: '英文' });
+
+    await deleteTeacher(teacher.id);
+
+    expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).toBeNull();
+    expect(await prisma.user.findUnique({ where: { email: 'teacher-delete-chen@example.com' } })).toBeNull();
+  });
+
+  it('throws TEACHER_HAS_RECORDS and does not delete when the teacher still has a class assigned', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'teacher-delete-block-class-chen@example.com', password: 'secret123', subjects: '數學' });
+    await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
+    expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();
+  });
+
+  it('throws TEACHER_HAS_RECORDS and does not delete when the teacher has substitute-request history as the original teacher', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'teacher-delete-block-sub-chen@example.com', password: 'secret123', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    // Reassign the class away so only the substitute-request history blocks deletion.
+    const otherTeacher = await createTeacher({ name: '林老師', email: 'teacher-delete-block-sub-lin@example.com', password: 'secret123', subjects: '數學' });
+    await prisma.class.update({ where: { id: cls.id }, data: { teacherId: otherTeacher.id } });
+    await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2026, 6, 20), reason: '請假' });
+
+    await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
+    expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();
   });
 });

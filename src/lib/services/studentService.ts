@@ -56,3 +56,21 @@ export async function updateStudent(id: string, input: UpdateStudentInput) {
     });
   });
 }
+
+// Blocks deletion when the student has any leave-request history — those
+// are records and must survive. Enrollments are current state, not
+// history, so they're cleared as part of the delete, along with the
+// underlying login account.
+export async function deleteStudent(id: string) {
+  const student = await prisma.student.findUniqueOrThrow({ where: { id } });
+  const leaveRequestCount = await prisma.leaveRequest.count({ where: { studentId: id } });
+  if (leaveRequestCount > 0) {
+    throw new Error('STUDENT_HAS_RECORDS');
+  }
+
+  await prisma.$transaction([
+    prisma.classEnrollment.deleteMany({ where: { studentId: id } }),
+    prisma.student.delete({ where: { id } }),
+    prisma.user.delete({ where: { id: student.userId } }),
+  ]);
+}

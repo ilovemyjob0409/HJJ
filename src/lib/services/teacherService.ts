@@ -62,3 +62,29 @@ export function listTeachersForBooking() {
     orderBy: { user: { name: 'asc' } },
   });
 }
+
+// Blocks deletion when the teacher still has classes assigned, or has
+// substitute-request history as the original teacher — both are required
+// references (a class must have a teacher, an original-teacher record
+// must survive). Availability is current state, not history, so it's
+// cleared as part of the delete, along with the underlying login
+// account. Optional references (one-on-one makeup requests, substitute
+// assignments) keep their own row but lose the teacher link.
+export async function deleteTeacher(id: string) {
+  const teacher = await prisma.teacher.findUniqueOrThrow({ where: { id } });
+  const [classCount, originalSubstituteCount] = await Promise.all([
+    prisma.class.count({ where: { teacherId: id } }),
+    prisma.substituteRequest.count({ where: { originalTeacherId: id } }),
+  ]);
+  if (classCount > 0 || originalSubstituteCount > 0) {
+    throw new Error('TEACHER_HAS_RECORDS');
+  }
+
+  await prisma.$transaction([
+    prisma.teacherAvailability.deleteMany({ where: { teacherId: id } }),
+    prisma.makeupRequest.updateMany({ where: { teacherId: id }, data: { teacherId: null } }),
+    prisma.substituteRequest.updateMany({ where: { substituteTeacherId: id }, data: { substituteTeacherId: null } }),
+    prisma.teacher.delete({ where: { id } }),
+    prisma.user.delete({ where: { id: teacher.userId } }),
+  ]);
+}

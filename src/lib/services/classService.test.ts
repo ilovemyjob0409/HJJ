@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
+import { createLeaveRequest } from './leaveRequestService';
 import {
   createClass,
   listClasses,
@@ -11,6 +12,7 @@ import {
   setStudentEnrollments,
   unenrollStudent,
   listStudentEnrolledClasses,
+  deleteClass,
 } from './classService';
 
 beforeEach(async () => {
@@ -141,5 +143,30 @@ describe('listStudentEnrolledClasses', () => {
     const result = await listStudentEnrolledClasses(student.id);
 
     expect(result.map((c) => c.id)).toEqual([classA.id]);
+  });
+});
+
+describe('deleteClass', () => {
+  it('deletes a class with no history, clearing its enrollments', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-delete-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-delete-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+
+    await deleteClass(cls.id);
+
+    expect(await prisma.class.findUnique({ where: { id: cls.id } })).toBeNull();
+    expect(await prisma.classEnrollment.findMany({ where: { classId: cls.id } })).toHaveLength(0);
+  });
+
+  it('throws CLASS_HAS_RECORDS and does not delete when the class has a leave request', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-delete-block-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-delete-block-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+
+    await expect(deleteClass(cls.id)).rejects.toThrow('CLASS_HAS_RECORDS');
+    expect(await prisma.class.findUnique({ where: { id: cls.id } })).not.toBeNull();
   });
 });
