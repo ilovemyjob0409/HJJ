@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import Modal from '@/components/ui/Modal';
 
 interface TeacherRow {
   id: string;
@@ -17,6 +18,8 @@ interface TeacherRow {
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
   const [form, setForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
+  const [editing, setEditing] = useState<TeacherRow | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
 
   async function load() {
     const res = await fetch('/api/teachers');
@@ -34,11 +37,32 @@ export default function TeachersPage() {
     load();
   }
 
+  function openEdit(t: TeacherRow) {
+    setEditing(t);
+    setEditForm({ name: t.user.name, email: t.user.email, password: '', subjects: t.subjects, phone: t.phone ?? '' });
+  }
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    await fetch(`/api/teachers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(editForm) });
+    setEditing(null);
+    load();
+  }
+
   const columns: Column<TeacherRow>[] = [
     { header: '姓名', render: (t) => t.user.name },
     { header: 'Email', render: (t) => t.user.email },
     { header: '科目', render: (t) => t.subjects },
     { header: '電話', render: (t) => t.phone ?? '-' },
+    {
+      header: '操作',
+      render: (t) => (
+        <button className="text-brandDark hover:underline" onClick={() => openEdit(t)}>
+          編輯
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -65,6 +89,33 @@ export default function TeachersPage() {
           <Button type="submit">新增</Button>
         </form>
       </Card>
+
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯老師">
+        <form onSubmit={handleEditSubmit} className="flex flex-col gap-2">
+          <Input placeholder="姓名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+          <Input
+            placeholder="Email"
+            type="email"
+            value={editForm.email}
+            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+            required
+          />
+          <Input
+            placeholder="新密碼（留空＝不變更）"
+            type="password"
+            value={editForm.password}
+            onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+          />
+          <Input
+            placeholder="任教科目"
+            value={editForm.subjects}
+            onChange={(e) => setEditForm({ ...editForm, subjects: e.target.value })}
+            required
+          />
+          <Input placeholder="電話" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+          <Button type="submit">儲存</Button>
+        </form>
+      </Modal>
     </AppShell>
   );
 }
