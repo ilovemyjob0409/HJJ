@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createClass, listClasses, listClassesForBooking } from '@/lib/services/classService';
+import { prisma } from '@/lib/db';
+import { createClass, listClasses, listClassesForBooking, listStudentEnrolledClasses } from '@/lib/services/classService';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // Students and teachers only use this to populate a class picker (see
-  // src/app/student/leave-request/page.tsx and
-  // src/app/teacher/leave-request/page.tsx), so they get the narrow,
-  // phone/email-free projection. Admins keep the full management view.
-  const classes = session.user.role === 'ADMIN' ? await listClasses() : await listClassesForBooking();
-  return NextResponse.json(classes);
+
+  if (session.user.role === 'ADMIN') return NextResponse.json(await listClasses());
+
+  // Students only see classes they're enrolled in (see
+  // src/app/student/leave-request/page.tsx), since leave requests now
+  // require enrollment. Teachers keep the full booking-facing projection
+  // (see src/app/teacher/leave-request/page.tsx) — they aren't enrolled
+  // in classes themselves.
+  if (session.user.role === 'STUDENT') {
+    const student = await prisma.student.findUnique({ where: { userId: session.user.id } });
+    if (!student) return NextResponse.json([]);
+    return NextResponse.json(await listStudentEnrolledClasses(student.id));
+  }
+
+  return NextResponse.json(await listClassesForBooking());
 }
 
 export async function POST(req: NextRequest) {

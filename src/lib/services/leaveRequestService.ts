@@ -7,7 +7,12 @@ export interface CreateLeaveRequestInput {
   reason: string;
 }
 
-export function createLeaveRequest(input: CreateLeaveRequestInput) {
+export async function createLeaveRequest(input: CreateLeaveRequestInput) {
+  const enrolled = await prisma.classEnrollment.findUnique({
+    where: { studentId_classId: { studentId: input.studentId, classId: input.classId } },
+  });
+  if (!enrolled) throw new Error('NOT_ENROLLED');
+
   return prisma.leaveRequest.create({
     data: { ...input, status: 'APPROVED' },
   });

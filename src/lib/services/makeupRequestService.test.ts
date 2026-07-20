@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createClass } from './classService';
+import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { setTeacherAvailability } from './availabilityService';
 import {
@@ -29,6 +29,7 @@ async function setup() {
   const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
   const classA = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
   const classB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+  await enrollStudent(classA.id, student.id);
   const leave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '感冒' });
   return { teacher, student, classA, classB, leave };
 }
@@ -89,6 +90,7 @@ describe('createOneOnOneMakeupRequest', () => {
 
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
     const classA = await prisma.class.findFirstOrThrow();
+    await enrollStudent(classA.id, otherStudent.id);
     const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '事假' });
 
     await expect(
@@ -136,6 +138,7 @@ describe('createOneOnOneMakeupRequest', () => {
 
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
     const classA = await prisma.class.findFirstOrThrow();
+    await enrollStudent(classA.id, otherStudent.id);
     const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '事假' });
 
     const slotInput = {
