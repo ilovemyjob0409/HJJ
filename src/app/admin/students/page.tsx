@@ -6,20 +6,33 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import Modal from '@/components/ui/Modal';
 
 interface StudentRow {
   id: string;
   parentPhone: string | null;
   user: { name: string; email: string };
+  enrollments: { classId: string }[];
+}
+
+interface ClassOption {
+  id: string;
+  name: string;
+  subject: string;
 }
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<StudentRow[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
+  const [editing, setEditing] = useState<StudentRow | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
+  const [editClassIds, setEditClassIds] = useState<string[]>([]);
 
   async function load() {
-    const res = await fetch('/api/students');
-    setStudents(await res.json());
+    const [studentsRes, classesRes] = await Promise.all([fetch('/api/students'), fetch('/api/classes')]);
+    setStudents(await studentsRes.json());
+    setClasses(await classesRes.json());
   }
 
   useEffect(() => {
@@ -33,10 +46,40 @@ export default function StudentsPage() {
     load();
   }
 
+  function openEdit(s: StudentRow) {
+    setEditing(s);
+    setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '' });
+    setEditClassIds(s.enrollments.map((e) => e.classId));
+  }
+
+  function toggleClass(classId: string) {
+    setEditClassIds((prev) => (prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]));
+  }
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    await fetch(`/api/students/${editing.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...editForm, classIds: editClassIds }),
+    });
+    setEditing(null);
+    load();
+  }
+
   const columns: Column<StudentRow>[] = [
     { header: '姓名', render: (s) => s.user.name },
     { header: 'Email', render: (s) => s.user.email },
     { header: '家長電話', render: (s) => s.parentPhone ?? '-' },
+    { header: '班級數', render: (s) => s.enrollments.length },
+    {
+      header: '操作',
+      render: (s) => (
+        <button className="text-brandDark hover:underline" onClick={() => openEdit(s)}>
+          編輯
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -62,6 +105,44 @@ export default function StudentsPage() {
           <Button type="submit">新增</Button>
         </form>
       </Card>
+
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生">
+        <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
+          <Input placeholder="姓名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+          <Input
+            placeholder="Email"
+            type="email"
+            value={editForm.email}
+            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+            required
+          />
+          <Input
+            placeholder="新密碼（留空＝不變更）"
+            type="password"
+            value={editForm.password}
+            onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+          />
+          <Input
+            placeholder="家長電話"
+            value={editForm.parentPhone}
+            onChange={(e) => setEditForm({ ...editForm, parentPhone: e.target.value })}
+          />
+
+          <div>
+            <p className="mb-1 text-sm font-medium text-ink">所屬班級</p>
+            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-gray-300 p-2">
+              {classes.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={editClassIds.includes(c.id)} onChange={() => toggleClass(c.id)} />
+                  {c.name}（{c.subject}）
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <Button type="submit">儲存</Button>
+        </form>
+      </Modal>
     </AppShell>
   );
 }
