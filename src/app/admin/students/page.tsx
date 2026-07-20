@@ -28,6 +28,7 @@ export default function StudentsPage() {
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [editClassIds, setEditClassIds] = useState<string[]>([]);
+  const [editError, setEditError] = useState('');
 
   async function load() {
     const [studentsRes, classesRes] = await Promise.all([fetch('/api/students'), fetch('/api/classes')]);
@@ -50,6 +51,7 @@ export default function StudentsPage() {
     setEditing(s);
     setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '' });
     setEditClassIds(s.enrollments.map((e) => e.classId));
+    setEditError('');
   }
 
   function toggleClass(classId: string) {
@@ -59,10 +61,16 @@ export default function StudentsPage() {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
-    await fetch(`/api/students/${editing.id}`, {
+    setEditError('');
+    const res = await fetch(`/api/students/${editing.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ ...editForm, classIds: editClassIds }),
     });
+    if (!res.ok) {
+      const data = await res.json();
+      setEditError(data.error === 'EMAIL_TAKEN' ? '此 Email 已被使用' : `錯誤：${data.error}`);
+      return;
+    }
     setEditing(null);
     load();
   }
@@ -140,6 +148,7 @@ export default function StudentsPage() {
             </div>
           </div>
 
+          {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit">儲存</Button>
         </form>
       </Modal>

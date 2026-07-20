@@ -20,6 +20,7 @@ export default function TeachersPage() {
   const [form, setForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
   const [editing, setEditing] = useState<TeacherRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
+  const [editError, setEditError] = useState('');
 
   async function load() {
     const res = await fetch('/api/teachers');
@@ -40,12 +41,19 @@ export default function TeachersPage() {
   function openEdit(t: TeacherRow) {
     setEditing(t);
     setEditForm({ name: t.user.name, email: t.user.email, password: '', subjects: t.subjects, phone: t.phone ?? '' });
+    setEditError('');
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
-    await fetch(`/api/teachers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(editForm) });
+    setEditError('');
+    const res = await fetch(`/api/teachers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(editForm) });
+    if (!res.ok) {
+      const data = await res.json();
+      setEditError(data.error === 'EMAIL_TAKEN' ? '此 Email 已被使用' : `錯誤：${data.error}`);
+      return;
+    }
     setEditing(null);
     load();
   }
@@ -113,6 +121,7 @@ export default function TeachersPage() {
             required
           />
           <Input placeholder="電話" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+          {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit">儲存</Button>
         </form>
       </Modal>
