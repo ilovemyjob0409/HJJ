@@ -102,7 +102,7 @@ export async function setStudentEnrollments(studentId: string, classIds: string[
   const currentIds = new Set(current.map((e) => e.classId));
   const desiredIds = new Set(classIds);
 
-  const toAdd = classIds.filter((id) => !currentIds.has(id));
+  const toAdd = Array.from(desiredIds).filter((id) => !currentIds.has(id));
   const toRemove = Array.from(currentIds).filter((id) => !desiredIds.has(id));
 
   await prisma.$transaction([

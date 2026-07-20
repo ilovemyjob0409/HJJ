@@ -40,6 +40,7 @@ export default function ClassesPage() {
   const [form, setForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
+  const [editError, setEditError] = useState('');
 
   async function load() {
     const [classesRes, teachersRes] = await Promise.all([fetch('/api/classes'), fetch('/api/teachers')]);
@@ -72,22 +73,35 @@ export default function ClassesPage() {
       startTime: c.startTime,
       endTime: c.endTime,
     });
+    setEditError('');
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
-    await fetch(`/api/classes/${editing.id}`, {
+    setEditError('');
+    const res = await fetch(`/api/classes/${editing.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ ...editForm, weekday: Number(editForm.weekday) }),
     });
+    if (!res.ok) {
+      const data = await res.json();
+      setEditError(`錯誤：${data.error}`);
+      return;
+    }
     setEditing(null);
     load();
   }
 
   async function removeStudent(studentId: string) {
     if (!editing) return;
-    await fetch(`/api/classes/${editing.id}/enrollments`, { method: 'DELETE', body: JSON.stringify({ studentId }) });
+    setEditError('');
+    const delRes = await fetch(`/api/classes/${editing.id}/enrollments`, { method: 'DELETE', body: JSON.stringify({ studentId }) });
+    if (!delRes.ok) {
+      const data = await delRes.json();
+      setEditError(`錯誤：${data.error}`);
+      return;
+    }
     const res = await fetch('/api/classes');
     const updatedClasses: ClassRow[] = await res.json();
     setClasses(updatedClasses);
@@ -167,6 +181,7 @@ export default function ClassesPage() {
           </Select>
           <Input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} />
           <Input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} />
+          {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit">儲存</Button>
         </form>
 
