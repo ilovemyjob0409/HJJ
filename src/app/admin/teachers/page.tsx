@@ -113,11 +113,7 @@ export default function TeachersPage() {
         onChange={(e) => setSearch(e.target.value)}
         className="mb-4 max-w-md"
       />
-      <Card className="mb-6">
-        <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} />
-      </Card>
-
-      <Card className="max-w-md">
+      <Card className="mb-6 max-w-md">
         <h2 className="mb-3 font-bold text-ink">新增老師</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
           <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -133,6 +129,10 @@ export default function TeachersPage() {
           <Input placeholder="電話" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           <Button type="submit">新增</Button>
         </form>
+      </Card>
+
+      <Card>
+        <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯老師">

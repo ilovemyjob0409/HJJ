@@ -129,11 +129,7 @@ export default function StudentsPage() {
         onChange={(e) => setSearch(e.target.value)}
         className="mb-4 max-w-md"
       />
-      <Card className="mb-6">
-        <DataTable columns={columns} rows={filteredStudents} keyField={(s) => s.id} />
-      </Card>
-
-      <Card className="max-w-md">
+      <Card className="mb-6 max-w-md">
         <h2 className="mb-3 font-bold text-ink">新增學生</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
           <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -148,6 +144,10 @@ export default function StudentsPage() {
           <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
           <Button type="submit">新增</Button>
         </form>
+      </Card>
+
+      <Card>
+        <DataTable columns={columns} rows={filteredStudents} keyField={(s) => s.id} />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生">
