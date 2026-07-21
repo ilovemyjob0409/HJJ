@@ -5,6 +5,7 @@ import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -28,7 +29,7 @@ export default function StudentsPage() {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '', classId: '' });
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [editClassIds, setEditClassIds] = useState<string[]>([]);
@@ -47,7 +48,7 @@ export default function StudentsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     await fetch('/api/students', { method: 'POST', body: JSON.stringify(form) });
-    setForm({ name: '', email: '', password: '', parentPhone: '' });
+    setForm({ name: '', email: '', password: '', parentPhone: '', classId: '' });
     setShowAddForm(false);
     showToast('已新增');
     load();
@@ -153,6 +154,14 @@ export default function StudentsPage() {
               required
             />
             <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
+            <Select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })}>
+              <option value="">選擇班級（可留空）</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}（{c.subject}）
+                </option>
+              ))}
+            </Select>
             <Button type="submit">新增</Button>
           </form>
         </Card>
