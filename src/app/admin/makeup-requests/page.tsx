@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -20,8 +21,10 @@ interface PendingRow {
   slotEndTime: string | null;
 }
 
-export default function AdminMakeupRequestsPage() {
+function AdminMakeupRequestsContent() {
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlight');
   const [rows, setRows] = useState<PendingRow[]>([]);
 
   async function load() {
@@ -32,6 +35,11 @@ export default function AdminMakeupRequestsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (!highlightId || rows.length === 0) return;
+    document.getElementById(highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightId, rows]);
 
   async function decide(id: string, decision: 'APPROVED' | 'REJECTED') {
     await fetch(`/api/makeup-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
@@ -70,8 +78,21 @@ export default function AdminMakeupRequestsPage() {
     <AppShell role="ADMIN">
       <h1 className="mb-4 text-xl font-bold text-ink">待確認補課申請</h1>
       <Card>
-        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} />
+        <DataTable
+          columns={columns}
+          rows={rows}
+          keyField={(r) => r.id}
+          rowClassName={(r) => (r.id === highlightId ? 'bg-pendingBg' : '')}
+        />
       </Card>
     </AppShell>
+  );
+}
+
+export default function AdminMakeupRequestsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminMakeupRequestsContent />
+    </Suspense>
   );
 }

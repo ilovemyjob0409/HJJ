@@ -9,9 +9,11 @@ interface DataTableProps<T> {
   columns: Column<T>[];
   rows: T[];
   keyField: (row: T) => string;
+  onRowClick?: (row: T) => void;
+  rowClassName?: (row: T) => string;
 }
 
-export default function DataTable<T>({ columns, rows, keyField }: DataTableProps<T>) {
+export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowClassName }: DataTableProps<T>) {
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
@@ -24,15 +26,25 @@ export default function DataTable<T>({ columns, rows, keyField }: DataTableProps
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
-          <tr key={keyField(row)} className="border-b border-gray-100">
-            {columns.map((col, i) => (
-              <td key={i} className="py-3 pr-4 text-ink">
-                {col.render(row)}
-              </td>
-            ))}
-          </tr>
-        ))}
+        {rows.map((row, index) => {
+          const key = keyField(row);
+          const customClass = rowClassName?.(row) ?? '';
+          const stripeClass = customClass ? '' : index % 2 === 1 ? 'bg-gray-50' : 'bg-white';
+          return (
+            <tr
+              key={key}
+              id={key}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              className={`border-b border-gray-100 ${stripeClass} ${customClass}`}
+            >
+              {columns.map((col, i) => (
+                <td key={i} className="py-3 pr-4 text-ink">
+                  {col.render(row)}
+                </td>
+              ))}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

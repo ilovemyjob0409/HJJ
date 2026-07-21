@@ -29,6 +29,21 @@ export function listPendingSubstituteRequests() {
   });
 }
 
+export function listAllSubstituteRequests() {
+  return prisma.substituteRequest.findMany({
+    select: {
+      id: true,
+      date: true,
+      reason: true,
+      status: true,
+      class: { select: { name: true } },
+      originalTeacher: { select: { user: { select: SAFE_USER_SELECT } } },
+      substituteTeacher: { select: { user: { select: SAFE_USER_SELECT } } },
+    },
+    orderBy: { date: 'desc' },
+  });
+}
+
 export function assignSubstituteTeacher(id: string, substituteTeacherId: string) {
   return prisma.substituteRequest.update({
     where: { id },

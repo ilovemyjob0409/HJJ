@@ -57,6 +57,7 @@ export function listAllLeaveRequests() {
       class: { select: { name: true } },
       makeupRequest: {
         select: {
+          id: true,
           type: true,
           status: true,
           targetDate: true,
