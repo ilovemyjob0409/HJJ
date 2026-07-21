@@ -36,7 +36,7 @@ export default function LoginPage() {
           <h2 className="mb-4 text-lg font-bold text-ink md:hidden">補習班補課系統</h2>
           <h2 className="mb-4 hidden text-lg font-bold text-ink md:block">登入</h2>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input type="text" placeholder="帳號" value={email} onChange={(e) => setEmail(e.target.value)} required />
             <Input type="password" placeholder="密碼" value={password} onChange={(e) => setPassword(e.target.value)} required />
             {error && <p className="text-sm text-rejected">{error}</p>}
             <Button type="submit" className="w-full">

@@ -54,7 +54,7 @@ export default function TeachersPage() {
     const res = await fetch(`/api/teachers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(editForm) });
     if (!res.ok) {
       const data = await res.json();
-      setEditError(data.error === 'EMAIL_TAKEN' ? '此 Email 已被使用' : `錯誤：${data.error}`);
+      setEditError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
       return;
     }
     setEditing(null);
@@ -79,7 +79,7 @@ export default function TeachersPage() {
 
   const columns: Column<TeacherRow>[] = [
     { header: '姓名', render: (t) => t.user.name },
-    { header: 'Email', render: (t) => t.user.email },
+    { header: '帳號', render: (t) => t.user.email },
     { header: '科目', render: (t) => t.subjects },
     { header: '電話', render: (t) => t.phone ?? '-' },
     {
@@ -103,7 +103,7 @@ export default function TeachersPage() {
         <h2 className="mb-3 font-bold text-ink">新增老師</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
           <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+          <Input placeholder="帳號" type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
           <Input
             placeholder="初始密碼"
             type="password"
@@ -121,8 +121,8 @@ export default function TeachersPage() {
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-2">
           <Input placeholder="姓名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
           <Input
-            placeholder="Email"
-            type="email"
+            placeholder="帳號"
+            type="text"
             value={editForm.email}
             onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
             required

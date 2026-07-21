@@ -71,7 +71,7 @@ export default function StudentsPage() {
     });
     if (!res.ok) {
       const data = await res.json();
-      setEditError(data.error === 'EMAIL_TAKEN' ? '此 Email 已被使用' : `錯誤：${data.error}`);
+      setEditError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
       return;
     }
     setEditing(null);
@@ -96,7 +96,7 @@ export default function StudentsPage() {
 
   const columns: Column<StudentRow>[] = [
     { header: '姓名', render: (s) => s.user.name },
-    { header: 'Email', render: (s) => s.user.email },
+    { header: '帳號', render: (s) => s.user.email },
     { header: '家長電話', render: (s) => s.parentPhone ?? '-' },
     { header: '班級數', render: (s) => s.enrollments.length },
     {
@@ -120,7 +120,7 @@ export default function StudentsPage() {
         <h2 className="mb-3 font-bold text-ink">新增學生</h2>
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
           <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+          <Input placeholder="帳號" type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
           <Input
             placeholder="初始密碼"
             type="password"
@@ -137,8 +137,8 @@ export default function StudentsPage() {
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
           <Input placeholder="姓名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
           <Input
-            placeholder="Email"
-            type="email"
+            placeholder="帳號"
+            type="text"
             value={editForm.email}
             onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
             required
