@@ -109,17 +109,16 @@ export default function TeachersPage() {
   return (
     <AppShell role="ADMIN">
       <h1 className="mb-4 text-xl font-bold text-ink">老師名單</h1>
-      <Input
-        placeholder="搜尋姓名、帳號、科目或電話"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-4 max-w-md"
-      />
-      {!showAddForm ? (
-        <Button className="mb-6" onClick={() => setShowAddForm(true)}>
-          ＋ 新增老師
-        </Button>
-      ) : (
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <Input
+          placeholder="搜尋姓名、帳號、科目或電話"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+        {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增老師</Button>}
+      </div>
+      {showAddForm && (
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增老師</h2>

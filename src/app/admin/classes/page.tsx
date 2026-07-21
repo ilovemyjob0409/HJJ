@@ -162,17 +162,16 @@ export default function ClassesPage() {
   return (
     <AppShell role="ADMIN">
       <h1 className="mb-4 text-xl font-bold text-ink">班級名單</h1>
-      <Input
-        placeholder="搜尋班名、科目、等級或老師"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-4 max-w-md"
-      />
-      {!showAddForm ? (
-        <Button className="mb-6" onClick={() => setShowAddForm(true)}>
-          ＋ 新增班級
-        </Button>
-      ) : (
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <Input
+          placeholder="搜尋班名、科目、等級或老師"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+        {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增班級</Button>}
+      </div>
+      {showAddForm && (
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增班級</h2>
