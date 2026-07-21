@@ -21,7 +21,19 @@ function createPrismaClient() {
   // isn't set directly (e.g. a fresh Vercel + Supabase integration).
   const raw = process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING || '';
   const connectionString = withNoVerifySsl(raw);
-  const adapter = new PrismaPg({ connectionString });
+  const isLocal = /localhost|127\.0\.0\.1/.test(raw);
+  // `pg`'s Pool defaults to `max: 10` per instance. Each serverless
+  // invocation gets its own Pool, so a handful of concurrent invocations
+  // can easily exceed Supabase's session-mode connection cap (15 on the
+  // free tier) even under light traffic - this is what caused the
+  // "max clients reached in session mode" production outage. Capping at
+  // 1 means a single invocation can hold at most one physical connection,
+  // queueing any additional concurrent queries instead of opening more.
+  // Left at the default locally: the concurrency-safety tests in
+  // makeupRequestService.test.ts depend on two Serializable transactions
+  // actually running on separate connections at the same time to trigger
+  // (and verify the retry-on) a real TransactionWriteConflict.
+  const adapter = new PrismaPg({ connectionString, max: isLocal ? undefined : 1 });
   return new PrismaClient({ adapter });
 }
 
