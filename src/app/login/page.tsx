@@ -6,9 +6,11 @@ import { useRouter } from 'next/navigation';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
+import { useToast } from '@/components/ui/Toast';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -21,6 +23,7 @@ export default function LoginPage() {
       setError('帳號或密碼錯誤');
       return;
     }
+    showToast('登入成功');
     router.push('/');
   }
 
