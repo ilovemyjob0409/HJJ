@@ -1,3 +1,5 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { listPendingMakeupRequests } from '@/lib/services/makeupRequestService';
 import { listPendingSubstituteRequests } from '@/lib/services/substituteRequestService';
 import { listAllLeaveRequests } from '@/lib/services/leaveRequestService';
@@ -27,6 +29,7 @@ interface LeaveRow {
 }
 
 export default async function AdminDashboard() {
+  const session = await getServerSession(authOptions);
   const [pendingMakeups, pendingSubstitutes, allLeaves] = await Promise.all([
     listPendingMakeupRequests(),
     listPendingSubstituteRequests(),
@@ -56,7 +59,7 @@ export default async function AdminDashboard() {
 
   return (
     <AppShell role="ADMIN">
-      <h1 className="mb-4 text-xl font-bold text-ink">行政儀表板</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/admin/makeup-requests">
           <Card className="transition-shadow hover:shadow-md">

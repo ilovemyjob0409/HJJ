@@ -47,7 +47,7 @@ export default async function StudentDashboard() {
 
   return (
     <AppShell role="STUDENT">
-      <h1 className="mb-4 text-xl font-bold text-ink">學生首頁</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/student/leave-request">
           <Card className="text-ink transition-shadow hover:shadow-md">請假申請與紀錄</Card>

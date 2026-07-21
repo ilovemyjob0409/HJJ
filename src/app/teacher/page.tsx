@@ -74,7 +74,7 @@ export default async function TeacherDashboard() {
 
   return (
     <AppShell role="TEACHER">
-      <h1 className="mb-4 text-xl font-bold text-ink">老師首頁</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/teacher/leave-request">
           <Card className="text-ink transition-shadow hover:shadow-md">請假/調課申請</Card>
