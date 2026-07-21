@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createClass } from './classService';
-import { createSubstituteRequest, listPendingSubstituteRequests, assignSubstituteTeacher } from './substituteRequestService';
+import {
+  createSubstituteRequest,
+  listPendingSubstituteRequests,
+  assignSubstituteTeacher,
+  listAssignedSubstituteRequestsForTeacher,
+} from './substituteRequestService';
 
 beforeEach(async () => {
   await prisma.substituteRequest.deleteMany();
@@ -42,5 +47,25 @@ describe('assignSubstituteTeacher', () => {
 
     const pending = await listPendingSubstituteRequests();
     expect(pending.map((p) => p.id)).not.toContain(req.id);
+  });
+});
+
+describe('listAssignedSubstituteRequestsForTeacher', () => {
+  it('returns only substitute requests assigned to the given teacher', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '數學' });
+    const substitute = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '數學' });
+    const otherSubstitute = await createTeacher({ name: '王老師', email: 'wang@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2026, 6, 20), reason: '出差' });
+    await assignSubstituteTeacher(req.id, substitute.id);
+
+    const otherReq = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2026, 6, 21), reason: '請假' });
+    await assignSubstituteTeacher(otherReq.id, otherSubstitute.id);
+
+    const results = await listAssignedSubstituteRequestsForTeacher(substitute.id);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].class.name).toBe('數學A班');
+    expect(results[0].originalTeacher.user.name).toBe('陳老師');
   });
 });

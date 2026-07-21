@@ -3,7 +3,8 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
-import { createLeaveRequest, listLeaveRequestsForStudent } from './leaveRequestService';
+import { createLeaveRequest, listLeaveRequestsForStudent, listLeaveRequestsForTeacherClasses, listAllLeaveRequests } from './leaveRequestService';
+import { createInsertionMakeupRequest } from './makeupRequestService';
 
 beforeEach(async () => {
   await prisma.substituteRequest.deleteMany();
@@ -57,5 +58,43 @@ describe('createLeaveRequest enrollment check', () => {
     await expect(
       createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '事假' })
     ).rejects.toThrow('NOT_ENROLLED');
+  });
+});
+
+describe('listLeaveRequestsForTeacherClasses', () => {
+  it('returns only leave requests for classes taught by the given teacher', async () => {
+    const { student, cls } = await setupClassAndStudent();
+    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+
+    const otherTeacher = await createTeacher({ name: '林老師', email: 'other-teacher@example.com', password: 'x', subjects: '英文' });
+    const otherClass = await createClass({ name: '英文班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(otherClass.id, student.id);
+    await createLeaveRequest({ studentId: student.id, classId: otherClass.id, date: new Date(2026, 6, 21), reason: '事假' });
+
+    const teacherOfCls = await prisma.class.findUniqueOrThrow({ where: { id: cls.id } });
+    const results = await listLeaveRequestsForTeacherClasses(teacherOfCls.teacherId);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].class.name).toBe('數學A班');
+    expect(results[0].student.user.name).toBe('小明');
+  });
+});
+
+describe('listAllLeaveRequests', () => {
+  it('returns leave requests across all students, including insertion makeup details', async () => {
+    const { student, cls } = await setupClassAndStudent();
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+
+    const teacher = await prisma.teacher.findFirstOrThrow();
+    const targetClass = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: new Date(2026, 6, 22) });
+
+    const results = await listAllLeaveRequests();
+
+    expect(results).toHaveLength(1);
+    expect(results[0].student.user.name).toBe('小明');
+    expect(results[0].class.name).toBe('數學A班');
+    expect(results[0].makeupRequest?.type).toBe('INSERTION');
+    expect(results[0].makeupRequest?.targetClass?.name).toBe('數學B班');
   });
 });

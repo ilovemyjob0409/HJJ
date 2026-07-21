@@ -146,3 +146,19 @@ export function listPendingMakeupRequests() {
 export function decideMakeupRequest(id: string, decision: 'APPROVED' | 'REJECTED') {
   return prisma.makeupRequest.update({ where: { id }, data: { status: decision } });
 }
+
+// For the teacher dashboard: which students inserted into a class this
+// teacher teaches, and when.
+export function listInsertionsForTeacherClasses(teacherId: string) {
+  return prisma.makeupRequest.findMany({
+    where: { type: 'INSERTION', targetClass: { teacherId } },
+    select: {
+      id: true,
+      status: true,
+      targetDate: true,
+      targetClass: { select: { name: true } },
+      leaveRequest: { select: { student: { select: { user: { select: SAFE_USER_SELECT } } } } },
+    },
+    orderBy: { targetDate: 'desc' },
+  });
+}

@@ -10,6 +10,7 @@ import {
   createOneOnOneMakeupRequest,
   listPendingMakeupRequests,
   decideMakeupRequest,
+  listInsertionsForTeacherClasses,
 } from './makeupRequestService';
 
 beforeEach(async () => {
@@ -217,5 +218,26 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
 
     const pendingAfter = await listPendingMakeupRequests();
     expect(pendingAfter.map((m) => m.id)).not.toContain(makeup.id);
+  });
+});
+
+describe('listInsertionsForTeacherClasses', () => {
+  it('returns only insertion requests targeting classes taught by the given teacher', async () => {
+    const { teacher, classB, leave } = await setup();
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+
+    const otherTeacher = await createTeacher({ name: '林老師', email: 'other-teacher@example.com', password: 'x', subjects: '英文' });
+    const otherClass = await createClass({ name: '英文班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 4, startTime: '19:00', endTime: '21:00' });
+    const otherStudent = await createStudent({ name: '小華', email: 'other-student@example.com', password: 'x' });
+    await enrollStudent(otherClass.id, otherStudent.id);
+    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: otherClass.id, date: new Date(2026, 6, 20), reason: '事假' });
+    const unrelatedTargetClass = await createClass({ name: '英文B班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 5, startTime: '19:00', endTime: '21:00' });
+    await createInsertionMakeupRequest({ leaveRequestId: otherLeave.id, targetClassId: unrelatedTargetClass.id, targetDate: new Date(2026, 6, 23) });
+
+    const results = await listInsertionsForTeacherClasses(teacher.id);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].targetClass?.name).toBe('數學B班');
+    expect(results[0].leaveRequest.student.user.name).toBe('小明');
   });
 });

@@ -35,3 +35,19 @@ export function assignSubstituteTeacher(id: string, substituteTeacherId: string)
     data: { substituteTeacherId, status: 'ASSIGNED' },
   });
 }
+
+// For the teacher dashboard: substitute duties assigned to this teacher.
+export function listAssignedSubstituteRequestsForTeacher(teacherId: string) {
+  return prisma.substituteRequest.findMany({
+    where: { substituteTeacherId: teacherId },
+    select: {
+      id: true,
+      date: true,
+      reason: true,
+      status: true,
+      class: { select: { name: true } },
+      originalTeacher: { select: { user: { select: SAFE_USER_SELECT } } },
+    },
+    orderBy: { date: 'desc' },
+  });
+}
