@@ -19,6 +19,7 @@ interface TeacherRow {
 export default function TeachersPage() {
   const { showToast } = useToast();
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
   const [editing, setEditing] = useState<TeacherRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
@@ -77,6 +78,17 @@ export default function TeachersPage() {
     load();
   }
 
+  const filteredTeachers = teachers.filter((t) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      t.user.name.toLowerCase().includes(q) ||
+      t.user.email.toLowerCase().includes(q) ||
+      t.subjects.toLowerCase().includes(q) ||
+      (t.phone ?? '').toLowerCase().includes(q)
+    );
+  });
+
   const columns: Column<TeacherRow>[] = [
     { header: '姓名', render: (t) => t.user.name },
     { header: '帳號', render: (t) => t.user.email },
@@ -95,8 +107,14 @@ export default function TeachersPage() {
   return (
     <AppShell role="ADMIN">
       <h1 className="mb-4 text-xl font-bold text-ink">老師名單</h1>
+      <Input
+        placeholder="搜尋姓名、帳號、科目或電話"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="mb-4 max-w-md"
+      />
       <Card className="mb-6">
-        <DataTable columns={columns} rows={teachers} keyField={(t) => t.id} />
+        <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} />
       </Card>
 
       <Card className="max-w-md">

@@ -26,6 +26,7 @@ export default function StudentsPage() {
   const { showToast } = useToast();
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
@@ -94,6 +95,16 @@ export default function StudentsPage() {
     load();
   }
 
+  const filteredStudents = students.filter((s) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      s.user.name.toLowerCase().includes(q) ||
+      s.user.email.toLowerCase().includes(q) ||
+      (s.parentPhone ?? '').toLowerCase().includes(q)
+    );
+  });
+
   const columns: Column<StudentRow>[] = [
     { header: '姓名', render: (s) => s.user.name },
     { header: '帳號', render: (s) => s.user.email },
@@ -112,8 +123,14 @@ export default function StudentsPage() {
   return (
     <AppShell role="ADMIN">
       <h1 className="mb-4 text-xl font-bold text-ink">學生名單</h1>
+      <Input
+        placeholder="搜尋姓名、帳號或家長電話"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="mb-4 max-w-md"
+      />
       <Card className="mb-6">
-        <DataTable columns={columns} rows={students} keyField={(s) => s.id} />
+        <DataTable columns={columns} rows={filteredStudents} keyField={(s) => s.id} />
       </Card>
 
       <Card className="max-w-md">

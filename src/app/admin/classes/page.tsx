@@ -39,6 +39,7 @@ export default function ClassesPage() {
   const { showToast } = useToast();
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
@@ -129,6 +130,17 @@ export default function ClassesPage() {
     load();
   }
 
+  const filteredClasses = classes.filter((c) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.subject.toLowerCase().includes(q) ||
+      c.level.toLowerCase().includes(q) ||
+      c.teacher.user.name.toLowerCase().includes(q)
+    );
+  });
+
   const columns: Column<ClassRow>[] = [
     { header: '班名', render: (c) => c.name },
     { header: '科目/等級', render: (c) => `${c.subject} / ${c.level}` },
@@ -148,8 +160,14 @@ export default function ClassesPage() {
   return (
     <AppShell role="ADMIN">
       <h1 className="mb-4 text-xl font-bold text-ink">班級名單</h1>
+      <Input
+        placeholder="搜尋班名、科目、等級或老師"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="mb-4 max-w-md"
+      />
       <Card className="mb-6">
-        <DataTable columns={columns} rows={classes} keyField={(c) => c.id} />
+        <DataTable columns={columns} rows={filteredClasses} keyField={(c) => c.id} />
       </Card>
 
       <Card className="max-w-md">
