@@ -34,7 +34,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
   return (
     <div className="min-h-screen bg-cream/40">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-white px-6 py-3">
-        <Link href={HOME_HREF[role]} className="flex items-center gap-2 font-bold text-ink">
+        <Link href={HOME_HREF[role]} className="flex cursor-pointer items-center gap-2 font-bold text-ink">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-base">😊</span>
           補習班補課系統
         </Link>
