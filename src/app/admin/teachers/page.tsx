@@ -20,6 +20,7 @@ export default function TeachersPage() {
   const { showToast } = useToast();
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
   const [search, setSearch] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
   const [editing, setEditing] = useState<TeacherRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
@@ -38,6 +39,7 @@ export default function TeachersPage() {
     e.preventDefault();
     await fetch('/api/teachers', { method: 'POST', body: JSON.stringify(form) });
     setForm({ name: '', email: '', password: '', subjects: '', phone: '' });
+    setShowAddForm(false);
     showToast('已新增');
     load();
   }
@@ -113,23 +115,34 @@ export default function TeachersPage() {
         onChange={(e) => setSearch(e.target.value)}
         className="mb-4 max-w-md"
       />
-      <Card className="mb-6 max-w-md">
-        <h2 className="mb-3 font-bold text-ink">新增老師</h2>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-          <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <Input placeholder="帳號" type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-          <Input
-            placeholder="初始密碼"
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            required
-          />
-          <Input placeholder="任教科目" value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} required />
-          <Input placeholder="電話" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <Button type="submit">新增</Button>
-        </form>
-      </Card>
+      {!showAddForm ? (
+        <Button className="mb-6" onClick={() => setShowAddForm(true)}>
+          ＋ 新增老師
+        </Button>
+      ) : (
+        <Card className="mb-6 max-w-md">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-bold text-ink">新增老師</h2>
+            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
+              收合
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <Input placeholder="帳號" type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+            <Input
+              placeholder="初始密碼"
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              required
+            />
+            <Input placeholder="任教科目" value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} required />
+            <Input placeholder="電話" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <Button type="submit">新增</Button>
+          </form>
+        </Card>
+      )}
 
       <Card>
         <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} />
