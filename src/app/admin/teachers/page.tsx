@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useToast } from '@/components/ui/Toast';
 
 interface TeacherRow {
   id: string;
@@ -16,6 +17,7 @@ interface TeacherRow {
 }
 
 export default function TeachersPage() {
+  const { showToast } = useToast();
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
   const [form, setForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
   const [editing, setEditing] = useState<TeacherRow | null>(null);
@@ -35,6 +37,7 @@ export default function TeachersPage() {
     e.preventDefault();
     await fetch('/api/teachers', { method: 'POST', body: JSON.stringify(form) });
     setForm({ name: '', email: '', password: '', subjects: '', phone: '' });
+    showToast('已新增');
     load();
   }
 
@@ -55,6 +58,7 @@ export default function TeachersPage() {
       return;
     }
     setEditing(null);
+    showToast('已儲存');
     load();
   }
 
@@ -69,6 +73,7 @@ export default function TeachersPage() {
       return;
     }
     setEditing(null);
+    showToast('已刪除');
     load();
   }
 

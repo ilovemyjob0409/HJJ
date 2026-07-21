@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 
 interface ClassOption {
   id: string;
@@ -24,9 +25,11 @@ interface LeaveRow {
 }
 
 export default function StudentLeaveRequestPage() {
+  const { showToast } = useToast();
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [form, setForm] = useState({ classId: '', date: '', reason: '' });
+  const [formError, setFormError] = useState('');
 
   async function load() {
     const [classesRes, leavesRes] = await Promise.all([fetch('/api/classes'), fetch('/api/leave-requests')]);
@@ -40,8 +43,15 @@ export default function StudentLeaveRequestPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await fetch('/api/leave-requests', { method: 'POST', body: JSON.stringify(form) });
+    setFormError('');
+    const res = await fetch('/api/leave-requests', { method: 'POST', body: JSON.stringify(form) });
+    if (!res.ok) {
+      const data = await res.json();
+      setFormError(`錯誤：${data.error}`);
+      return;
+    }
     setForm({ classId: '', date: '', reason: '' });
+    showToast('已送出');
     load();
   }
 
@@ -79,6 +89,7 @@ export default function StudentLeaveRequestPage() {
           </Select>
           <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
           <Input placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
+          {formError && <p className="text-sm text-rejected">{formError}</p>}
           <Button type="submit">送出請假</Button>
         </form>
       </Card>

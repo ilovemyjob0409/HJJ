@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 
 interface PendingRow {
   id: string;
@@ -20,6 +21,7 @@ interface PendingRow {
 }
 
 export default function AdminMakeupRequestsPage() {
+  const { showToast } = useToast();
   const [rows, setRows] = useState<PendingRow[]>([]);
 
   async function load() {
@@ -33,6 +35,7 @@ export default function AdminMakeupRequestsPage() {
 
   async function decide(id: string, decision: 'APPROVED' | 'REJECTED') {
     await fetch(`/api/makeup-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
+    showToast(decision === 'APPROVED' ? '已核准' : '已拒絕');
     load();
   }
 

@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
+import { useToast } from '@/components/ui/Toast';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -16,6 +17,7 @@ interface Window {
 }
 
 export default function AvailabilityPage() {
+  const { showToast } = useToast();
   const [windows, setWindows] = useState<Window[]>([]);
 
   async function load() {
@@ -41,6 +43,7 @@ export default function AvailabilityPage() {
 
   async function save() {
     await fetch('/api/availability', { method: 'PUT', body: JSON.stringify({ windows }) });
+    showToast('已儲存');
     load();
   }
 

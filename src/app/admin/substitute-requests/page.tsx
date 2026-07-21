@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 
 interface TeacherOption {
   id: string;
@@ -22,6 +23,7 @@ interface PendingRow {
 }
 
 export default function AdminSubstituteRequestsPage() {
+  const { showToast } = useToast();
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -40,6 +42,7 @@ export default function AdminSubstituteRequestsPage() {
     const substituteTeacherId = selected[id];
     if (!substituteTeacherId) return;
     await fetch(`/api/substitute-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ substituteTeacherId }) });
+    showToast('已指派');
     load();
   }
 

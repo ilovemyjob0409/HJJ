@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useToast } from '@/components/ui/Toast';
 
 interface StudentRow {
   id: string;
@@ -22,6 +23,7 @@ interface ClassOption {
 }
 
 export default function StudentsPage() {
+  const { showToast } = useToast();
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
@@ -44,6 +46,7 @@ export default function StudentsPage() {
     e.preventDefault();
     await fetch('/api/students', { method: 'POST', body: JSON.stringify(form) });
     setForm({ name: '', email: '', password: '', parentPhone: '' });
+    showToast('已新增');
     load();
   }
 
@@ -72,6 +75,7 @@ export default function StudentsPage() {
       return;
     }
     setEditing(null);
+    showToast('已儲存');
     load();
   }
 
@@ -86,6 +90,7 @@ export default function StudentsPage() {
       return;
     }
     setEditing(null);
+    showToast('已刪除');
     load();
   }
 
