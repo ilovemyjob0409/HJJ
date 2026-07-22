@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
-import Logo from '@/components/ui/Logo';
 import { useToast } from '@/components/ui/Toast';
 
 export default function LoginPage() {
@@ -31,15 +30,14 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <div className="hidden flex-1 flex-col items-center justify-center gap-2 bg-cream p-10 text-center md:flex">
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand">
-          <Logo size={28} />
-        </span>
-        <h1 className="text-xl font-bold text-ink">補習班補課系統</h1>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="MUP" className="w-48" />
         <p className="text-sm text-inkMuted">一站式請假／補課／調課平台</p>
       </div>
       <div className="flex flex-1 items-center justify-center bg-cream p-6 md:bg-white md:p-10">
         <Card className="w-full max-w-sm md:shadow-none">
-          <h2 className="mb-4 text-lg font-bold text-ink md:hidden">補習班補課系統</h2>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="MUP" className="mb-4 h-8 w-auto md:hidden" />
           <h2 className="mb-4 hidden text-lg font-bold text-ink md:block">登入</h2>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <Input type="text" placeholder="帳號" value={email} onChange={(e) => setEmail(e.target.value)} required />
