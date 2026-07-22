@@ -9,6 +9,7 @@ import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every teacher until the next deploy.
@@ -53,7 +54,7 @@ export default async function TeacherDashboard() {
 
   const substituteColumns: Column<SubstituteRow>[] = [
     { header: '班級', render: (r) => r.class.name },
-    { header: '日期', render: (r) => new Date(r.date).toLocaleDateString() },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
     { header: '原老師', render: (r) => r.originalTeacher.user.name },
     { header: '原因', render: (r) => r.reason },
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
@@ -62,13 +63,13 @@ export default async function TeacherDashboard() {
   const leaveColumns: Column<LeaveRow>[] = [
     { header: '學生', render: (r) => r.student.user.name },
     { header: '班級', render: (r) => r.class.name },
-    { header: '日期', render: (r) => new Date(r.date).toLocaleDateString() },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
   ];
 
   const insertionColumns: Column<InsertionRow>[] = [
     { header: '學生', render: (r) => r.leaveRequest.student.user.name },
     { header: '插班班級', render: (r) => r.targetClass?.name ?? '-' },
-    { header: '插班日期', render: (r) => (r.targetDate ? new Date(r.targetDate).toLocaleDateString() : '-') },
+    { header: '插班日期', render: (r) => (r.targetDate ? formatDateWithWeekday(r.targetDate) : '-') },
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
   ];
 

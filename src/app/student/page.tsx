@@ -7,6 +7,7 @@ import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every student until the next deploy.
@@ -31,12 +32,12 @@ export default async function StudentDashboard() {
 
   const leaveColumns: Column<LeaveRow>[] = [
     { header: '請假班級', render: (r) => r.class.name },
-    { header: '請假日期', render: (r) => new Date(r.date).toLocaleDateString() },
+    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
     {
       header: '插班日期',
       render: (r) =>
         r.makeupRequest?.type === 'INSERTION' && r.makeupRequest.targetDate
-          ? new Date(r.makeupRequest.targetDate).toLocaleDateString()
+          ? formatDateWithWeekday(r.makeupRequest.targetDate)
           : '-',
     },
     {

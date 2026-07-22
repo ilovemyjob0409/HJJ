@@ -9,6 +9,7 @@ import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface ClassOption {
   id: string;
@@ -57,7 +58,7 @@ export default function StudentLeaveRequestPage() {
 
   const columns: Column<LeaveRow>[] = [
     { header: '班級', render: (l) => l.class.name },
-    { header: '日期', render: (l) => new Date(l.date).toLocaleDateString() },
+    { header: '日期', render: (l) => formatDateWithWeekday(l.date) },
     { header: '原因', render: (l) => l.reason },
     { header: '狀態', render: (l) => <StatusBadge status={l.status} /> },
     {

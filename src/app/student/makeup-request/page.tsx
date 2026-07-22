@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -120,7 +121,7 @@ export default function MakeupRequestPage() {
         <option value="">選擇要補課的請假紀錄</option>
         {leavesWithoutMakeup.map((l) => (
           <option key={l.id} value={l.id}>
-            {l.class.name} - {new Date(l.date).toLocaleDateString()}
+            {l.class.name} - {formatDateWithWeekday(l.date)}
           </option>
         ))}
       </Select>

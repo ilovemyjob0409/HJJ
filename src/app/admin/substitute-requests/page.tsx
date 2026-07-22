@@ -8,6 +8,7 @@ import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface TeacherOption {
   id: string;
@@ -49,7 +50,7 @@ export default function AdminSubstituteRequestsPage() {
   const columns: Column<PendingRow>[] = [
     { header: '班級', render: (r) => r.class.name },
     { header: '原老師', render: (r) => r.originalTeacher.user.name },
-    { header: '日期', render: (r) => new Date(r.date).toLocaleDateString() },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
     { header: '原因', render: (r) => r.reason },
     { header: '狀態', render: () => <StatusBadge status="PENDING_ASSIGNMENT" /> },
     {
