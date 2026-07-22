@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
+import Logo from '@/components/ui/Logo';
 import { useToast } from '@/components/ui/Toast';
 
 export default function LoginPage() {
@@ -30,7 +31,9 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <div className="hidden flex-1 flex-col items-center justify-center gap-2 bg-cream p-10 text-center md:flex">
-        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand text-2xl">😊</span>
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand">
+          <Logo size={28} />
+        </span>
         <h1 className="text-xl font-bold text-ink">補習班補課系統</h1>
         <p className="text-sm text-inkMuted">一站式請假／補課／調課平台</p>
       </div>

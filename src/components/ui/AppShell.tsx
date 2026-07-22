@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { signOut } from 'next-auth/react';
 import { ReactNode } from 'react';
+import Logo from './Logo';
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
@@ -35,7 +36,9 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
     <div className="min-h-screen bg-cream/40">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-white px-6 py-3">
         <Link href={HOME_HREF[role]} className="flex cursor-pointer items-center gap-2 font-bold text-ink">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-base">😊</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand">
+            <Logo size={20} />
+          </span>
           補習班補課系統
         </Link>
         <nav className="flex flex-wrap items-center gap-4 text-sm text-ink">
