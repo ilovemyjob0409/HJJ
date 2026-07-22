@@ -5,7 +5,7 @@
 :root {
   --background: #ffffff;
   --foreground: #3a332b;
-  --cream: #fff1de;
+  --cream-rgb: 255 241 222;
   --ink: #3a332b;
   --ink-muted: #8a7f70;
   --card-bg: #ffffff;
@@ -17,7 +17,7 @@
 :root[data-theme="dark"] {
   --background: #211d19;
   --foreground: #f0e9df;
-  --cream: #2a2420;
+  --cream-rgb: 42 36 32;
   --ink: #f0e9df;
   --ink-muted: #b3a696;
   --card-bg: #35302a;
@@ -30,7 +30,7 @@
   :root:not([data-theme="light"]) {
     --background: #211d19;
     --foreground: #f0e9df;
-    --cream: #2a2420;
+    --cream-rgb: 42 36 32;
     --ink: #f0e9df;
     --ink-muted: #b3a696;
     --card-bg: #35302a;

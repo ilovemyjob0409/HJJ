@@ -14,7 +14,7 @@ const config: Config = {
         brand: "#FFBD5A",
         brandDark: "#E8A94A",
         brandInk: "#3a332b",
-        cream: "var(--cream)",
+        cream: "rgb(var(--cream-rgb) / <alpha-value>)",
         ink: "var(--ink)",
         inkMuted: "var(--ink-muted)",
         card: "var(--card-bg)",
