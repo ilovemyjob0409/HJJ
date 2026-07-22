@@ -5,10 +5,12 @@ import { prisma } from '@/lib/db';
 import { listAssignedSubstituteRequestsForTeacher } from '@/lib/services/substituteRequestService';
 import { listLeaveRequestsForTeacherClasses } from '@/lib/services/leaveRequestService';
 import { listInsertionsForTeacherClasses } from '@/lib/services/makeupRequestService';
+import { listSessionsForTeacher } from '@/lib/services/goHallService';
 import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every teacher until the next deploy.
@@ -43,13 +45,21 @@ export default async function TeacherDashboard() {
   const session = await getServerSession(authOptions);
   const teacher = session ? await prisma.teacher.findUnique({ where: { userId: session.user.id } }) : null;
 
-  const [substitutes, leaves, insertions] = teacher
+  const [substitutes, leaves, insertions, goHallSessions] = teacher
     ? await Promise.all([
         listAssignedSubstituteRequestsForTeacher(teacher.id),
         listLeaveRequestsForTeacherClasses(teacher.id),
         listInsertionsForTeacherClasses(teacher.id),
+        listSessionsForTeacher(teacher.id),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
+
+  const goHallRows = goHallSessions.map((s) => ({
+    id: s.id,
+    date: s.date,
+    capacity: s.capacity,
+    registeredCount: s._count.registrations,
+  }));
 
   const substituteColumns: Column<SubstituteRow>[] = [
     { header: '班級', render: (r) => r.class.name },
@@ -98,6 +108,9 @@ export default async function TeacherDashboard() {
       <Card>
         <DataTable columns={insertionColumns} rows={insertions} keyField={(r) => r.id} />
       </Card>
+
+      <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
+      <GoHallSummaryTable rows={goHallRows} basePath="/teacher/go-hall" />
     </AppShell>
   );
 }
