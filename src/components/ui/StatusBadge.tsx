@@ -15,7 +15,7 @@ const STATUS_CONFIG: Record<KnownStatus, StatusConfig> = {
 };
 
 export function getStatusBadgeConfig(status: string): StatusConfig {
-  return STATUS_CONFIG[status as KnownStatus] ?? { label: status, bg: 'bg-gray-100', text: 'text-gray-600' };
+  return STATUS_CONFIG[status as KnownStatus] ?? { label: status, bg: 'bg-borderSubtle', text: 'text-inkMuted' };
 }
 
 export default function StatusBadge({ status }: { status: string }) {

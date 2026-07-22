@@ -58,7 +58,7 @@ export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
         rows={rows}
         keyField={(r) => r.id}
         onRowClick={handleRowClick}
-        rowClassName={(r) => (r.makeupRequest?.status === 'PENDING_ADMIN' ? 'cursor-pointer hover:bg-gray-50' : '')}
+        rowClassName={(r) => (r.makeupRequest?.status === 'PENDING_ADMIN' ? 'cursor-pointer hover:bg-stripe' : '')}
       />
     </Card>
   );

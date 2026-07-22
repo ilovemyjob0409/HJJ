@@ -238,7 +238,7 @@ export default function ClassesPage() {
         </button>
 
         {editing && (
-          <div className="mt-4 border-t border-gray-200 pt-3">
+          <div className="mt-4 border-t border-borderStrong pt-3">
             <p className="mb-2 text-sm font-medium text-ink">已加入學生（{editing.enrollments.length}）</p>
             {editing.enrollments.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生加入</p>

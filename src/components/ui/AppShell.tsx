@@ -75,7 +75,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
 
   return (
     <div className="min-h-screen bg-cream/40">
-      <header className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-gray-100 bg-white px-3 py-2 sm:gap-3 sm:px-6 sm:py-3">
+      <header className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-borderSubtle bg-card px-3 py-2 sm:gap-3 sm:px-6 sm:py-3">
         <Link href={HOME_HREF[role]} className="flex cursor-pointer items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="MUP" className="h-6 w-auto sm:h-8" />
@@ -97,7 +97,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
                   href={link.href}
                   ref={active ? activeLinkRef : undefined}
                   className={`relative z-10 shrink-0 cursor-pointer whitespace-nowrap rounded-full px-2.5 py-1 font-semibold transition-colors sm:px-4 sm:py-1.5 ${
-                    active ? 'text-ink' : 'text-inkMuted hover:text-ink'
+                    active ? 'text-brandInk' : 'text-inkMuted hover:text-ink'
                   }`}
                 >
                   {link.label}

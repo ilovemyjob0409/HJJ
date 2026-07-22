@@ -128,7 +128,7 @@ function StudentGoHallContent() {
           rows={openSessions}
           keyField={(s) => s.id}
           onRowClick={(s) => openRoster(s.id)}
-          rowClassName={() => 'cursor-pointer hover:bg-gray-50'}
+          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
         />
       </Card>
 
@@ -139,7 +139,7 @@ function StudentGoHallContent() {
           rows={myRegistrations}
           keyField={(r) => r.id}
           onRowClick={(r) => openRoster(r.session.id)}
-          rowClassName={(r) => (r.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-gray-50')}
+          rowClassName={(r) => (r.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-stripe')}
           onRowMouseLeave={(r) => {
             if (r.id === highlightId) setHighlightDismissed(true);
           }}

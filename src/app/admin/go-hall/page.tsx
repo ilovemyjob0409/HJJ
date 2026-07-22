@@ -229,7 +229,7 @@ function AdminGoHallContent() {
           ) : (
             <div className="flex flex-col gap-2">
               <p className="text-sm text-inkMuted">取消勾選要排除的日期：</p>
-              <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-lg border border-gray-300 p-2">
+              <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
                 {previewDates.map((d, i) => (
                   <label key={i} className="flex items-center gap-2 text-sm text-ink">
                     <input type="checkbox" checked={!excludedDates.has(i)} onChange={() => toggleExcluded(i)} />
@@ -256,7 +256,7 @@ function AdminGoHallContent() {
           rows={sessions}
           keyField={(s) => s.id}
           onRowClick={(s) => openRoster(s.id)}
-          rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-gray-50')}
+          rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-stripe')}
           onRowMouseLeave={(s) => {
             if (s.id === highlightId) setHighlightDismissed(true);
           }}

@@ -5,6 +5,27 @@
 :root {
   --background: #ffffff;
   --foreground: #3a332b;
+  --cream: #fff1de;
+  --ink: #3a332b;
+  --ink-muted: #8a7f70;
+  --card-bg: #ffffff;
+  --stripe: #f9fafb;
+  --border-subtle: #f3f4f6;
+  --border-strong: #d1d5db;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #211d19;
+    --foreground: #f0e9df;
+    --cream: #2a2420;
+    --ink: #f0e9df;
+    --ink-muted: #b3a696;
+    --card-bg: #35302a;
+    --stripe: #3d3730;
+    --border-subtle: #453e36;
+    --border-strong: #5a5147;
+  }
 }
 
 body {

@@ -36,7 +36,7 @@ export default function GoHallSummaryTable({ rows, basePath }: { rows: GoHallSum
         rows={rows}
         keyField={(r) => r.id}
         onRowClick={(r) => router.push(`${basePath}?highlight=${r.id}`)}
-        rowClassName={() => 'cursor-pointer hover:bg-gray-50'}
+        rowClassName={() => 'cursor-pointer hover:bg-stripe'}
       />
     </Card>
   );

@@ -193,7 +193,7 @@ export default function StudentsPage() {
 
           <div>
             <p className="mb-1 text-sm font-medium text-ink">所屬班級</p>
-            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-gray-300 p-2">
+            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
               {classes.map((c) => (
                 <label key={c.id} className="flex items-center gap-2 text-sm text-ink">
                   <input type="checkbox" checked={editClassIds.includes(c.id)} onChange={() => toggleClass(c.id)} />

@@ -34,7 +34,7 @@ export default function LoginPage() {
         <img src="/logo.png" alt="MUP" className="w-48" />
         <p className="text-sm text-inkMuted">一站式請假／補課／調課平台</p>
       </div>
-      <div className="flex flex-1 items-center justify-center bg-cream p-6 md:bg-white md:p-10">
+      <div className="flex flex-1 items-center justify-center bg-cream p-6 md:bg-card md:p-10">
         <Card className="w-full max-w-sm md:shadow-none">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="MUP" className="mb-4 h-8 w-auto md:hidden" />

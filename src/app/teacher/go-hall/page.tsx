@@ -72,7 +72,7 @@ function TeacherGoHallContent() {
           rows={sessions}
           keyField={(s) => s.id}
           onRowClick={(s) => openRoster(s.id)}
-          rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-gray-50')}
+          rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-stripe')}
           onRowMouseLeave={(s) => {
             if (s.id === highlightId) setHighlightDismissed(true);
           }}
