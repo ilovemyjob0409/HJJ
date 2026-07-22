@@ -11,6 +11,7 @@ import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import LeaveRecordsTable from './LeaveRecordsTable';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders the pending counts once at build time
 // (this page has no cookie/header access to auto-trigger dynamic rendering)
@@ -47,7 +48,7 @@ export default async function AdminDashboard() {
   const substituteColumns: Column<SubstituteRow>[] = [
     { header: '班級', render: (r) => r.class.name },
     { header: '原老師', render: (r) => r.originalTeacher.user.name },
-    { header: '日期', render: (r) => new Date(r.date).toLocaleDateString('zh-TW') },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
     { header: '原因', render: (r) => r.reason },
     { header: '代課老師', render: (r) => r.substituteTeacher?.user.name ?? '-' },
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },

@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface PendingRow {
   id: string;
@@ -55,8 +56,8 @@ function AdminMakeupRequestsContent() {
       header: '目標',
       render: (r) =>
         r.type === 'INSERTION'
-          ? `${r.targetClass?.name} @ ${r.targetDate ? new Date(r.targetDate).toLocaleDateString() : ''}`
-          : `${r.teacher?.user.name} @ ${r.slotDate ? new Date(r.slotDate).toLocaleDateString() : ''} ${r.slotStartTime}-${r.slotEndTime}`,
+          ? `${r.targetClass?.name} @ ${r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}`
+          : `${r.teacher?.user.name} @ ${r.slotDate ? formatDateWithWeekday(r.slotDate) : ''} ${r.slotStartTime}-${r.slotEndTime}`,
     },
     { header: '狀態', render: () => <StatusBadge status="PENDING_ADMIN" /> },
     {

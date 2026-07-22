@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface LeaveRow {
   id: string;
@@ -26,7 +27,7 @@ export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
   const columns: Column<LeaveRow>[] = [
     { header: '學生', render: (r) => r.student.user.name },
     { header: '請假班級', render: (r) => r.class.name },
-    { header: '請假日期', render: (r) => new Date(r.date).toLocaleDateString('zh-TW') },
+    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
     {
       header: '插班班級',
       render: (r) => (r.makeupRequest?.type === 'INSERTION' ? (r.makeupRequest.targetClass?.name ?? '-') : '-'),
@@ -35,7 +36,7 @@ export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
       header: '插班日期',
       render: (r) =>
         r.makeupRequest?.type === 'INSERTION' && r.makeupRequest.targetDate
-          ? new Date(r.makeupRequest.targetDate).toLocaleDateString('zh-TW')
+          ? formatDateWithWeekday(r.makeupRequest.targetDate, 'zh-TW')
           : '-',
     },
     {

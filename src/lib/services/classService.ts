@@ -20,7 +20,10 @@ const CLASS_WITH_TEACHER_SELECT = {
   startTime: true,
   endTime: true,
   teacher: { select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } } },
-  enrollments: { select: { id: true, studentId: true, student: { select: { user: { select: { name: true } } } } } },
+  enrollments: {
+    select: { id: true, studentId: true, student: { select: { user: { select: { name: true } } } } },
+    orderBy: { student: { user: { name: 'asc' } } },
+  },
 } as const;
 
 // Narrower field set for students/teachers picking a class for a leave or
@@ -61,10 +64,23 @@ export function updateClass(id: string, input: UpdateClassInput) {
   });
 }
 
-export function listClasses() {
-  return prisma.class.findMany({
+// Fixed block order for the admin class list — 圍棋 is the core offering
+// and comes first, with any subject not in this list falling after the
+// three known ones (still grouped together, in whatever order the DB
+// query already produced).
+const SUBJECT_ORDER = ['圍棋', '英文', '數學'];
+
+export async function listClasses() {
+  const classes = await prisma.class.findMany({
     select: CLASS_WITH_TEACHER_SELECT,
-    orderBy: { name: 'asc' },
+    orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
+  });
+  return classes.sort((a, b) => {
+    const rank = (subject: string) => {
+      const i = SUBJECT_ORDER.indexOf(subject);
+      return i === -1 ? SUBJECT_ORDER.length : i;
+    };
+    return rank(a.subject) - rank(b.subject);
   });
 }
 
