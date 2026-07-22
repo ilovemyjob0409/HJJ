@@ -43,11 +43,11 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
         </Link>
         <nav className="flex flex-wrap items-center gap-4 text-sm text-ink">
           {NAV_LINKS[role].map((link) => (
-            <Link key={link.href} href={link.href} className="hover:text-brandDark">
+            <Link key={link.href} href={link.href} className="cursor-pointer hover:text-brandDark">
               {link.label}
             </Link>
           ))}
-          <button onClick={() => signOut()} className="text-inkMuted hover:text-ink">
+          <button onClick={() => signOut()} className="cursor-pointer text-inkMuted hover:text-ink">
             登出
           </button>
         </nav>
