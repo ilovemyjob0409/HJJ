@@ -15,6 +15,11 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
+function defaultMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 interface TeacherOption {
   id: string;
   user: { name: string };
@@ -47,7 +52,7 @@ function AdminGoHallContent() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState({ weekday: '6', month: '', startTime: '14:00', endTime: '16:00', capacity: '8', teacherId: '' });
+  const [form, setForm] = useState({ weekday: '6', month: defaultMonth(), startTime: '14:00', endTime: '16:00', capacity: '8', teacherId: '' });
   const [previewDates, setPreviewDates] = useState<Date[] | null>(null);
   const [excludedDates, setExcludedDates] = useState<Set<number>>(new Set());
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
@@ -178,7 +183,30 @@ function AdminGoHallContent() {
                   </option>
                 ))}
               </Select>
-              <Input type="month" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} required />
+              <div className="flex gap-2">
+                <Select
+                  className="flex-1"
+                  value={form.month.split('-')[0]}
+                  onChange={(e) => setForm({ ...form, month: `${e.target.value}-${form.month.split('-')[1]}` })}
+                >
+                  {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() + i).map((year) => (
+                    <option key={year} value={year}>
+                      {year}年
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  className="flex-1"
+                  value={form.month.split('-')[1]}
+                  onChange={(e) => setForm({ ...form, month: `${form.month.split('-')[0]}-${e.target.value}` })}
+                >
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((monthNum) => (
+                    <option key={monthNum} value={monthNum}>
+                      {Number(monthNum)}月
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
               <Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
               <Input
