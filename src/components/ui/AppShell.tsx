@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { ReactNode } from 'react';
 
@@ -31,6 +32,8 @@ const HOME_HREF: Record<Role, string> = {
 };
 
 export default function AppShell({ role, children }: { role: Role; children: ReactNode }) {
+  const pathname = usePathname();
+
   return (
     <div className="min-h-screen bg-cream/40">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-white px-6 py-3">
@@ -38,13 +41,24 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="MUP" className="h-8 w-auto" />
         </Link>
-        <nav className="flex flex-wrap items-center gap-4 text-sm text-ink">
-          {NAV_LINKS[role].map((link) => (
-            <Link key={link.href} href={link.href} className="cursor-pointer hover:text-brandDark">
-              {link.label}
-            </Link>
-          ))}
-          <button onClick={() => signOut()} className="cursor-pointer text-inkMuted hover:text-ink">
+        <nav className="flex min-w-0 flex-1 items-center gap-3 text-sm sm:flex-none">
+          <div className="flex min-w-0 gap-0.5 overflow-x-auto rounded-full bg-cream p-1">
+            {NAV_LINKS[role].map((link) => {
+              const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-4 py-1.5 font-semibold transition-colors ${
+                    active ? 'bg-brand text-ink shadow-sm' : 'text-inkMuted hover:text-ink'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
+          <button onClick={() => signOut()} className="shrink-0 cursor-pointer text-inkMuted hover:text-ink">
             登出
           </button>
         </nav>
