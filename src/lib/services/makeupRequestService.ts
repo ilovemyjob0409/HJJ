@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { isDriverAdapterError } from '@prisma/driver-adapter-utils';
 import { prisma } from '@/lib/db';
+import { runSerializableWithRetry } from '@/lib/transaction';
 import { getQuarterRange } from '@/lib/quarter';
 import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
 import { listTeacherAvailability } from './availabilityService';
@@ -33,38 +33,9 @@ export interface CreateOneOnOneInput {
 }
 
 export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
-  // Quota count, conflict check, and create must be atomic: without
-  // isolation, two concurrent requests for the same student/slot can both
-  // pass their checks before either create() commits (TOCTOU race).
-  // Postgres's default READ COMMITTED isolation does NOT prevent this by
-  // itself (unlike SQLite's single-writer lock), so this uses Serializable
-  // isolation, which makes Postgres abort one of the two transactions with
-  // a serialization failure instead of letting both through. With the `pg`
-  // driver adapter, that failure surfaces as a `DriverAdapterError` whose
-  // `.cause.kind` is `'TransactionWriteConflict'` — NOT as a classic
-  // `PrismaClientKnownRequestError` with code P2034 (that mapping is for
-  // Prisma's built-in query engine, not the driver-adapter path this
-  // project uses; confirmed empirically by forcing the race and inspecting
-  // the actual thrown error, not by assumption). The retry wrapper checks
-  // both shapes and re-runs the aborted transaction, which then re-reads
-  // the now-committed conflicting row and returns the correct friendly
-  // error (QUOTA_EXCEEDED / SLOT_CONFLICT) instead of a raw conflict error.
   return runSerializableWithRetry(() => createOneOnOneMakeupRequestTx(input));
 }
 
-async function runSerializableWithRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      const isSerializationFailure =
-        (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') ||
-        (isDriverAdapterError(err) && err.cause.kind === 'TransactionWriteConflict');
-      if (!isSerializationFailure || attempt === attempts) throw err;
-    }
-  }
-  throw new Error('unreachable');
-}
 
 function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
   return prisma.$transaction(async (tx) => {
