@@ -3,6 +3,8 @@ import { authOptions } from '@/lib/auth';
 import { listPendingMakeupRequests } from '@/lib/services/makeupRequestService';
 import { listPendingSubstituteRequests, listAllSubstituteRequests } from '@/lib/services/substituteRequestService';
 import { listAllLeaveRequests } from '@/lib/services/leaveRequestService';
+import { listAllSessions } from '@/lib/services/goHallService';
+import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import Link from 'next/link';
 import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
@@ -27,12 +29,20 @@ interface SubstituteRow {
 
 export default async function AdminDashboard() {
   const session = await getServerSession(authOptions);
-  const [pendingMakeups, pendingSubstitutes, allLeaves, allSubstitutes] = await Promise.all([
+  const [pendingMakeups, pendingSubstitutes, allLeaves, allSubstitutes, goHallSessions] = await Promise.all([
     listPendingMakeupRequests(),
     listPendingSubstituteRequests(),
     listAllLeaveRequests(),
     listAllSubstituteRequests(),
+    listAllSessions(),
   ]);
+
+  const goHallRows = goHallSessions.map((s) => ({
+    id: s.id,
+    date: s.date,
+    capacity: s.capacity,
+    registeredCount: s._count.registrations,
+  }));
 
   const substituteColumns: Column<SubstituteRow>[] = [
     { header: '班級', render: (r) => r.class.name },
@@ -68,6 +78,9 @@ export default async function AdminDashboard() {
       <Card>
         <DataTable columns={substituteColumns} rows={allSubstitutes} keyField={(r) => r.id} />
       </Card>
+
+      <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
+      <GoHallSummaryTable rows={goHallRows} basePath="/admin/go-hall" />
     </AppShell>
   );
 }
