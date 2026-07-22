@@ -17,11 +17,11 @@ interface DataTableProps<T> {
 export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowClassName, onRowMouseLeave }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-100">
-      <table className="w-full min-w-max border-collapse text-sm">
+      <table className="w-full table-fixed border-collapse text-sm">
         <thead>
           <tr className="border-b border-brandDark bg-brand text-center text-ink">
             {columns.map((col, i) => (
-              <th key={i} className="whitespace-nowrap px-4 py-2 font-semibold">
+              <th key={i} className="px-4 py-2 font-semibold" style={{ width: `${100 / columns.length}%` }}>
                 {col.header}
               </th>
             ))}
@@ -45,7 +45,7 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
                 className={`border-b border-gray-100 ${stripeClass} ${customClass}`}
               >
                 {columns.map((col, i) => (
-                  <td key={i} className="whitespace-nowrap px-4 py-3 text-center text-ink">
+                  <td key={i} className="px-4 py-3 text-center text-ink">
                     {col.render(row)}
                   </td>
                 ))}
