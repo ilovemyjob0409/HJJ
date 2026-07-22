@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService';
 import { listRegistrationsForStudent } from '@/lib/services/goHallService';
+import { listStudentEnrolledClasses } from '@/lib/services/classService';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -13,6 +14,19 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every student until the next deploy.
 export const dynamic = 'force-dynamic';
+
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+interface ClassRow {
+  id: string;
+  name: string;
+  subject: string;
+  level: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  teacher: { user: { name: string } };
+}
 
 interface LeaveRow {
   id: string;
@@ -29,9 +43,13 @@ interface LeaveRow {
 export default async function StudentDashboard() {
   const session = await getServerSession(authOptions);
   const student = session ? await prisma.student.findUnique({ where: { userId: session.user.id } }) : null;
-  const [leaves, myRegistrations] = student
-    ? await Promise.all([listLeaveRequestsForStudent(student.id), listRegistrationsForStudent(student.id)])
-    : [[], []];
+  const [leaves, myRegistrations, myClasses] = student
+    ? await Promise.all([
+        listLeaveRequestsForStudent(student.id),
+        listRegistrationsForStudent(student.id),
+        listStudentEnrolledClasses(student.id),
+      ])
+    : [[], [], []];
 
   const goHallRows = myRegistrations.map((r) => ({
     id: r.id,
@@ -39,6 +57,14 @@ export default async function StudentDashboard() {
     capacity: r.session.capacity,
     registeredCount: r.session._count.registrations,
   }));
+
+  const classColumns: Column<ClassRow>[] = [
+    { header: '班級名稱', render: (c) => c.name },
+    { header: '科目', render: (c) => c.subject },
+    { header: '程度', render: (c) => c.level },
+    { header: '上課時間', render: (c) => `每週${WEEKDAYS[c.weekday]} ${c.startTime}-${c.endTime}` },
+    { header: '授課老師', render: (c) => c.teacher.user.name },
+  ];
 
   const leaveColumns: Column<LeaveRow>[] = [
     { header: '請假班級', render: (r) => r.class.name },
@@ -67,6 +93,11 @@ export default async function StudentDashboard() {
           <Card className="text-ink transition-shadow hover:shadow-md">申請補課</Card>
         </Link>
       </div>
+
+      <h2 className="mb-2 font-bold text-ink">我的班級</h2>
+      <Card className="mb-6">
+        <DataTable columns={classColumns} rows={myClasses} keyField={(c) => c.id} />
+      </Card>
 
       <h2 className="mb-2 font-bold text-ink">我的請假與插班紀錄</h2>
       <Card>
