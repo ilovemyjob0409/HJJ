@@ -2,7 +2,10 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
 
-const SAFE_USER_SELECT = { name: true, email: true } as const;
+// Go Hall rosters and session lists never render email in the UI, and the
+// roster is sent to STUDENT-role requesters (with names masked) — email
+// must not be selected here or it would leak unmasked in that response.
+const NAME_ONLY_SELECT = { name: true } as const;
 
 const SESSION_LIST_SELECT = {
   id: true,
@@ -10,7 +13,7 @@ const SESSION_LIST_SELECT = {
   startTime: true,
   endTime: true,
   capacity: true,
-  teacher: { select: { user: { select: SAFE_USER_SELECT } } },
+  teacher: { select: { user: { select: NAME_ONLY_SELECT } } },
   _count: { select: { registrations: true } },
 } as const;
 
@@ -112,12 +115,12 @@ export function getSessionDetail(id: string) {
       startTime: true,
       endTime: true,
       capacity: true,
-      teacher: { select: { user: { select: SAFE_USER_SELECT } } },
+      teacher: { select: { user: { select: NAME_ONLY_SELECT } } },
       registrations: {
         select: {
           id: true,
           studentId: true,
-          student: { select: { user: { select: SAFE_USER_SELECT } } },
+          student: { select: { user: { select: NAME_ONLY_SELECT } } },
         },
       },
     },
