@@ -43,13 +43,13 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
 
   return (
     <div className="min-h-screen bg-cream/40">
-      <header className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-gray-100 bg-white px-6 py-3">
+      <header className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-gray-100 bg-white px-3 py-2 sm:gap-3 sm:px-6 sm:py-3">
         <Link href={HOME_HREF[role]} className="flex cursor-pointer items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="MUP" className="h-8 w-auto" />
+          <img src="/logo.png" alt="MUP" className="h-6 w-auto sm:h-8" />
         </Link>
-        <nav className="flex min-w-0 justify-center text-sm">
-          <div className="scrollbar-hide flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-1">
+        <nav className="flex min-w-0 justify-center text-xs sm:text-sm">
+          <div className="scrollbar-hide flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-0.5 sm:p-1">
             {NAV_LINKS[role].map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
@@ -57,7 +57,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
                   key={link.href}
                   href={link.href}
                   ref={active ? activeLinkRef : undefined}
-                  className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-4 py-1.5 font-semibold transition-colors ${
+                  className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-2.5 py-1 font-semibold transition-colors sm:px-4 sm:py-1.5 ${
                     active ? 'bg-brand text-ink shadow-sm' : 'text-inkMuted hover:text-ink'
                   }`}
                 >
@@ -67,7 +67,10 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
             })}
           </div>
         </nav>
-        <button onClick={() => signOut()} className="shrink-0 cursor-pointer justify-self-end text-sm text-inkMuted hover:text-ink">
+        <button
+          onClick={() => signOut()}
+          className="shrink-0 cursor-pointer justify-self-end text-xs text-inkMuted hover:text-ink sm:text-sm"
+        >
           登出
         </button>
       </header>
