@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
+import { runSerializableWithRetry } from '@/lib/transaction';
 
 const SAFE_USER_SELECT = { name: true, email: true } as const;
 
@@ -62,4 +64,41 @@ export async function deleteSession(id: string) {
     prisma.goHallRegistration.deleteMany({ where: { sessionId: id } }),
     prisma.goHallSession.delete({ where: { id } }),
   ]);
+}
+
+export async function registerForSession(sessionId: string, studentId: string) {
+  return runSerializableWithRetry(() => registerForSessionTx(sessionId, studentId));
+}
+
+function registerForSessionTx(sessionId: string, studentId: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      const session = await tx.goHallSession.findUniqueOrThrow({ where: { id: sessionId } });
+      const count = await tx.goHallRegistration.count({ where: { sessionId } });
+      if (count >= session.capacity) throw new Error('SESSION_FULL');
+      return tx.goHallRegistration.create({ data: { sessionId, studentId } });
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  );
+}
+
+export async function cancelRegistration(id: string, studentId: string) {
+  const registration = await prisma.goHallRegistration.findUniqueOrThrow({ where: { id } });
+  if (registration.studentId !== studentId) throw new Error('NOT_OWNER');
+  await prisma.goHallRegistration.delete({ where: { id } });
+}
+
+export async function adminRemoveRegistration(id: string) {
+  await prisma.goHallRegistration.delete({ where: { id } });
+}
+
+export function listRegistrationsForStudent(studentId: string) {
+  return prisma.goHallRegistration.findMany({
+    where: { studentId },
+    select: {
+      id: true,
+      session: { select: SESSION_LIST_SELECT },
+    },
+    orderBy: { session: { date: 'desc' } },
+  });
 }

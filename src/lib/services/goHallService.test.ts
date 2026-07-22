@@ -1,7 +1,18 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
-import { createSessions, listAllSessions, listSessionsForTeacher, listOpenSessionsForStudent, deleteSession } from './goHallService';
+import { createStudent } from './studentService';
+import {
+  createSessions,
+  listAllSessions,
+  listSessionsForTeacher,
+  listOpenSessionsForStudent,
+  deleteSession,
+  registerForSession,
+  cancelRegistration,
+  adminRemoveRegistration,
+  listRegistrationsForStudent,
+} from './goHallService';
 
 beforeEach(async () => {
   await prisma.goHallRegistration.deleteMany();
@@ -76,5 +87,123 @@ describe('deleteSession', () => {
 
     const remaining = await prisma.goHallSession.count();
     expect(remaining).toBe(0);
+  });
+});
+
+describe('registerForSession', () => {
+  it('creates a registration when under capacity', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+
+    const registration = await registerForSession(session.id, student.id);
+    expect(registration.sessionId).toBe(session.id);
+    expect(registration.studentId).toBe(student.id);
+  });
+
+  it('throws SESSION_FULL once capacity is reached', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 1, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, studentA.id);
+
+    await expect(registerForSession(session.id, studentB.id)).rejects.toThrow('SESSION_FULL');
+  });
+
+  it('allows only one of two concurrent registrations to succeed when capacity is 1', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 1, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+
+    const results = await Promise.allSettled([registerForSession(session.id, studentA.id), registerForSession(session.id, studentB.id)]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.message).toBe('SESSION_FULL');
+
+    const count = await prisma.goHallRegistration.count({ where: { sessionId: session.id } });
+    expect(count).toBe(1);
+  });
+});
+
+describe('cancelRegistration', () => {
+  it('deletes the registration when the student owns it', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    const registration = await registerForSession(session.id, student.id);
+
+    await cancelRegistration(registration.id, student.id);
+
+    const remaining = await prisma.goHallRegistration.count();
+    expect(remaining).toBe(0);
+  });
+
+  it('throws NOT_OWNER when a different student tries to cancel it', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    const registration = await registerForSession(session.id, student.id);
+
+    await expect(cancelRegistration(registration.id, otherStudent.id)).rejects.toThrow('NOT_OWNER');
+  });
+});
+
+describe('adminRemoveRegistration', () => {
+  it('deletes the registration regardless of owner', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    const registration = await registerForSession(session.id, student.id);
+
+    await adminRemoveRegistration(registration.id);
+
+    const remaining = await prisma.goHallRegistration.count();
+    expect(remaining).toBe(0);
+  });
+});
+
+describe('listRegistrationsForStudent', () => {
+  it('returns only the given student\'s registrations, with session details', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+    await registerForSession(session.id, otherStudent.id);
+
+    const results = await listRegistrationsForStudent(student.id);
+    expect(results).toHaveLength(1);
+    expect(results[0].session.id).toBe(session.id);
+    expect(results[0].session.teacher.user.name).toBe('陳老師');
+  });
+});
+
+describe('deleteSession (with an existing registration)', () => {
+  it('removes the registration along with the session, leaving no orphaned row', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+
+    await deleteSession(session.id);
+
+    const remainingSessions = await prisma.goHallSession.count();
+    const remainingRegistrations = await prisma.goHallRegistration.count();
+    expect(remainingSessions).toBe(0);
+    expect(remainingRegistrations).toBe(0);
   });
 });
