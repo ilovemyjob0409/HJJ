@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -48,7 +47,7 @@ export default function AvailabilityPage() {
   }
 
   return (
-    <AppShell role="TEACHER">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">我的每週可補課時段</h1>
       <Card className="max-w-lg">
         <div className="flex flex-col gap-2">
@@ -76,6 +75,6 @@ export default function AvailabilityPage() {
           <Button onClick={save}>儲存</Button>
         </div>
       </Card>
-    </AppShell>
+    </>
   );
 }

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { ReactNode, useEffect, useRef } from 'react';
+import { ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
@@ -37,6 +37,29 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
   const pathname = usePathname();
   const activeLinkRef = useRef<HTMLAnchorElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const indicatorRef = useRef<HTMLSpanElement>(null);
+  const indicatorPositionedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const indicator = indicatorRef.current;
+    const activeLink = activeLinkRef.current;
+    if (!indicator) return;
+    if (!activeLink) {
+      indicator.style.opacity = '0';
+      return;
+    }
+    indicator.style.opacity = '1';
+    indicator.style.width = `${activeLink.offsetWidth}px`;
+    indicator.style.transform = `translateX(${activeLink.offsetLeft}px)`;
+    if (!indicatorPositionedRef.current) {
+      // Snap into place on first mount instead of sliding in from the edge.
+      indicator.style.transitionDuration = '0s';
+      requestAnimationFrame(() => {
+        indicator.style.transitionDuration = '';
+      });
+      indicatorPositionedRef.current = true;
+    }
+  }, [pathname]);
 
   useEffect(() => {
     if (activeLinkRef.current) {
@@ -60,8 +83,12 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
         <nav className="flex min-w-0 justify-center text-xs sm:text-sm">
           <div
             ref={scrollContainerRef}
-            className="scrollbar-hide flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-0.5 [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)] sm:p-1"
+            className="scrollbar-hide relative flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-0.5 [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)] sm:p-1"
           >
+            <span
+              ref={indicatorRef}
+              className="pointer-events-none absolute bottom-0.5 top-0.5 left-0 rounded-full bg-brand opacity-0 shadow-sm transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:bottom-1 sm:top-1"
+            />
             {NAV_LINKS[role].map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
@@ -69,8 +96,8 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
                   key={link.href}
                   href={link.href}
                   ref={active ? activeLinkRef : undefined}
-                  className={`shrink-0 cursor-pointer whitespace-nowrap rounded-full px-2.5 py-1 font-semibold transition-colors sm:px-4 sm:py-1.5 ${
-                    active ? 'bg-brand text-ink shadow-sm' : 'text-inkMuted hover:text-ink'
+                  className={`relative z-10 shrink-0 cursor-pointer whitespace-nowrap rounded-full px-2.5 py-1 font-semibold transition-colors sm:px-4 sm:py-1.5 ${
+                    active ? 'text-ink' : 'text-inkMuted hover:text-ink'
                   }`}
                 >
                   {link.label}

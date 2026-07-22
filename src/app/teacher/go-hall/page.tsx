@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -65,7 +64,7 @@ function TeacherGoHallContent() {
   ];
 
   return (
-    <AppShell role="TEACHER">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">被指派的弈廳場次</h1>
       <Card>
         <DataTable
@@ -101,7 +100,7 @@ function TeacherGoHallContent() {
           </div>
         )}
       </Modal>
-    </AppShell>
+    </>
   );
 }
 

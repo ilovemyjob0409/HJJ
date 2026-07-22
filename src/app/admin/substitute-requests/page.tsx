@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Select from '@/components/ui/Select';
@@ -74,11 +73,11 @@ export default function AdminSubstituteRequestsPage() {
   ];
 
   return (
-    <AppShell role="ADMIN">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">待安排代課</h1>
       <Card>
         <DataTable columns={columns} rows={rows} keyField={(r) => r.id} />
       </Card>
-    </AppShell>
+    </>
   );
 }

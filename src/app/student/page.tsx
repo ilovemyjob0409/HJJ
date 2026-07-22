@@ -4,7 +4,6 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService';
 import { listRegistrationsForStudent } from '@/lib/services/goHallService';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -58,7 +57,7 @@ export default async function StudentDashboard() {
   ];
 
   return (
-    <AppShell role="STUDENT">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/student/leave-request">
@@ -76,6 +75,6 @@ export default async function StudentDashboard() {
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳報名紀錄</h2>
       <GoHallSummaryTable rows={goHallRows} basePath="/student/go-hall" />
-    </AppShell>
+    </>
   );
 }

@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
@@ -119,7 +118,7 @@ function StudentGoHallContent() {
   ];
 
   return (
-    <AppShell role="STUDENT">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">弈廳</h1>
 
       <h2 className="mb-2 font-bold text-ink">開放中的場次</h2>
@@ -167,7 +166,7 @@ function StudentGoHallContent() {
           </div>
         )}
       </Modal>
-    </AppShell>
+    </>
   );
 }
 

@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -152,7 +151,7 @@ function AdminGoHallContent() {
   ];
 
   return (
-    <AppShell role="ADMIN">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">弈廳場次管理</h1>
 
       {!showAddForm ? (
@@ -291,7 +290,7 @@ function AdminGoHallContent() {
           </div>
         )}
       </Modal>
-    </AppShell>
+    </>
   );
 }
 

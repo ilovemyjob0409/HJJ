@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -124,7 +123,7 @@ export default function StudentsPage() {
   ];
 
   return (
-    <AppShell role="ADMIN">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">學生名單</h1>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Input
@@ -211,6 +210,6 @@ export default function StudentsPage() {
           刪除學生
         </button>
       </Modal>
-    </AppShell>
+    </>
   );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -114,7 +113,7 @@ export default function MakeupRequestPage() {
   const leavesWithoutMakeup = leaves.filter((l) => !l.makeupRequest);
 
   return (
-    <AppShell role="STUDENT">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">申請補課</h1>
 
       <Select className="mb-4" value={selectedLeaveId} onChange={(e) => setSelectedLeaveId(e.target.value)}>
@@ -213,6 +212,6 @@ export default function MakeupRequestPage() {
       )}
 
       {message && <p className="mt-4 text-sm text-ink">{message}</p>}
-    </AppShell>
+    </>
   );
 }

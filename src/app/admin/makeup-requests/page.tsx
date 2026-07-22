@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
@@ -76,7 +75,7 @@ function AdminMakeupRequestsContent() {
   ];
 
   return (
-    <AppShell role="ADMIN">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">待確認補課申請</h1>
       <Card>
         <DataTable
@@ -86,7 +85,7 @@ function AdminMakeupRequestsContent() {
           rowClassName={(r) => (r.id === highlightId ? 'bg-pendingBg' : '')}
         />
       </Card>
-    </AppShell>
+    </>
   );
 }
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -29,7 +28,7 @@ export default function TeacherLeaveRequestPage() {
   }
 
   return (
-    <AppShell role="TEACHER">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">請假/調課申請（代課安排）</h1>
       <Card className="max-w-md">
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
@@ -47,6 +46,6 @@ export default function TeacherLeaveRequestPage() {
         </form>
         {message && <p className="mt-4 text-sm text-ink">{message}</p>}
       </Card>
-    </AppShell>
+    </>
   );
 }

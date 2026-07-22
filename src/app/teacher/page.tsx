@@ -6,7 +6,6 @@ import { listAssignedSubstituteRequestsForTeacher } from '@/lib/services/substit
 import { listLeaveRequestsForTeacherClasses } from '@/lib/services/leaveRequestService';
 import { listInsertionsForTeacherClasses } from '@/lib/services/makeupRequestService';
 import { listSessionsForTeacher } from '@/lib/services/goHallService';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -84,7 +83,7 @@ export default async function TeacherDashboard() {
   ];
 
   return (
-    <AppShell role="TEACHER">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/teacher/leave-request">
@@ -112,6 +111,6 @@ export default async function TeacherDashboard() {
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
       <GoHallSummaryTable rows={goHallRows} basePath="/teacher/go-hall" />
-    </AppShell>
+    </>
   );
 }

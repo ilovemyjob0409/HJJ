@@ -6,7 +6,6 @@ import { listAllLeaveRequests } from '@/lib/services/leaveRequestService';
 import { listAllSessions } from '@/lib/services/goHallService';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import Link from 'next/link';
-import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -55,7 +54,7 @@ export default async function AdminDashboard() {
   ];
 
   return (
-    <AppShell role="ADMIN">
+    <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/admin/makeup-requests">
@@ -82,6 +81,6 @@ export default async function AdminDashboard() {
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
       <GoHallSummaryTable rows={goHallRows} basePath="/admin/go-hall" />
-    </AppShell>
+    </>
   );
 }
