@@ -11,9 +11,10 @@ interface DataTableProps<T> {
   keyField: (row: T) => string;
   onRowClick?: (row: T) => void;
   rowClassName?: (row: T) => string;
+  onRowMouseLeave?: (row: T) => void;
 }
 
-export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowClassName }: DataTableProps<T>) {
+export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowClassName, onRowMouseLeave }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-100">
       <table className="w-full min-w-max border-collapse text-sm">
@@ -36,6 +37,7 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
                 key={key}
                 id={key}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onMouseLeave={onRowMouseLeave ? () => onRowMouseLeave(row) : undefined}
                 className={`border-b border-gray-100 ${stripeClass} ${customClass}`}
               >
                 {columns.map((col, i) => (

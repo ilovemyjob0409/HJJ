@@ -41,6 +41,7 @@ function StudentGoHallContent() {
   const [openSessions, setOpenSessions] = useState<SessionRow[]>([]);
   const [myRegistrations, setMyRegistrations] = useState<RegistrationRow[]>([]);
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
+  const [highlightDismissed, setHighlightDismissed] = useState(false);
 
   async function load() {
     const [sessionsRes, myRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/go-hall-registrations')]);
@@ -51,6 +52,10 @@ function StudentGoHallContent() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    setHighlightDismissed(false);
+  }, [highlightId]);
 
   useEffect(() => {
     if (!highlightId || myRegistrations.length === 0) return;
@@ -134,7 +139,10 @@ function StudentGoHallContent() {
           rows={myRegistrations}
           keyField={(r) => r.id}
           onRowClick={(r) => openRoster(r.session.id)}
-          rowClassName={(r) => (r.id === highlightId ? 'bg-pendingBg' : 'cursor-pointer hover:bg-gray-50')}
+          rowClassName={(r) => (r.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-gray-50')}
+          onRowMouseLeave={(r) => {
+            if (r.id === highlightId) setHighlightDismissed(true);
+          }}
         />
       </Card>
 
