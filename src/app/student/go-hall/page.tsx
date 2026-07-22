@@ -58,6 +58,7 @@ function StudentGoHallContent() {
   }, [highlightId, myRegistrations]);
 
   async function handleRegister(sessionId: string) {
+    if (!confirm('確定要報名這場嗎？')) return;
     const res = await fetch('/api/go-hall-registrations', { method: 'POST', body: JSON.stringify({ sessionId }) });
     if (!res.ok) {
       const data = await res.json();
