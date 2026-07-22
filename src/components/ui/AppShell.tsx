@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
+import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT';
@@ -78,8 +79,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
     <div className="min-h-screen bg-cream/40">
       <header className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-borderSubtle bg-card px-3 py-2 sm:gap-3 sm:px-6 sm:py-3">
         <Link href={HOME_HREF[role]} className="flex cursor-pointer items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="MUP" className="h-6 w-auto sm:h-8" />
+          <Logo className="h-6 w-auto sm:h-8" />
         </Link>
         <nav className="flex min-w-0 justify-center text-xs sm:text-sm">
           <div
