@@ -59,7 +59,7 @@ function TeacherGoHallContent() {
 
   return (
     <AppShell role="TEACHER">
-      <h1 className="mb-4 text-xl font-bold text-ink">我嘗守的弈廳場次</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">被指派的弈廳場次</h1>
       <Card>
         <DataTable
           columns={columns}
