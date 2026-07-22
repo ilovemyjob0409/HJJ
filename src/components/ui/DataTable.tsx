@@ -19,7 +19,7 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
     <div className="overflow-x-auto rounded-lg border border-gray-100">
       <table className="w-full min-w-max border-collapse text-sm">
         <thead>
-          <tr className="border-b border-brandDark bg-brand text-left text-ink">
+          <tr className="border-b border-brandDark bg-brand text-center text-ink">
             {columns.map((col, i) => (
               <th key={i} className="whitespace-nowrap px-4 py-2 font-semibold">
                 {col.header}
@@ -45,7 +45,7 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
                 className={`border-b border-gray-100 ${stripeClass} ${customClass}`}
               >
                 {columns.map((col, i) => (
-                  <td key={i} className="whitespace-nowrap px-4 py-3 text-ink">
+                  <td key={i} className="whitespace-nowrap px-4 py-3 text-center text-ink">
                     {col.render(row)}
                   </td>
                 ))}
