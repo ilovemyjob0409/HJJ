@@ -16,6 +16,8 @@ import {
 } from './classService';
 
 beforeEach(async () => {
+  await prisma.goHallRegistration.deleteMany();
+  await prisma.goHallSession.deleteMany();
   await prisma.substituteRequest.deleteMany();
   await prisma.makeupRequest.deleteMany();
   await prisma.leaveRequest.deleteMany();

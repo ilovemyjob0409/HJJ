@@ -7,6 +7,8 @@ import { createLeaveRequest, listLeaveRequestsForStudent, listLeaveRequestsForTe
 import { createInsertionMakeupRequest } from './makeupRequestService';
 
 beforeEach(async () => {
+  await prisma.goHallRegistration.deleteMany();
+  await prisma.goHallSession.deleteMany();
   await prisma.substituteRequest.deleteMany();
   await prisma.makeupRequest.deleteMany();
   await prisma.leaveRequest.deleteMany();
