@@ -36,9 +36,18 @@ const HOME_HREF: Record<Role, string> = {
 export default function AppShell({ role, children }: { role: Role; children: ReactNode }) {
   const pathname = usePathname();
   const activeLinkRef = useRef<HTMLAnchorElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    activeLinkRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    if (activeLinkRef.current) {
+      activeLinkRef.current.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    } else if (scrollContainerRef.current) {
+      // No tab is active (e.g. the dashboard home) — center the pill list's
+      // scroll position instead of leaving it flush at the start, since
+      // justify-center has no effect once the list overflows its container.
+      const el = scrollContainerRef.current;
+      el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    }
   }, [pathname]);
 
   return (
@@ -49,7 +58,10 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
           <img src="/logo.png" alt="MUP" className="h-6 w-auto sm:h-8" />
         </Link>
         <nav className="flex min-w-0 justify-center text-xs sm:text-sm">
-          <div className="scrollbar-hide flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-0.5 sm:p-1">
+          <div
+            ref={scrollContainerRef}
+            className="scrollbar-hide flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-0.5 sm:p-1"
+          >
             {NAV_LINKS[role].map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
