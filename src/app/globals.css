@@ -13,6 +13,15 @@ body {
   font-family: "Noto Sans TC", Arial, Helvetica, sans-serif;
 }
 
+/* Tailwind's text and spacing scales are rem-based, so bumping the root
+   font-size scales everything proportionally on desktop without touching
+   individual pages. Mobile keeps the default 16px base. */
+@media (min-width: 768px) {
+  html {
+    font-size: 18px;
+  }
+}
+
 button:not(:disabled) {
   cursor: pointer;
 }
