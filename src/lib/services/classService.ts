@@ -20,7 +20,10 @@ const CLASS_WITH_TEACHER_SELECT = {
   startTime: true,
   endTime: true,
   teacher: { select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } } },
-  enrollments: { select: { id: true, studentId: true, student: { select: { user: { select: { name: true } } } } } },
+  enrollments: {
+    select: { id: true, studentId: true, student: { select: { user: { select: { name: true } } } } },
+    orderBy: { student: { user: { name: 'asc' } } },
+  },
 } as const;
 
 // Narrower field set for students/teachers picking a class for a leave or
@@ -64,7 +67,7 @@ export function updateClass(id: string, input: UpdateClassInput) {
 export function listClasses() {
   return prisma.class.findMany({
     select: CLASS_WITH_TEACHER_SELECT,
-    orderBy: { name: 'asc' },
+    orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
   });
 }
 
