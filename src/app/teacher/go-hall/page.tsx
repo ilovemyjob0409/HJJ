@@ -44,6 +44,7 @@ function TeacherGoHallContent() {
   useEffect(() => {
     if (!highlightId || sessions.length === 0) return;
     document.getElementById(highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    openRoster(highlightId);
   }, [highlightId, sessions]);
 
   async function openRoster(id: string) {

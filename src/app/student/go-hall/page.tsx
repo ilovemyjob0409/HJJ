@@ -55,6 +55,8 @@ function StudentGoHallContent() {
   useEffect(() => {
     if (!highlightId || myRegistrations.length === 0) return;
     document.getElementById(highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const registration = myRegistrations.find((r) => r.id === highlightId);
+    if (registration) openRoster(registration.session.id);
   }, [highlightId, myRegistrations]);
 
   async function handleRegister(sessionId: string) {

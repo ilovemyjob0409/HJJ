@@ -64,6 +64,7 @@ function AdminGoHallContent() {
   useEffect(() => {
     if (!highlightId || sessions.length === 0) return;
     document.getElementById(highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    openRoster(highlightId);
   }, [highlightId, sessions]);
 
   function handlePreview(e: React.FormEvent) {
