@@ -3,10 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService';
+import { listRegistrationsForStudent } from '@/lib/services/goHallService';
 import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
+import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every student until the next deploy.
@@ -27,7 +29,16 @@ interface LeaveRow {
 export default async function StudentDashboard() {
   const session = await getServerSession(authOptions);
   const student = session ? await prisma.student.findUnique({ where: { userId: session.user.id } }) : null;
-  const leaves = student ? await listLeaveRequestsForStudent(student.id) : [];
+  const [leaves, myRegistrations] = student
+    ? await Promise.all([listLeaveRequestsForStudent(student.id), listRegistrationsForStudent(student.id)])
+    : [[], []];
+
+  const goHallRows = myRegistrations.map((r) => ({
+    id: r.id,
+    date: r.session.date,
+    capacity: r.session.capacity,
+    registeredCount: r.session._count.registrations,
+  }));
 
   const leaveColumns: Column<LeaveRow>[] = [
     { header: '請假班級', render: (r) => r.class.name },
@@ -61,6 +72,9 @@ export default async function StudentDashboard() {
       <Card>
         <DataTable columns={leaveColumns} rows={leaves} keyField={(r) => r.id} />
       </Card>
+
+      <h2 className="mb-2 mt-6 font-bold text-ink">弈廳報名紀錄</h2>
+      <GoHallSummaryTable rows={goHallRows} basePath="/student/go-hall" />
     </AppShell>
   );
 }
