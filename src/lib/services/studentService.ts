@@ -4,9 +4,11 @@ import { prisma } from '@/lib/db';
 export interface CreateStudentInput {
   name: string;
   email: string;
-  password: string;
+  password?: string;
   parentPhone?: string;
 }
+
+const DEFAULT_PASSWORD = '12345678';
 
 export interface UpdateStudentInput {
   name?: string;
@@ -18,7 +20,7 @@ export interface UpdateStudentInput {
 const SAFE_USER_SELECT = { name: true, email: true } as const;
 
 export async function createStudent(input: CreateStudentInput) {
-  const hashed = await bcrypt.hash(input.password, 10);
+  const hashed = await bcrypt.hash(input.password || DEFAULT_PASSWORD, 10);
   const user = await prisma.user.create({
     data: { name: input.name, email: input.email, password: hashed, role: 'STUDENT' },
   });

@@ -17,9 +17,9 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
-        <tr className="border-b border-gray-200 text-left text-inkMuted">
+        <tr className="border-b border-brandDark bg-brand text-left text-ink">
           {columns.map((col, i) => (
-            <th key={i} className="py-2 pr-4 font-medium">
+            <th key={i} className="py-2 pr-4 font-semibold">
               {col.header}
             </th>
           ))}

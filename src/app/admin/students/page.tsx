@@ -147,11 +147,10 @@ export default function StudentsPage() {
             <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             <Input placeholder="帳號" type="text" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
             <Input
-              placeholder="初始密碼"
+              placeholder="初始密碼（留空預設 12345678）"
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              required
             />
             <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
             <Select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })}>

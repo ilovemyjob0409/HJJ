@@ -13,6 +13,10 @@ body {
   font-family: "Noto Sans TC", Arial, Helvetica, sans-serif;
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
