@@ -12,6 +12,7 @@ import {
   cancelRegistration,
   adminRemoveRegistration,
   listRegistrationsForStudent,
+  getSessionDetail,
 } from './goHallService';
 
 beforeEach(async () => {
@@ -205,5 +206,20 @@ describe('deleteSession (with an existing registration)', () => {
     const remainingRegistrations = await prisma.goHallRegistration.count();
     expect(remainingSessions).toBe(0);
     expect(remainingRegistrations).toBe(0);
+  });
+});
+
+describe('getSessionDetail', () => {
+  it('returns session info with the full (unmasked) roster', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '王大明', email: 'wang@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+
+    const detail = await getSessionDetail(session.id);
+    expect(detail.teacher.user.name).toBe('陳老師');
+    expect(detail.registrations).toHaveLength(1);
+    expect(detail.registrations[0].student.user.name).toBe('王大明');
   });
 });

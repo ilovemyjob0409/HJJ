@@ -102,3 +102,24 @@ export function listRegistrationsForStudent(studentId: string) {
     orderBy: { session: { date: 'desc' } },
   });
 }
+
+export function getSessionDetail(id: string) {
+  return prisma.goHallSession.findUniqueOrThrow({
+    where: { id },
+    select: {
+      id: true,
+      date: true,
+      startTime: true,
+      endTime: true,
+      capacity: true,
+      teacher: { select: { user: { select: SAFE_USER_SELECT } } },
+      registrations: {
+        select: {
+          id: true,
+          studentId: true,
+          student: { select: { user: { select: SAFE_USER_SELECT } } },
+        },
+      },
+    },
+  });
+}
