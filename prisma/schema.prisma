@@ -54,6 +54,7 @@ model Teacher {
   oneOnOneMakeups             MakeupRequest[]       @relation("OneOnOneTeacher")
   substituteRequestsOriginal  SubstituteRequest[]   @relation("OriginalTeacher")
   substituteRequestsAssigned  SubstituteRequest[]   @relation("SubstituteTeacher")
+  goHallSessions              GoHallSession[]
 }
 
 model Student {
@@ -63,6 +64,7 @@ model Student {
   parentPhone   String?
   enrollments   ClassEnrollment[]
   leaveRequests LeaveRequest[]
+  goHallRegistrations GoHallRegistration[]
 }
 
 model Class {
@@ -145,4 +147,27 @@ model SubstituteRequest {
   substituteTeacher   Teacher?         @relation("SubstituteTeacher", fields: [substituteTeacherId], references: [id])
   status              SubstituteStatus @default(PENDING_ASSIGNMENT)
   createdAt           DateTime         @default(now())
+}
+
+model GoHallSession {
+  id            String               @id @default(cuid())
+  date          DateTime
+  startTime     String
+  endTime       String
+  capacity      Int
+  teacherId     String
+  teacher       Teacher              @relation(fields: [teacherId], references: [id])
+  registrations GoHallRegistration[]
+  createdAt     DateTime             @default(now())
+}
+
+model GoHallRegistration {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   GoHallSession @relation(fields: [sessionId], references: [id])
+  studentId String
+  student   Student       @relation(fields: [studentId], references: [id])
+  createdAt DateTime      @default(now())
+
+  @@unique([sessionId, studentId])
 }
