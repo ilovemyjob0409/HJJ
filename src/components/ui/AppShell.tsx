@@ -42,7 +42,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
           <img src="/logo.png" alt="MUP" className="h-8 w-auto" />
         </Link>
         <nav className="flex min-w-0 flex-1 items-center gap-3 text-sm sm:flex-none">
-          <div className="flex min-w-0 gap-0.5 overflow-x-auto rounded-full bg-cream p-1">
+          <div className="scrollbar-hide flex min-w-0 gap-0.5 overflow-x-auto rounded-full bg-cream p-1">
             {NAV_LINKS[role].map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
