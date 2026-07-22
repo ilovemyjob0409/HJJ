@@ -60,7 +60,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
         <nav className="flex min-w-0 justify-center text-xs sm:text-sm">
           <div
             ref={scrollContainerRef}
-            className="scrollbar-hide flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-0.5 sm:p-1"
+            className="scrollbar-hide flex min-w-0 max-w-full gap-0.5 overflow-x-auto rounded-full bg-cream p-0.5 [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-16px),transparent)] sm:p-1"
           >
             {NAV_LINKS[role].map((link) => {
               const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
