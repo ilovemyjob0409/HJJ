@@ -6,6 +6,7 @@ import AppShell from '@/components/ui/AppShell';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface RosterEntry {
   id: string;
@@ -58,7 +59,7 @@ function TeacherGoHallContent() {
   }
 
   const columns: Column<SessionRow>[] = [
-    { header: '日期', render: (s) => new Date(s.date).toLocaleDateString('zh-TW') },
+    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW') },
     { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
     { header: '人數', render: (s) => `${s._count.registrations}/${s.capacity}` },
   ];
@@ -83,7 +84,7 @@ function TeacherGoHallContent() {
         {viewing && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-inkMuted">
-              {new Date(viewing.date).toLocaleDateString('zh-TW')} {viewing.startTime}-{viewing.endTime} · {viewing.registrations.length}/
+              {formatDateWithWeekday(viewing.date, 'zh-TW')} {viewing.startTime}-{viewing.endTime} · {viewing.registrations.length}/
               {viewing.capacity}
             </p>
             {viewing.registrations.length === 0 ? (

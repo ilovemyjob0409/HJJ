@@ -11,6 +11,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { previewSessionDates } from '@/lib/goHallDates';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -131,7 +132,7 @@ function AdminGoHallContent() {
   }
 
   const columns: Column<SessionRow>[] = [
-    { header: '日期', render: (s) => new Date(s.date).toLocaleDateString('zh-TW') },
+    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW') },
     { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
     { header: '老師', render: (s) => s.teacher.user.name },
     { header: '人數', render: (s) => `${s._count.registrations}/${s.capacity}` },
@@ -205,7 +206,7 @@ function AdminGoHallContent() {
                 {previewDates.map((d, i) => (
                   <label key={i} className="flex items-center gap-2 text-sm text-ink">
                     <input type="checkbox" checked={!excludedDates.has(i)} onChange={() => toggleExcluded(i)} />
-                    {d.toLocaleDateString('zh-TW')}
+                    {formatDateWithWeekday(d, 'zh-TW')}
                   </label>
                 ))}
               </div>
@@ -239,7 +240,7 @@ function AdminGoHallContent() {
         {viewing && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-inkMuted">
-              {new Date(viewing.date).toLocaleDateString('zh-TW')} {viewing.startTime}-{viewing.endTime} · {viewing.teacher.user.name} ·{' '}
+              {formatDateWithWeekday(viewing.date, 'zh-TW')} {viewing.startTime}-{viewing.endTime} · {viewing.teacher.user.name} ·{' '}
               {viewing.registrations.length}/{viewing.capacity}
             </p>
             {viewing.registrations.length === 0 ? (

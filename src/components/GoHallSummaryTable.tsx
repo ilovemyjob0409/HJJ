@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export interface GoHallSummaryRow {
   id: string;
@@ -15,7 +16,7 @@ export default function GoHallSummaryTable({ rows, basePath }: { rows: GoHallSum
   const router = useRouter();
 
   const columns: Column<GoHallSummaryRow>[] = [
-    { header: '日期', render: (r) => new Date(r.date).toLocaleDateString('zh-TW') },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
     { header: '人數', render: (r) => `${r.registeredCount}/${r.capacity}` },
     {
       header: '狀態',

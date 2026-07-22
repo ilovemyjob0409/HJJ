@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface RosterEntry {
   id: string;
@@ -89,7 +90,7 @@ function StudentGoHallContent() {
   }
 
   const openColumns: Column<SessionRow>[] = [
-    { header: '日期', render: (s) => new Date(s.date).toLocaleDateString('zh-TW') },
+    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW') },
     { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
     { header: '老師', render: (s) => s.teacher.user.name },
     { header: '剩餘名額', render: (s) => Math.max(s.capacity - s._count.registrations, 0) },
@@ -104,7 +105,7 @@ function StudentGoHallContent() {
   ];
 
   const myColumns: Column<RegistrationRow>[] = [
-    { header: '日期', render: (r) => new Date(r.session.date).toLocaleDateString('zh-TW') },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.session.date, 'zh-TW') },
     { header: '時間', render: (r) => `${r.session.startTime}-${r.session.endTime}` },
     { header: '老師', render: (r) => r.session.teacher.user.name },
     {
@@ -150,7 +151,7 @@ function StudentGoHallContent() {
         {viewing && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-inkMuted">
-              {new Date(viewing.date).toLocaleDateString('zh-TW')} {viewing.startTime}-{viewing.endTime} · {viewing.teacher.user.name}
+              {formatDateWithWeekday(viewing.date, 'zh-TW')} {viewing.startTime}-{viewing.endTime} · {viewing.teacher.user.name}
             </p>
             {viewing.registrations.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生報名</p>
