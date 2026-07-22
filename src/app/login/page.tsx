@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 import { useToast } from '@/components/ui/Toast';
 
 export default function LoginPage() {
@@ -28,7 +29,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
+    <div className="relative flex min-h-screen flex-col md:flex-row">
+      <div className="absolute right-3 top-3 z-10 sm:right-6 sm:top-6">
+        <ThemeToggle />
+      </div>
       <div className="hidden flex-1 flex-col items-center justify-center gap-2 bg-cream p-10 text-center md:flex">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.png" alt="MUP" className="w-48" />

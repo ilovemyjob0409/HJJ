@@ -14,8 +14,20 @@
   --border-strong: #d1d5db;
 }
 
+:root[data-theme="dark"] {
+  --background: #211d19;
+  --foreground: #f0e9df;
+  --cream: #2a2420;
+  --ink: #f0e9df;
+  --ink-muted: #b3a696;
+  --card-bg: #35302a;
+  --stripe: #3d3730;
+  --border-subtle: #453e36;
+  --border-strong: #5a5147;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #211d19;
     --foreground: #f0e9df;
     --cream: #2a2420;

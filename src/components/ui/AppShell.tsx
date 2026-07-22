@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
+import ThemeToggle from './ThemeToggle';
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
@@ -106,12 +107,12 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
             })}
           </div>
         </nav>
-        <button
-          onClick={() => signOut()}
-          className="shrink-0 cursor-pointer justify-self-end text-xs text-inkMuted hover:text-ink sm:text-sm"
-        >
-          登出
-        </button>
+        <div className="flex shrink-0 items-center justify-self-end gap-1 sm:gap-2">
+          <ThemeToggle />
+          <button onClick={() => signOut()} className="cursor-pointer text-xs text-inkMuted hover:text-ink sm:text-sm">
+            登出
+          </button>
+        </div>
       </header>
       <main className="mx-auto max-w-5xl p-6">{children}</main>
     </div>
