@@ -31,7 +31,11 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
           {rows.map((row, index) => {
             const key = keyField(row);
             const customClass = rowClassName?.(row) ?? '';
-            const stripeClass = customClass ? '' : index % 2 === 1 ? 'bg-gray-50' : 'bg-white';
+            // Only a base bg-* utility (e.g. a highlight override) should suppress
+            // the zebra stripe — a variant like hover:bg-gray-50 shouldn't, since it
+            // only paints on hover and layers fine on top of the stripe underneath.
+            const hasBaseBackground = customClass.split(/\s+/).some((c) => c.startsWith('bg-'));
+            const stripeClass = hasBaseBackground ? '' : index % 2 === 1 ? 'bg-gray-50' : 'bg-white';
             return (
               <tr
                 key={key}
