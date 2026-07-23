@@ -263,7 +263,17 @@ export default function ClassesPage() {
         )}
       </Modal>
 
-      <TimetableModal open={showTimetable} onClose={() => setShowTimetable(false)} classes={classes} />
+      <TimetableModal
+        open={showTimetable}
+        onClose={() => setShowTimetable(false)}
+        classes={classes}
+        onClassClick={(id) => {
+          const c = classes.find((cls) => cls.id === id);
+          if (!c) return;
+          setShowTimetable(false);
+          openEdit(c);
+        }}
+      />
     </>
   );
 }

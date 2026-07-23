@@ -21,9 +21,10 @@ interface TimetableModalProps {
   open: boolean;
   onClose: () => void;
   classes: TimetableClass[];
+  onClassClick?: (id: string) => void;
 }
 
-export default function TimetableModal({ open, onClose, classes }: TimetableModalProps) {
+export default function TimetableModal({ open, onClose, classes, onClassClick }: TimetableModalProps) {
   const [colors, setColors] = useState<Record<string, string>>({});
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -125,9 +126,11 @@ export default function TimetableModal({ open, onClose, classes }: TimetableModa
                 <p className="pt-3 text-center text-xs text-inkMuted">無課程</p>
               ) : (
                 day.map((c) => (
-                  <div
+                  <button
                     key={c.id}
-                    className="relative overflow-hidden rounded-md py-1.5 pl-2 pr-3.5"
+                    type="button"
+                    onClick={onClassClick ? () => onClassClick(c.id) : undefined}
+                    className="relative overflow-hidden rounded-md py-1.5 pl-2 pr-3.5 text-left transition-[filter] hover:brightness-110"
                     style={{ background: colors[c.subject] ?? UNSET_SUBJECT_COLOR }}
                   >
                     <span
@@ -141,7 +144,7 @@ export default function TimetableModal({ open, onClose, classes }: TimetableModa
                     <p className="text-[10px] text-white/70">
                       {c.teacher.user.name}・{c.level}
                     </p>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
