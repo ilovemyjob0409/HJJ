@@ -65,6 +65,28 @@ button:not(:disabled) {
   cursor: pointer;
 }
 
+/* Universal hover highlight: every clickable element brightens slightly on
+   hover — links, buttons, dropdowns, checkboxes, and anything opted into
+   clickability via cursor-pointer (e.g. clickable table rows). Scoped to
+   (hover: hover) so touch devices don't get sticky highlight states.
+   Element-specific hover styles (bg swaps, underlines) still apply on top. */
+@media (hover: hover) {
+  a,
+  button:not(:disabled),
+  select,
+  input[type='checkbox']:not(:disabled),
+  .cursor-pointer {
+    transition: filter 0.15s ease;
+  }
+  a:hover,
+  button:not(:disabled):hover,
+  select:hover,
+  input[type='checkbox']:not(:disabled):hover,
+  .cursor-pointer:hover {
+    filter: brightness(1.12);
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
