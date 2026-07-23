@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { Prisma } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { createTeacher, listTeachers, listTeachersForBooking } from '@/lib/services/teacherService';
 
@@ -21,6 +22,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const body = await req.json();
-  const teacher = await createTeacher(body);
-  return NextResponse.json(teacher, { status: 201 });
+  try {
+    const teacher = await createTeacher(body);
+    return NextResponse.json(teacher, { status: 201 });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return NextResponse.json({ error: 'EMAIL_TAKEN' }, { status: 409 });
+    }
+    throw err;
+  }
 }

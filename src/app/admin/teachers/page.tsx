@@ -21,6 +21,7 @@ export default function TeachersPage() {
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
+  const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<TeacherRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
   const [editError, setEditError] = useState('');
@@ -36,7 +37,13 @@ export default function TeachersPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await fetch('/api/teachers', { method: 'POST', body: JSON.stringify(form) });
+    setFormError('');
+    const res = await fetch('/api/teachers', { method: 'POST', body: JSON.stringify(form) });
+    if (!res.ok) {
+      const data = await res.json();
+      setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+      return;
+    }
     setForm({ name: '', email: '', password: '', subjects: '', phone: '' });
     setShowAddForm(false);
     showToast('已新增');
@@ -137,6 +144,7 @@ export default function TeachersPage() {
             />
             <Input placeholder="任教科目" value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} required />
             <Input placeholder="電話" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            {formError && <p className="text-sm text-rejected">{formError}</p>}
             <Button type="submit">新增</Button>
           </form>
         </Card>

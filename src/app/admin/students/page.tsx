@@ -29,6 +29,7 @@ export default function StudentsPage() {
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '', classId: '' });
+  const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [editClassIds, setEditClassIds] = useState<string[]>([]);
@@ -46,7 +47,13 @@ export default function StudentsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await fetch('/api/students', { method: 'POST', body: JSON.stringify(form) });
+    setFormError('');
+    const res = await fetch('/api/students', { method: 'POST', body: JSON.stringify(form) });
+    if (!res.ok) {
+      const data = await res.json();
+      setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+      return;
+    }
     setForm({ name: '', email: '', password: '', parentPhone: '', classId: '' });
     setShowAddForm(false);
     showToast('已新增');
@@ -160,6 +167,7 @@ export default function StudentsPage() {
                 </option>
               ))}
             </Select>
+            {formError && <p className="text-sm text-rejected">{formError}</p>}
             <Button type="submit">新增</Button>
           </form>
         </Card>

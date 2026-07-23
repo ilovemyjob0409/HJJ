@@ -31,6 +31,23 @@ describe('createStudent', () => {
     const user = await prisma.user.findUnique({ where: { email: 'hua@example.com' } });
     expect(user?.role).toBe('STUDENT');
   });
+
+  it('normalizes email casing and surrounding whitespace before storing', async () => {
+    const student = await createStudent({
+      name: '小華',
+      email: '  Hua@Example.com  ',
+      password: 'secret123',
+    });
+    expect(student.user.email).toBe('hua@example.com');
+  });
+
+  it('rejects a second account whose email differs only by case or whitespace', async () => {
+    await createStudent({ name: '小華', email: 'hua@example.com', password: 'secret123' });
+
+    await expect(
+      createStudent({ name: '小明', email: ' Hua@Example.com', password: 'secret123' })
+    ).rejects.toThrow();
+  });
 });
 
 describe('listStudents', () => {
@@ -75,6 +92,13 @@ describe('updateStudent', () => {
     const other = await createStudent({ name: '小明', email: 'ming@example.com', password: 'secret123' });
 
     await expect(updateStudent(other.id, { email: 'hua@example.com' })).rejects.toThrow();
+  });
+
+  it('throws when the new email is taken, differing only by case or whitespace', async () => {
+    await createStudent({ name: '小華', email: 'hua@example.com', password: 'secret123' });
+    const other = await createStudent({ name: '小明', email: 'ming@example.com', password: 'secret123' });
+
+    await expect(updateStudent(other.id, { email: ' HUA@Example.com ' })).rejects.toThrow();
   });
 });
 

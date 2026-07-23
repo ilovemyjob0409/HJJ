@@ -33,6 +33,24 @@ describe('createTeacher', () => {
     expect(user?.role).toBe('TEACHER');
     expect(user?.password).not.toBe('secret123');
   });
+
+  it('normalizes email casing and surrounding whitespace before storing', async () => {
+    const teacher = await createTeacher({
+      name: '陳老師',
+      email: '  Chen@Example.com  ',
+      password: 'secret123',
+      subjects: '英文',
+    });
+    expect(teacher.user.email).toBe('chen@example.com');
+  });
+
+  it('rejects a second account whose email differs only by case or whitespace', async () => {
+    await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'secret123', subjects: '英文' });
+
+    await expect(
+      createTeacher({ name: '林老師', email: ' Chen@Example.com', password: 'secret123', subjects: '數學' })
+    ).rejects.toThrow();
+  });
 });
 
 describe('listTeachers', () => {
@@ -85,6 +103,13 @@ describe('updateTeacher', () => {
     const other = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'secret123', subjects: '數學' });
 
     await expect(updateTeacher(other.id, { email: 'chen@example.com' })).rejects.toThrow();
+  });
+
+  it('throws when the new email is taken, differing only by case or whitespace', async () => {
+    await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'secret123', subjects: '英文' });
+    const other = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'secret123', subjects: '數學' });
+
+    await expect(updateTeacher(other.id, { email: ' CHEN@Example.com ' })).rejects.toThrow();
   });
 });
 

@@ -22,7 +22,7 @@ const SAFE_USER_SELECT = { name: true, email: true } as const;
 export async function createTeacher(input: CreateTeacherInput) {
   const hashed = await bcrypt.hash(input.password, 10);
   const user = await prisma.user.create({
-    data: { name: input.name, email: input.email, password: hashed, role: 'TEACHER' },
+    data: { name: input.name, email: input.email.trim().toLowerCase(), password: hashed, role: 'TEACHER' },
   });
   return prisma.teacher.create({
     data: { userId: user.id, subjects: input.subjects, phone: input.phone },
@@ -44,7 +44,7 @@ export async function updateTeacher(id: string, input: UpdateTeacherInput) {
   return prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: teacher.userId },
-      data: { name: input.name, email: input.email, password: hashedPassword },
+      data: { name: input.name, email: input.email?.trim().toLowerCase(), password: hashedPassword },
     });
     return tx.teacher.update({
       where: { id },
