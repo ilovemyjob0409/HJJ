@@ -11,15 +11,17 @@ export function stripWeekday(name: string): string {
     .trim();
 }
 
+// Mid-dark Morandi tones — one step deeper than MORANDI_PALETTE so the
+// level accent bar stays visible against the bright pastel card colors.
 export const LEVEL_PALETTE = [
-  '#F2C14E',
-  '#6FCF97',
-  '#EB5757',
-  '#56CCF2',
-  '#BB6BD9',
-  '#F2994A',
-  '#27AE60',
-  '#9B51E0',
+  '#A67F78', // 豆沙紅
+  '#A38F71', // 駝
+  '#8D7B6C', // 灰褐
+  '#8A9A7B', // 橄欖綠
+  '#6B7D71', // 墨綠
+  '#7A8B99', // 霧藍
+  '#8C7F94', // 灰紫
+  '#9A8492', // 藕紫
 ] as const;
 
 export const UNSET_SUBJECT_COLOR = '#9a9a9a';
@@ -28,18 +30,18 @@ export const UNSET_SUBJECT_COLOR = '#9a9a9a';
 // bright pastel end of the range; timetable cards pair these with dark
 // ink text (not white) to keep contrast.
 export const MORANDI_PALETTE = [
-  '#D4A59A', // 淡豆沙紅
-  '#C99789', // 淺磚紅
-  '#D9B9A3', // 奶杏
-  '#D6C49A', // 淺芥黃
-  '#C9B18C', // 淺駝
-  '#A8B8A0', // 淺橄欖綠
-  '#8FA898', // 青灰綠
-  '#9CB0A2', // 灰薄荷
-  '#A9BCC7', // 淺霧藍
-  '#92A8B8', // 灰藍
-  '#B3A6BD', // 淺灰紫
-  '#C2A8B4', // 藕粉
+  '#E3C4BD', // 淡豆沙紅
+  '#DCBBB2', // 淺磚紅
+  '#E6D2C3', // 奶杏
+  '#E4D9BD', // 淺芥黃
+  '#DCCCB4', // 淺駝
+  '#C6D1C1', // 淺橄欖綠
+  '#B6C6BC', // 青灰綠
+  '#BFCCC3', // 灰薄荷
+  '#C7D3DB', // 淺霧藍
+  '#B8C6D1', // 灰藍
+  '#CEC5D4', // 淺灰紫
+  '#D7C6CE', // 藕粉
 ] as const;
 
 // Level is freeform text, so its accent color is derived by hashing the
