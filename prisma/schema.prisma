@@ -171,3 +171,9 @@ model GoHallRegistration {
 
   @@unique([sessionId, studentId])
 }
+
+model SubjectColor {
+  id      String @id @default(cuid())
+  subject String @unique
+  color   String
+}
