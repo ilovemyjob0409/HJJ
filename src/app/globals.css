@@ -12,6 +12,8 @@
   --stripe: #f9fafb;
   --border-subtle: #f3f4f6;
   --border-strong: #d1d5db;
+  --select-bg: #ffffff;
+  --select-text: #3a332b;
 }
 
 :root[data-theme="dark"] {
@@ -24,6 +26,8 @@
   --stripe: #3d3730;
   --border-subtle: #453e36;
   --border-strong: #5a5147;
+  --select-bg: #d4d4d4;
+  --select-text: #262626;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,6 +41,8 @@
     --stripe: #3d3730;
     --border-subtle: #453e36;
     --border-strong: #5a5147;
+    --select-bg: #d4d4d4;
+    --select-text: #262626;
   }
 }
 
