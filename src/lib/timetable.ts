@@ -30,18 +30,18 @@ export const UNSET_SUBJECT_COLOR = '#9a9a9a';
 // bright pastel end of the range; timetable cards pair these with dark
 // ink text (not white) to keep contrast.
 export const MORANDI_PALETTE = [
-  '#E3C4BD', // 淡豆沙紅
-  '#DCBBB2', // 淺磚紅
-  '#E6D2C3', // 奶杏
-  '#E4D9BD', // 淺芥黃
-  '#DCCCB4', // 淺駝
-  '#C6D1C1', // 淺橄欖綠
-  '#B6C6BC', // 青灰綠
-  '#BFCCC3', // 灰薄荷
-  '#C7D3DB', // 淺霧藍
-  '#B8C6D1', // 灰藍
-  '#CEC5D4', // 淺灰紫
-  '#D7C6CE', // 藕粉
+  '#B4B1A4', // 暖灰綠
+  '#D2D1CE', // 銀灰
+  '#C6B69B', // 沙杏
+  '#DFCDB2', // 奶油杏
+  '#D9CFC0', // 亞麻
+  '#C9C3B4', // 米灰
+  '#AEB8AE', // 鼠尾草
+  '#BFC9C4', // 灰薄荷
+  '#ABC2CC', // 霧藍
+  '#B4BFC9', // 灰藍
+  '#C9B2AC', // 灰玫瑰
+  '#B9B0BC', // 灰藕紫
 ] as const;
 
 // Level is freeform text, so its accent color is derived by hashing the
