@@ -24,6 +24,24 @@ export const LEVEL_PALETTE = [
 
 export const UNSET_SUBJECT_COLOR = '#9a9a9a';
 
+// Curated Morandi (muted, gray-toned) swatches for subject colors — the
+// bright pastel end of the range; timetable cards pair these with dark
+// ink text (not white) to keep contrast.
+export const MORANDI_PALETTE = [
+  '#D4A59A', // 淡豆沙紅
+  '#C99789', // 淺磚紅
+  '#D9B9A3', // 奶杏
+  '#D6C49A', // 淺芥黃
+  '#C9B18C', // 淺駝
+  '#A8B8A0', // 淺橄欖綠
+  '#8FA898', // 青灰綠
+  '#9CB0A2', // 灰薄荷
+  '#A9BCC7', // 淺霧藍
+  '#92A8B8', // 灰藍
+  '#B3A6BD', // 淺灰紫
+  '#C2A8B4', // 藕粉
+] as const;
+
 // Level is freeform text, so its accent color is derived by hashing the
 // string into a fixed palette — stable per string, zero maintenance,
 // collisions acceptable (it's a secondary cue, not an identifier).

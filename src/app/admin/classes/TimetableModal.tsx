@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
-import { stripWeekday, levelColor, UNSET_SUBJECT_COLOR } from '@/lib/timetable';
+import { stripWeekday, levelColor, UNSET_SUBJECT_COLOR, MORANDI_PALETTE } from '@/lib/timetable';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -91,14 +91,25 @@ export default function TimetableModal({ open, onClose, classes, onClassClick }:
               </button>
             </div>
             {subjects.map((subject) => (
-              <div key={subject} className="flex items-center gap-2 py-1 text-sm text-ink">
+              <div key={subject} className="flex flex-wrap items-center gap-2 py-1.5 text-sm text-ink">
                 <span className="w-20 font-medium">{subject}</span>
-                <input
-                  type="color"
-                  value={colors[subject] ?? UNSET_SUBJECT_COLOR}
-                  onChange={(e) => handleColorChange(subject, e.target.value)}
-                  className="h-6 w-6 cursor-pointer border-none bg-transparent p-0"
-                />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {MORANDI_PALETTE.map((color) => {
+                    const selected = colors[subject] === color;
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`${subject}：${color}`}
+                        onClick={() => handleColorChange(subject, color)}
+                        className={`h-6 w-6 rounded-md transition-[transform,box-shadow] ${
+                          selected ? 'scale-110 ring-2 ring-ink ring-offset-1' : 'hover:scale-110'
+                        }`}
+                        style={{ background: color }}
+                      />
+                    );
+                  })}
+                </div>
                 {!colors[subject] && (
                   <span className="rounded-full bg-pendingBg px-2 py-0.5 text-xs text-pending">尚未設定</span>
                 )}
@@ -137,11 +148,11 @@ export default function TimetableModal({ open, onClose, classes, onClassClick }:
                       className="absolute bottom-0 right-0 top-0 w-1.5"
                       style={{ background: levelColor(c.level) }}
                     />
-                    <p className="text-xs font-bold text-white">{stripWeekday(c.name)}</p>
-                    <p className="mt-0.5 text-[11px] text-white/85">
+                    <p className="text-xs font-bold text-brandInk">{stripWeekday(c.name)}</p>
+                    <p className="mt-0.5 text-[11px] text-brandInk/80">
                       {c.startTime}-{c.endTime}
                     </p>
-                    <p className="text-[10px] text-white/70">
+                    <p className="text-[10px] text-brandInk/60">
                       {c.teacher.user.name}・{c.level}
                     </p>
                   </button>
