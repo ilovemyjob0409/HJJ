@@ -8,6 +8,7 @@ import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import TimetableModal from './TimetableModal';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -44,6 +45,7 @@ export default function ClassesPage() {
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
   const [editError, setEditError] = useState('');
+  const [showTimetable, setShowTimetable] = useState(false);
 
   async function load() {
     const [classesRes, teachersRes] = await Promise.all([fetch('/api/classes'), fetch('/api/teachers')]);
@@ -169,6 +171,9 @@ export default function ClassesPage() {
           className="max-w-md"
         />
         {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增班級</Button>}
+        <Button variant="secondary" className="ml-auto" onClick={() => setShowTimetable(true)}>
+          週課表
+        </Button>
       </div>
       {showAddForm && (
         <Card className="mb-6 max-w-md">
@@ -257,6 +262,8 @@ export default function ClassesPage() {
           </div>
         )}
       </Modal>
+
+      <TimetableModal open={showTimetable} onClose={() => setShowTimetable(false)} classes={classes} />
     </>
   );
 }
