@@ -141,11 +141,11 @@ export default function TimetableModal({ open, onClose, classes, onClassClick }:
                     key={c.id}
                     type="button"
                     onClick={onClassClick ? () => onClassClick(c.id) : undefined}
-                    className="relative overflow-hidden rounded-md py-1.5 pl-2 pr-3.5 text-left transition-[filter] hover:brightness-110"
+                    className="relative overflow-hidden rounded-md py-1.5 pl-2 pr-4 text-left transition-[filter] hover:brightness-110"
                     style={{ background: colors[c.subject] ?? UNSET_SUBJECT_COLOR }}
                   >
                     <span
-                      className="absolute bottom-0 right-0 top-0 w-1.5"
+                      className="absolute bottom-0 right-0 top-0 w-2.5"
                       style={{ background: levelColor(c.level) }}
                     />
                     <p className="text-xs font-bold text-brandInk">{stripWeekday(c.name)}</p>

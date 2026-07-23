@@ -11,17 +11,17 @@ export function stripWeekday(name: string): string {
     .trim();
 }
 
-// Mid-dark Morandi tones — one step deeper than MORANDI_PALETTE so the
-// level accent bar stays visible against the bright pastel card colors.
+// Deep Morandi tones — several steps darker than MORANDI_PALETTE so the
+// level accent bar clearly pops against the light pastel card colors.
 export const LEVEL_PALETTE = [
-  '#A67F78', // 豆沙紅
-  '#A38F71', // 駝
-  '#8D7B6C', // 灰褐
-  '#8A9A7B', // 橄欖綠
-  '#6B7D71', // 墨綠
-  '#7A8B99', // 霧藍
-  '#8C7F94', // 灰紫
-  '#9A8492', // 藕紫
+  '#8F6A62', // 深豆沙紅
+  '#8A775C', // 深駝
+  '#75655A', // 深灰褐
+  '#718264', // 深橄欖綠
+  '#57685D', // 深墨綠
+  '#637585', // 深霧藍
+  '#75687D', // 深灰紫
+  '#816C7A', // 深藕紫
 ] as const;
 
 export const UNSET_SUBJECT_COLOR = '#9a9a9a';
