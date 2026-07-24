@@ -12,9 +12,10 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   rowClassName?: (row: T) => string;
   onRowMouseLeave?: (row: T) => void;
+  footer?: ReactNode;
 }
 
-export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowClassName, onRowMouseLeave }: DataTableProps<T>) {
+export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowClassName, onRowMouseLeave, footer }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto rounded-lg border border-borderSubtle">
       <table className="w-full table-auto border-collapse text-sm md:table-fixed">
@@ -54,6 +55,7 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
           })}
         </tbody>
       </table>
+      {footer}
     </div>
   );
 }

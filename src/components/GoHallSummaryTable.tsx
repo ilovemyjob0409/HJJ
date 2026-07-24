@@ -1,9 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import Input from '@/components/ui/Input';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { matchesGoHallSummarySearch } from './goHallSummarySearch';
 
 export interface GoHallSummaryRow {
   id: string;
@@ -12,8 +16,18 @@ export interface GoHallSummaryRow {
   registeredCount: number;
 }
 
-export default function GoHallSummaryTable({ rows, basePath }: { rows: GoHallSummaryRow[]; basePath: string }) {
+export default function GoHallSummaryTable({
+  rows,
+  basePath,
+  searchable = false,
+}: {
+  rows: GoHallSummaryRow[];
+  basePath: string;
+  searchable?: boolean;
+}) {
   const router = useRouter();
+  const [search, setSearch] = useState('');
+  const filteredRows = searchable ? rows.filter((r) => matchesGoHallSummarySearch(r, search)) : rows;
 
   const columns: Column<GoHallSummaryRow>[] = [
     { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
@@ -30,14 +44,27 @@ export default function GoHallSummaryTable({ rows, basePath }: { rows: GoHallSum
   ];
 
   return (
-    <Card>
-      <DataTable
-        columns={columns}
-        rows={rows}
-        keyField={(r) => r.id}
-        onRowClick={(r) => router.push(`${basePath}?highlight=${r.id}`)}
-        rowClassName={() => 'cursor-pointer hover:bg-stripe'}
-      />
-    </Card>
+    <>
+      {searchable && (
+        <div className="mb-3">
+          <Input
+            placeholder="搜尋日期或狀態"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-md"
+          />
+        </div>
+      )}
+      <Card>
+        <CollapsibleDataTable
+          columns={columns}
+          rows={filteredRows}
+          keyField={(r) => r.id}
+          onRowClick={(r) => router.push(`${basePath}?highlight=${r.id}`)}
+          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+          maxRows={searchable ? (search.trim() ? undefined : 3) : undefined}
+        />
+      </Card>
+    </>
   );
 }

@@ -7,25 +7,13 @@ import { listAllSessions } from '@/lib/services/goHallService';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
-import DataTable, { Column } from '@/components/ui/DataTable';
-import StatusBadge from '@/components/ui/StatusBadge';
 import LeaveRecordsTable from './LeaveRecordsTable';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import SubstituteHistoryTable from './SubstituteHistoryTable';
 
 // Without this, Next.js prerenders the pending counts once at build time
 // (this page has no cookie/header access to auto-trigger dynamic rendering)
 // and serves that frozen snapshot to every admin until the next deploy.
 export const dynamic = 'force-dynamic';
-
-interface SubstituteRow {
-  id: string;
-  date: Date;
-  reason: string;
-  status: string;
-  class: { name: string };
-  originalTeacher: { user: { name: string } };
-  substituteTeacher: { user: { name: string } } | null;
-}
 
 export default async function AdminDashboard() {
   const session = await getServerSession(authOptions);
@@ -43,15 +31,6 @@ export default async function AdminDashboard() {
     capacity: s.capacity,
     registeredCount: s._count.registrations,
   }));
-
-  const substituteColumns: Column<SubstituteRow>[] = [
-    { header: '班級', render: (r) => r.class.name },
-    { header: '原老師', render: (r) => r.originalTeacher.user.name },
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
-    { header: '原因', render: (r) => r.reason },
-    { header: '代課老師', render: (r) => r.substituteTeacher?.user.name ?? '-' },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
-  ];
 
   return (
     <>
@@ -75,12 +54,10 @@ export default async function AdminDashboard() {
       <LeaveRecordsTable rows={allLeaves} />
 
       <h2 className="mb-2 mt-6 font-bold text-ink">安排代課紀錄</h2>
-      <Card>
-        <DataTable columns={substituteColumns} rows={allSubstitutes} keyField={(r) => r.id} />
-      </Card>
+      <SubstituteHistoryTable rows={allSubstitutes} />
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
-      <GoHallSummaryTable rows={goHallRows} basePath="/admin/go-hall" />
+      <GoHallSummaryTable rows={goHallRows} basePath="/admin/go-hall" searchable />
     </>
   );
 }

@@ -6,11 +6,13 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { previewSessionDates } from '@/lib/goHallDates';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { matchesSessionSearch } from './sessionSearch';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -56,6 +58,7 @@ function AdminGoHallContent() {
   const [excludedDates, setExcludedDates] = useState<Set<number>>(new Set());
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
   const [highlightDismissed, setHighlightDismissed] = useState(false);
+  const [search, setSearch] = useState('');
 
   async function load() {
     const [sessionsRes, teachersRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/teachers')]);
@@ -134,6 +137,8 @@ function AdminGoHallContent() {
     showToast('已移除');
     load();
   }
+
+  const filteredSessions = sessions.filter((s) => matchesSessionSearch(s, search));
 
   const columns: Column<SessionRow>[] = [
     { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW') },
@@ -250,16 +255,25 @@ function AdminGoHallContent() {
         </Card>
       )}
 
+      <div className="mb-3">
+        <Input
+          placeholder="搜尋日期、時間或老師"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+      </div>
       <Card>
-        <DataTable
+        <CollapsibleDataTable
           columns={columns}
-          rows={sessions}
+          rows={filteredSessions}
           keyField={(s) => s.id}
           onRowClick={(s) => openRoster(s.id)}
           rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-stripe')}
           onRowMouseLeave={(s) => {
             if (s.id === highlightId) setHighlightDismissed(true);
           }}
+          maxRows={search.trim() || highlightId ? undefined : 3}
         />
       </Card>
 
