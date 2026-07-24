@@ -13,11 +13,16 @@ import {
   deleteActivity,
   listRegistrationsForStudent,
   getActivityDetail,
+  listCategories,
+  createCategory,
+  deleteCategory,
 } from './activityService';
 
 beforeEach(async () => {
   await prisma.activityRegistration.deleteMany();
+  await prisma.activityTeacher.deleteMany();
   await prisma.activity.deleteMany();
+  await prisma.activityCategory.deleteMany();
   await prisma.goHallRegistration.deleteMany();
   await prisma.goHallSession.deleteMany();
   await prisma.substituteRequest.deleteMany();
@@ -32,34 +37,42 @@ beforeEach(async () => {
 });
 
 describe('createActivity / listAllActivities', () => {
-  it('creates an activity and lists activities soonest-startDate-first with registration count and roster', async () => {
+  it('creates an activity and lists activities soonest-startDate-first with registration count, category, and teachers', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const otherTeacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    const camp = await createCategory('營隊');
+    const lecture = await createCategory('講座');
 
     await createActivity({
       title: '暑期營隊',
       description: '為期三天的暑期營隊',
-      category: 'CAMP',
+      categoryId: camp.id,
       location: '活動中心',
       startDate: new Date(2026, 7, 15),
       endDate: new Date(2026, 7, 17),
       capacity: 20,
-      teacherId: teacher.id,
+      teacherIds: [teacher.id, otherTeacher.id],
     });
     await createActivity({
       title: '棋藝講座',
       description: '一日講座',
-      category: 'LECTURE',
+      categoryId: lecture.id,
       startDate: new Date(2026, 7, 1),
       endDate: new Date(2026, 7, 1),
       capacity: 30,
+      teacherIds: [teacher.id],
     });
 
     const activities = await listAllActivities();
     expect(activities).toHaveLength(2);
     expect(activities[0].title).toBe('棋藝講座');
     expect(activities[1].title).toBe('暑期營隊');
-    expect(activities[1].teacher?.user.name).toBe('陳老師');
-    expect(activities[0].teacher).toBeNull();
+    expect(activities[1].category.name).toBe('營隊');
+    const soonestTeacherNames = activities[1].teachers.map((t) => t.teacher.user.name);
+    expect(soonestTeacherNames).toHaveLength(2);
+    expect(soonestTeacherNames).toContain('陳老師');
+    expect(soonestTeacherNames).toContain('林老師');
+    expect(activities[0].teachers.map((t) => t.teacher.user.name)).toEqual(['陳老師']);
     expect(activities[0]._count.registrations).toBe(0);
     expect(activities[0].registrations).toEqual([]);
   });
@@ -69,39 +82,65 @@ describe('listActivitiesForTeacher', () => {
   it('returns only activities assigned to the given teacher', async () => {
     const teacherA = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
     const teacherB = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     await createActivity({
       title: 'A 活動',
       description: 'a',
-      category: 'CAMP',
+      categoryId: category.id,
       startDate: new Date(2026, 7, 1),
       endDate: new Date(2026, 7, 1),
       capacity: 10,
-      teacherId: teacherA.id,
+      teacherIds: [teacherA.id],
     });
     await createActivity({
       title: 'B 活動',
       description: 'b',
-      category: 'CAMP',
+      categoryId: category.id,
       startDate: new Date(2026, 7, 2),
       endDate: new Date(2026, 7, 2),
       capacity: 10,
-      teacherId: teacherB.id,
+      teacherIds: [teacherB.id],
     });
 
     const results = await listActivitiesForTeacher(teacherA.id);
     expect(results).toHaveLength(1);
     expect(results[0].title).toBe('A 活動');
   });
+
+  it('returns an activity assigned to multiple teachers for each assigned teacher, and not for an unassigned one', async () => {
+    const teacherA = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const teacherB = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    const teacherC = await createTeacher({ name: '王老師', email: 'wang@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    await createActivity({
+      title: '共同帶領活動',
+      description: 'x',
+      categoryId: category.id,
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 1),
+      capacity: 10,
+      teacherIds: [teacherA.id, teacherB.id],
+    });
+
+    const resultsA = await listActivitiesForTeacher(teacherA.id);
+    const resultsB = await listActivitiesForTeacher(teacherB.id);
+    const resultsC = await listActivitiesForTeacher(teacherC.id);
+    expect(resultsA).toHaveLength(1);
+    expect(resultsB).toHaveLength(1);
+    expect(resultsC).toHaveLength(0);
+  });
 });
 
 describe('listOpenActivitiesForStudent', () => {
   it('excludes an activity whose endDate is in the past and includes one ending today or later', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    await createActivity({ title: '已結束活動', description: 'x', category: 'CAMP', startDate: yesterday, endDate: yesterday, capacity: 10 });
-    await createActivity({ title: '進行中活動', description: 'x', category: 'CAMP', startDate: tomorrow, endDate: tomorrow, capacity: 10 });
+    await createActivity({ title: '已結束活動', description: 'x', categoryId: category.id, startDate: yesterday, endDate: yesterday, capacity: 10, teacherIds: [teacher.id] });
+    await createActivity({ title: '進行中活動', description: 'x', categoryId: category.id, startDate: tomorrow, endDate: tomorrow, capacity: 10, teacherIds: [teacher.id] });
 
     const results = await listOpenActivitiesForStudent();
     expect(results).toHaveLength(1);
@@ -111,8 +150,10 @@ describe('listOpenActivitiesForStudent', () => {
 
 describe('registerForActivity', () => {
   it('creates a registration when under capacity', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
 
     const registration = await registerForActivity(activity.id, student.id);
@@ -121,9 +162,11 @@ describe('registerForActivity', () => {
   });
 
   it('throws ACTIVITY_FULL once capacity is reached', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 1 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 1, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     await registerForActivity(activity.id, studentA.id);
 
@@ -131,9 +174,11 @@ describe('registerForActivity', () => {
   });
 
   it('allows only one of two concurrent registrations to succeed when capacity is 1', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 1 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 1, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
 
     const results = await Promise.allSettled([registerForActivity(activity.id, studentA.id), registerForActivity(activity.id, studentB.id)]);
@@ -151,8 +196,10 @@ describe('registerForActivity', () => {
 
 describe('cancelRegistration', () => {
   it('deletes the registration when the student owns it', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     const registration = await registerForActivity(activity.id, student.id);
 
@@ -163,9 +210,11 @@ describe('cancelRegistration', () => {
   });
 
   it('throws NOT_OWNER when a different student tries to cancel it', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     const registration = await registerForActivity(activity.id, student.id);
 
@@ -175,8 +224,10 @@ describe('cancelRegistration', () => {
 
 describe('adminRemoveRegistration', () => {
   it('deletes the registration regardless of owner', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     const registration = await registerForActivity(activity.id, student.id);
 
@@ -188,9 +239,11 @@ describe('adminRemoveRegistration', () => {
 });
 
 describe('deleteActivity', () => {
-  it('removes the activity along with its registrations, leaving no orphaned row', async () => {
+  it('removes the activity along with its registrations and teacher assignments, leaving no orphaned row', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     await registerForActivity(activity.id, student.id);
 
@@ -198,16 +251,20 @@ describe('deleteActivity', () => {
 
     const remainingActivities = await prisma.activity.count();
     const remainingRegistrations = await prisma.activityRegistration.count();
+    const remainingTeacherLinks = await prisma.activityTeacher.count();
     expect(remainingActivities).toBe(0);
     expect(remainingRegistrations).toBe(0);
+    expect(remainingTeacherLinks).toBe(0);
   });
 });
 
 describe('listRegistrationsForStudent', () => {
   it("returns only the given student's registrations, with activity details", async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     await registerForActivity(activity.id, student.id);
     await registerForActivity(activity.id, otherStudent.id);
@@ -220,25 +277,67 @@ describe('listRegistrationsForStudent', () => {
 });
 
 describe('getActivityDetail', () => {
-  it('returns activity info with the full (unmasked) roster', async () => {
-    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+  it('returns activity info with the full (unmasked) roster, category, and all assigned teachers', async () => {
+    const teacherA = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const teacherB = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
     const student = await createStudent({ name: '王大明', email: 'wang@example.com', password: 'x' });
     await createActivity({
       title: '營隊',
       description: 'x',
-      category: 'CAMP',
+      categoryId: category.id,
       startDate: new Date(2026, 7, 1),
       endDate: new Date(2026, 7, 1),
       capacity: 8,
-      teacherId: teacher.id,
+      teacherIds: [teacherA.id, teacherB.id],
     });
     const activity = await prisma.activity.findFirstOrThrow();
     await registerForActivity(activity.id, student.id);
 
     const detail = await getActivityDetail(activity.id);
-    expect(detail.teacher?.user.name).toBe('陳老師');
+    const teacherNames = detail.teachers.map((t) => t.teacher.user.name);
+    expect(teacherNames).toHaveLength(2);
+    expect(teacherNames).toContain('陳老師');
+    expect(teacherNames).toContain('林老師');
+    expect(detail.category.name).toBe('營隊');
     expect(detail.registrations).toHaveLength(1);
     expect(detail.registrations[0].student.user.name).toBe('王大明');
+  });
+});
+
+describe('listCategories / createCategory / deleteCategory', () => {
+  it('creates categories and lists all of them', async () => {
+    await createCategory('講座');
+    await createCategory('營隊');
+
+    const categories = await listCategories();
+    const names = categories.map((c) => c.name);
+    expect(names).toHaveLength(2);
+    expect(names).toContain('營隊');
+    expect(names).toContain('講座');
+  });
+
+  it('throws CATEGORY_IN_USE when deleting a category still used by an activity', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
+
+    await expect(deleteCategory(category.id)).rejects.toThrow('CATEGORY_IN_USE');
+  });
+
+  it('deletes a category that is not used by any activity', async () => {
+    const category = await createCategory('營隊');
+
+    await deleteCategory(category.id);
+
+    const remaining = await prisma.activityCategory.count();
+    expect(remaining).toBe(0);
+  });
+
+  it('rejects creating a category with a name that already exists', async () => {
+    await createCategory('營隊');
+
+    await expect(createCategory('營隊')).rejects.toThrow();
   });
 });
 
@@ -251,5 +350,7 @@ describe('getActivityDetail', () => {
 // leaves no residue for other files, regardless of run order.
 afterAll(async () => {
   await prisma.activityRegistration.deleteMany();
+  await prisma.activityTeacher.deleteMany();
   await prisma.activity.deleteMany();
+  await prisma.activityCategory.deleteMany();
 });
