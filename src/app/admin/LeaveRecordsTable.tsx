@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
+import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { matchesLeaveSearch } from './leaveSearch';
 
 interface LeaveRow {
   id: string;
@@ -23,6 +26,8 @@ interface LeaveRow {
 
 export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
   const router = useRouter();
+  const [search, setSearch] = useState('');
+  const filteredRows = rows.filter((r) => matchesLeaveSearch(r, search));
 
   const columns: Column<LeaveRow>[] = [
     { header: '學生', render: (r) => r.student.user.name },
@@ -52,14 +57,25 @@ export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
   }
 
   return (
-    <Card>
-      <DataTable
-        columns={columns}
-        rows={rows}
-        keyField={(r) => r.id}
-        onRowClick={handleRowClick}
-        rowClassName={(r) => (r.makeupRequest?.status === 'PENDING_ADMIN' ? 'cursor-pointer hover:bg-stripe' : '')}
-      />
-    </Card>
+    <>
+      <div className="mb-3">
+        <Input
+          placeholder="搜尋學生、班級或補課狀態"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+      </div>
+      <Card>
+        <DataTable
+          columns={columns}
+          rows={filteredRows}
+          keyField={(r) => r.id}
+          onRowClick={handleRowClick}
+          rowClassName={(r) => (r.makeupRequest?.status === 'PENDING_ADMIN' ? 'cursor-pointer hover:bg-stripe' : '')}
+          maxRows={search.trim() ? undefined : 3}
+        />
+      </Card>
+    </>
   );
 }
