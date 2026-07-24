@@ -7,18 +7,17 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
-import { ACTIVITY_CATEGORY_LABELS, ActivityCategoryValue } from '@/lib/activityCategory';
 
 interface ActivityStudentRow {
   id: string;
   title: string;
   description: string;
-  category: ActivityCategoryValue;
+  category: { name: string };
   location: string | null;
   startDate: string;
   endDate: string;
   capacity: number;
-  teacher: { user: { name: string } } | null;
+  teachers: { teacher: { user: { name: string } } }[];
   _count: { registrations: number };
 }
 
@@ -79,10 +78,10 @@ export default function StudentActivitiesPage() {
 
   const openColumns: Column<ActivityStudentRow>[] = [
     { header: '標題', render: (a) => a.title },
-    { header: '分類', render: (a) => ACTIVITY_CATEGORY_LABELS[a.category] },
+    { header: '分類', render: (a) => a.category.name },
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
     { header: '地點', render: (a) => a.location ?? '-' },
-    { header: '老師', render: (a) => a.teacher?.user.name ?? '-' },
+    { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
     { header: '剩餘名額', render: (a) => Math.max(a.capacity - a._count.registrations, 0) },
     {
       header: '操作',
@@ -96,7 +95,7 @@ export default function StudentActivitiesPage() {
 
   const myColumns: Column<RegistrationRow>[] = [
     { header: '標題', render: (r) => r.activity.title },
-    { header: '分類', render: (r) => ACTIVITY_CATEGORY_LABELS[r.activity.category] },
+    { header: '分類', render: (r) => r.activity.category.name },
     { header: '日期區間', render: (r) => formatActivityDateRange(r.activity.startDate, r.activity.endDate, 'zh-TW') },
     {
       header: '操作',
@@ -139,8 +138,8 @@ export default function StudentActivitiesPage() {
         {viewing && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-inkMuted">
-              {ACTIVITY_CATEGORY_LABELS[viewing.category]} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
-              {viewing.teacher?.user.name ?? '無指派老師'}
+              {viewing.category.name} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
+              {viewing.teachers.map((t) => t.teacher.user.name).join('、')}
             </p>
             {viewing.registrations.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生報名</p>
