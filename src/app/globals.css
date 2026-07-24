@@ -71,18 +71,20 @@ button:not(:disabled) {
   cursor: pointer;
 }
 
-/* Chrome renders the unset yyyy/mm/dd segments of a date input with a
-   translucent default color; over our warm dark-brown surfaces that
-   blend reads as amber instead of neutral gray. Pin it to the same
-   gray-400 every other placeholder in the app uses (Tailwind's default
-   ::placeholder color) so it's always a plain neutral, filled or not,
-   in either theme. */
+/* Chrome/Safari render the unset yyyy/mm/dd segments of a date input
+   with a translucent default color; over our warm dark-brown surfaces
+   that blend reads as amber instead of neutral gray. Pin it to the
+   same gray-400 every other placeholder in the app uses (Tailwind's
+   default ::placeholder color) so it's always a plain neutral, filled
+   or not, in either theme. Safari ignores `color` on these internal
+   segments and only honors `-webkit-text-fill-color`, so set both. */
 input[type='date']::-webkit-datetime-edit-fields-wrapper,
 input[type='date']::-webkit-datetime-edit-text,
 input[type='date']::-webkit-datetime-edit-year-field,
 input[type='date']::-webkit-datetime-edit-month-field,
 input[type='date']::-webkit-datetime-edit-day-field {
   color: #9ca3af;
+  -webkit-text-fill-color: #9ca3af;
 }
 
 /* Now that the select background matches the surrounding card/page
