@@ -11,6 +11,7 @@ import {
   listPendingMakeupRequests,
   decideMakeupRequest,
   listInsertionsForTeacherClasses,
+  getMakeupQuotaStatus,
 } from './makeupRequestService';
 
 beforeEach(async () => {
@@ -135,6 +136,27 @@ describe('createOneOnOneMakeupRequest', () => {
     ).rejects.toThrow('QUOTA_EXCEEDED');
   });
 
+  it('throws QUOTA_EXCEEDED when the total quarterly quota (2) is already used by insertions alone', async () => {
+    const { teacher, student, classA, classB, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
+
+    const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 30), reason: '事假' });
+
+    await expect(
+      createOneOnOneMakeupRequest({
+        leaveRequestId: thirdLeave.id,
+        studentId: student.id,
+        teacherId: teacher.id,
+        slotDate: new Date(2026, 6, 15),
+        slotStartTime: '16:00',
+        slotEndTime: '17:00',
+      })
+    ).rejects.toThrow('QUOTA_EXCEEDED');
+  });
+
   it('allows only one of two concurrent requests for the same teacher/slot to succeed', async () => {
     const { teacher, student, leave } = await setup();
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
@@ -204,6 +226,40 @@ describe('createOneOnOneMakeupRequest', () => {
       where: { type: 'ONE_ON_ONE', leaveRequest: { studentId: student.id } },
     });
     expect(created).toBe(1);
+  });
+});
+
+describe('getMakeupQuotaStatus', () => {
+  it('returns full quota when nothing has been used this quarter', async () => {
+    const { student } = await setup();
+    const quota = await getMakeupQuotaStatus(student.id);
+    expect(quota).toEqual({ insertionRemaining: 2, oneOnOneRemaining: 1 });
+  });
+
+  it('reduces both remaining counts after a one-on-one request', async () => {
+    const { teacher, student, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date(2026, 6, 15),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+
+    const quota = await getMakeupQuotaStatus(student.id);
+    expect(quota).toEqual({ insertionRemaining: 1, oneOnOneRemaining: 0 });
+  });
+
+  it('reduces insertion remaining to zero and keeps one-on-one at zero after two insertions', async () => {
+    const { student, classA, classB, leave } = await setup();
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
+
+    const quota = await getMakeupQuotaStatus(student.id);
+    expect(quota).toEqual({ insertionRemaining: 0, oneOnOneRemaining: 0 });
   });
 });
 
