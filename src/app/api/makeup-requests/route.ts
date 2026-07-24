@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   if (!leave) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const eligibleClasses = await listClassesBySubjectAndLevel(leave.class.subject, leave.class.level, leave.classId);
-  const quota = await getMakeupQuotaStatus(student.id);
+  const quota = await getMakeupQuotaStatus(student.id, leave.classId);
   return NextResponse.json({ eligibleClasses, quota });
 }
 

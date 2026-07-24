@@ -19,13 +19,13 @@ type ClientType = typeof prisma | Omit<typeof prisma, '$connect' | '$disconnect'
 // write-path quota checks in createOneOnOneMakeupRequestTx /
 // createInsertionMakeupRequestTx (which pass their `tx` client so the count
 // is read inside the same serializable transaction as the check-then-act).
-async function getQuotaCounts(client: ClientType, studentId: string, start: Date, end: Date) {
+async function getQuotaCounts(client: ClientType, studentId: string, classId: string, start: Date, end: Date) {
   const [totalUsed, oneOnOneUsed] = await Promise.all([
     client.makeupRequest.count({
       where: {
         type: { in: ['INSERTION', 'ONE_ON_ONE'] },
         status: { in: ['PENDING_ADMIN', 'APPROVED'] },
-        leaveRequest: { studentId },
+        leaveRequest: { studentId, classId },
         createdAt: { gte: start, lte: end },
       },
     }),
@@ -33,7 +33,7 @@ async function getQuotaCounts(client: ClientType, studentId: string, start: Date
       where: {
         type: 'ONE_ON_ONE',
         status: { in: ['PENDING_ADMIN', 'APPROVED'] },
-        leaveRequest: { studentId },
+        leaveRequest: { studentId, classId },
         createdAt: { gte: start, lte: end },
       },
     }),
@@ -41,9 +41,9 @@ async function getQuotaCounts(client: ClientType, studentId: string, start: Date
   return { totalUsed, oneOnOneUsed };
 }
 
-export async function getMakeupQuotaStatus(studentId: string): Promise<MakeupQuotaStatus> {
+export async function getMakeupQuotaStatus(studentId: string, classId: string): Promise<MakeupQuotaStatus> {
   const { start, end } = getQuarterRange(new Date());
-  const { totalUsed, oneOnOneUsed } = await getQuotaCounts(prisma, studentId, start, end);
+  const { totalUsed, oneOnOneUsed } = await getQuotaCounts(prisma, studentId, classId, start, end);
 
   const totalRemaining = Math.max(0, TOTAL_QUARTER_LIMIT - totalUsed);
   const oneOnOneRemaining = Math.min(Math.max(0, ONE_ON_ONE_QUARTER_LIMIT - oneOnOneUsed), totalRemaining);
@@ -65,10 +65,10 @@ function createInsertionMakeupRequestTx(input: CreateInsertionInput) {
   return prisma.$transaction(async (tx) => {
     const leave = await tx.leaveRequest.findUniqueOrThrow({
       where: { id: input.leaveRequestId },
-      select: { studentId: true },
+      select: { studentId: true, classId: true },
     });
     const { start, end } = getQuarterRange(new Date());
-    const { totalUsed } = await getQuotaCounts(tx, leave.studentId, start, end);
+    const { totalUsed } = await getQuotaCounts(tx, leave.studentId, leave.classId, start, end);
     if (totalUsed >= TOTAL_QUARTER_LIMIT) throw new Error('QUOTA_EXCEEDED');
 
     return tx.makeupRequest.create({
@@ -99,8 +99,12 @@ export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
 
 function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
   return prisma.$transaction(async (tx) => {
+    const leave = await tx.leaveRequest.findUniqueOrThrow({
+      where: { id: input.leaveRequestId },
+      select: { classId: true },
+    });
     const { start, end } = getQuarterRange(new Date());
-    const { totalUsed, oneOnOneUsed } = await getQuotaCounts(tx, input.studentId, start, end);
+    const { totalUsed, oneOnOneUsed } = await getQuotaCounts(tx, input.studentId, leave.classId, start, end);
     if (oneOnOneUsed >= ONE_ON_ONE_QUARTER_LIMIT || totalUsed >= TOTAL_QUARTER_LIMIT) {
       throw new Error('QUOTA_EXCEEDED');
     }
