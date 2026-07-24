@@ -58,15 +58,29 @@ export interface CreateInsertionInput {
 }
 
 export function createInsertionMakeupRequest(input: CreateInsertionInput) {
-  return prisma.makeupRequest.create({
-    data: {
-      leaveRequestId: input.leaveRequestId,
-      type: 'INSERTION',
-      status: 'PENDING_ADMIN',
-      targetClassId: input.targetClassId,
-      targetDate: input.targetDate,
-    },
-  });
+  return runSerializableWithRetry(() => createInsertionMakeupRequestTx(input));
+}
+
+function createInsertionMakeupRequestTx(input: CreateInsertionInput) {
+  return prisma.$transaction(async (tx) => {
+    const leave = await tx.leaveRequest.findUniqueOrThrow({
+      where: { id: input.leaveRequestId },
+      select: { studentId: true },
+    });
+    const { start, end } = getQuarterRange(new Date());
+    const { totalUsed } = await getQuotaCounts(tx, leave.studentId, start, end);
+    if (totalUsed >= TOTAL_QUARTER_LIMIT) throw new Error('QUOTA_EXCEEDED');
+
+    return tx.makeupRequest.create({
+      data: {
+        leaveRequestId: input.leaveRequestId,
+        type: 'INSERTION',
+        status: 'PENDING_ADMIN',
+        targetClassId: input.targetClassId,
+        targetDate: input.targetDate,
+      },
+    });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export interface CreateOneOnOneInput {

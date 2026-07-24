@@ -45,6 +45,19 @@ describe('createInsertionMakeupRequest', () => {
     expect(makeup.type).toBe('INSERTION');
     expect(makeup.status).toBe('PENDING_ADMIN');
   });
+
+  it('throws QUOTA_EXCEEDED when the student already has 2 requests this quarter', async () => {
+    const { student, classA, classB, leave } = await setup();
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
+
+    const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 30), reason: '事假' });
+
+    await expect(
+      createInsertionMakeupRequest({ leaveRequestId: thirdLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 1) })
+    ).rejects.toThrow('QUOTA_EXCEEDED');
+  });
 });
 
 describe('createOneOnOneMakeupRequest', () => {
