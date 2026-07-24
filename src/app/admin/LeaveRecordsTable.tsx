@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { matchesLeaveSearch } from './leaveSearch';
@@ -67,7 +68,7 @@ export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
         />
       </div>
       <Card>
-        <DataTable
+        <CollapsibleDataTable
           columns={columns}
           rows={filteredRows}
           keyField={(r) => r.id}

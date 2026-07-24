@@ -57,7 +57,7 @@ export default async function AdminDashboard() {
       <SubstituteHistoryTable rows={allSubstitutes} />
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
-      <GoHallSummaryTable rows={goHallRows} basePath="/admin/go-hall" />
+      <GoHallSummaryTable rows={goHallRows} basePath="/admin/go-hall" searchable />
     </>
   );
 }
