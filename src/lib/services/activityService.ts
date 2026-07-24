@@ -116,3 +116,28 @@ export async function cancelRegistration(id: string, studentId: string) {
 export async function adminRemoveRegistration(id: string) {
   await prisma.activityRegistration.delete({ where: { id } });
 }
+
+export async function deleteActivity(id: string) {
+  await prisma.$transaction([
+    prisma.activityRegistration.deleteMany({ where: { activityId: id } }),
+    prisma.activity.delete({ where: { id } }),
+  ]);
+}
+
+export function listRegistrationsForStudent(studentId: string) {
+  return prisma.activityRegistration.findMany({
+    where: { studentId },
+    select: {
+      id: true,
+      activity: { select: ACTIVITY_STUDENT_LIST_SELECT },
+    },
+    orderBy: { activity: { startDate: 'desc' } },
+  });
+}
+
+export function getActivityDetail(id: string) {
+  return prisma.activity.findUniqueOrThrow({
+    where: { id },
+    select: ACTIVITY_LIST_SELECT,
+  });
+}

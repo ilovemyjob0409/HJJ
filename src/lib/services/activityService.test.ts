@@ -10,6 +10,9 @@ import {
   registerForActivity,
   cancelRegistration,
   adminRemoveRegistration,
+  deleteActivity,
+  listRegistrationsForStudent,
+  getActivityDetail,
 } from './activityService';
 
 beforeEach(async () => {
@@ -181,6 +184,61 @@ describe('adminRemoveRegistration', () => {
 
     const remaining = await prisma.activityRegistration.count();
     expect(remaining).toBe(0);
+  });
+});
+
+describe('deleteActivity', () => {
+  it('removes the activity along with its registrations, leaving no orphaned row', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    const activity = await prisma.activity.findFirstOrThrow();
+    await registerForActivity(activity.id, student.id);
+
+    await deleteActivity(activity.id);
+
+    const remainingActivities = await prisma.activity.count();
+    const remainingRegistrations = await prisma.activityRegistration.count();
+    expect(remainingActivities).toBe(0);
+    expect(remainingRegistrations).toBe(0);
+  });
+});
+
+describe('listRegistrationsForStudent', () => {
+  it("returns only the given student's registrations, with activity details", async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    const activity = await prisma.activity.findFirstOrThrow();
+    await registerForActivity(activity.id, student.id);
+    await registerForActivity(activity.id, otherStudent.id);
+
+    const results = await listRegistrationsForStudent(student.id);
+    expect(results).toHaveLength(1);
+    expect(results[0].activity.id).toBe(activity.id);
+    expect(results[0].activity.title).toBe('營隊');
+  });
+});
+
+describe('getActivityDetail', () => {
+  it('returns activity info with the full (unmasked) roster', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '王大明', email: 'wang@example.com', password: 'x' });
+    await createActivity({
+      title: '營隊',
+      description: 'x',
+      category: 'CAMP',
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 1),
+      capacity: 8,
+      teacherId: teacher.id,
+    });
+    const activity = await prisma.activity.findFirstOrThrow();
+    await registerForActivity(activity.id, student.id);
+
+    const detail = await getActivityDetail(activity.id);
+    expect(detail.teacher?.user.name).toBe('陳老師');
+    expect(detail.registrations).toHaveLength(1);
+    expect(detail.registrations[0].student.user.name).toBe('王大明');
   });
 });
 
