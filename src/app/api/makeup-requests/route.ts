@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { listClassesBySubjectAndLevel } from '@/lib/services/classService';
 import { listTeacherAvailability } from '@/lib/services/availabilityService';
-import { createInsertionMakeupRequest, createOneOnOneMakeupRequest } from '@/lib/services/makeupRequestService';
+import { createInsertionMakeupRequest, createOneOnOneMakeupRequest, getMakeupQuotaStatus } from '@/lib/services/makeupRequestService';
 
 // Fetches the leave request and verifies it belongs to the given student.
 // Returns null (rather than throwing) when missing or owned by someone else,
@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
   if (!leave) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const eligibleClasses = await listClassesBySubjectAndLevel(leave.class.subject, leave.class.level, leave.classId);
-  return NextResponse.json({ eligibleClasses });
+  const quota = await getMakeupQuotaStatus(student.id);
+  return NextResponse.json({ eligibleClasses, quota });
 }
 
 export async function POST(req: NextRequest) {
