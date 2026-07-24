@@ -25,6 +25,8 @@
 New files:
 - `src/components/ui/dataTableRows.ts` — pure `getVisibleRows` helper used by `DataTable`.
 - `src/components/ui/dataTableRows.test.ts`
+- `src/lib/searchMatch.ts` — pure `matchesKeyword` helper shared by all 4 per-table search predicates, so the trim/lowercase/join/includes logic exists in exactly one place.
+- `src/lib/searchMatch.test.ts`
 - `src/app/admin/leaveSearch.ts` — search predicate for leave records.
 - `src/app/admin/leaveSearch.test.ts`
 - `src/app/admin/substituteSearch.ts` — search predicate for substitute history.
@@ -53,6 +55,7 @@ Modified files:
 
 **Interfaces:**
 - Produces: `getVisibleRows<T>(rows: T[], maxRows: number | undefined, expanded: boolean): T[]` — exported from `src/components/ui/dataTableRows.ts`, used by later tasks' understanding of how collapse works (no other task imports it directly).
+- Produces: `matchesKeyword(parts: string[], query: string): boolean` — exported from `src/lib/searchMatch.ts`. Tasks 2–5 each import this and call it with their own `parts` array instead of re-implementing the trim/lowercase/join/includes logic.
 - Produces: `DataTable<T>` gains prop `maxRows?: number` (all existing props unchanged). Tasks 2–5 pass `maxRows={3}` or `maxRows={search.trim() ? undefined : 3}` to it.
 
 - [ ] **Step 1: Write the failing test for `getVisibleRows`**
@@ -103,7 +106,64 @@ export function getVisibleRows<T>(rows: T[], maxRows: number | undefined, expand
 Run: `npx vitest run src/components/ui/dataTableRows.test.ts`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Wire `maxRows` into `DataTable`**
+- [ ] **Step 5: Write the failing test for `matchesKeyword`**
+
+Create `src/lib/searchMatch.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { matchesKeyword } from './searchMatch';
+
+describe('matchesKeyword', () => {
+  it('returns true for an empty query', () => {
+    expect(matchesKeyword(['王小明', '週三班'], '')).toBe(true);
+  });
+
+  it('returns true when the query matches any part', () => {
+    expect(matchesKeyword(['王小明', '週三班'], '週三')).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(matchesKeyword(['John Smith'], 'john')).toBe(true);
+  });
+
+  it('trims whitespace from the query', () => {
+    expect(matchesKeyword(['王小明'], '  小明  ')).toBe(true);
+  });
+
+  it('returns false when no part matches', () => {
+    expect(matchesKeyword(['王小明', '週三班'], '不存在')).toBe(false);
+  });
+
+  it('ignores empty-string parts', () => {
+    expect(matchesKeyword(['', '週三班'], '週三')).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 6: Run test to verify it fails**
+
+Run: `npx vitest run src/lib/searchMatch.test.ts`
+Expected: FAIL — `Failed to resolve import "./searchMatch"` (file doesn't exist yet).
+
+- [ ] **Step 7: Implement `matchesKeyword`**
+
+Create `src/lib/searchMatch.ts`:
+
+```ts
+export function matchesKeyword(parts: string[], query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return parts.join(' ').toLowerCase().includes(q);
+}
+```
+
+- [ ] **Step 8: Run test to verify it passes**
+
+Run: `npx vitest run src/lib/searchMatch.test.ts`
+Expected: PASS (6 tests).
+
+- [ ] **Step 9: Wire `maxRows` into `DataTable`**
 
 Replace the full contents of `src/components/ui/DataTable.tsx`:
 
@@ -199,16 +259,16 @@ export default function DataTable<T>({
 }
 ```
 
-- [ ] **Step 6: Type-check**
+- [ ] **Step 10: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: no new errors.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/components/ui/DataTable.tsx src/components/ui/dataTableRows.ts src/components/ui/dataTableRows.test.ts
-git commit -m "feat: add optional maxRows collapse/expand support to DataTable"
+git add src/components/ui/DataTable.tsx src/components/ui/dataTableRows.ts src/components/ui/dataTableRows.test.ts src/lib/searchMatch.ts src/lib/searchMatch.test.ts
+git commit -m "feat: add DataTable maxRows collapse/expand and shared search-match helper"
 ```
 
 ---
@@ -221,7 +281,7 @@ git commit -m "feat: add optional maxRows collapse/expand support to DataTable"
 - Modify: `src/app/admin/LeaveRecordsTable.tsx`
 
 **Interfaces:**
-- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1.
+- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1. Also consumes `matchesKeyword(parts: string[], query: string): boolean` from `src/lib/searchMatch.ts` (Task 1).
 - Produces: `matchesLeaveSearch(row: LeaveSearchRow, query: string): boolean`, exported from `src/app/admin/leaveSearch.ts`. Not consumed by any other task.
 
 - [ ] **Step 1: Write the failing tests**
@@ -306,6 +366,7 @@ Create `src/app/admin/leaveSearch.ts`:
 
 ```ts
 import { getStatusBadgeConfig } from '@/components/ui/StatusBadge';
+import { matchesKeyword } from '@/lib/searchMatch';
 
 interface LeaveSearchRow {
   student: { user: { name: string } };
@@ -318,9 +379,6 @@ interface LeaveSearchRow {
 }
 
 export function matchesLeaveSearch(row: LeaveSearchRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-
   const parts = [
     row.student.user.name,
     row.class.name,
@@ -328,7 +386,7 @@ export function matchesLeaveSearch(row: LeaveSearchRow, query: string): boolean 
     row.makeupRequest ? getStatusBadgeConfig(row.makeupRequest.status).label : '尚未申請',
   ];
 
-  return parts.join(' ').toLowerCase().includes(q);
+  return matchesKeyword(parts, query);
 }
 ```
 
@@ -448,7 +506,7 @@ git commit -m "feat: add search and 3-row collapse to leave records table"
 - Modify: `src/app/admin/page.tsx`
 
 **Interfaces:**
-- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1.
+- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1. Also consumes `matchesKeyword(parts: string[], query: string): boolean` from `src/lib/searchMatch.ts` (Task 1).
 - Produces: `matchesSubstituteSearch(row: SubstituteSearchRow, query: string): boolean` from `substituteSearch.ts`. `SubstituteHistoryTable` default export taking `{ rows: SubstituteRow[] }`, consumed by `admin/page.tsx` in this task.
 
 - [ ] **Step 1: Write the failing tests**
@@ -516,6 +574,7 @@ Create `src/app/admin/substituteSearch.ts`:
 
 ```ts
 import { getStatusBadgeConfig } from '@/components/ui/StatusBadge';
+import { matchesKeyword } from '@/lib/searchMatch';
 
 interface SubstituteSearchRow {
   reason: string;
@@ -526,9 +585,6 @@ interface SubstituteSearchRow {
 }
 
 export function matchesSubstituteSearch(row: SubstituteSearchRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-
   const parts = [
     row.class.name,
     row.originalTeacher.user.name,
@@ -537,7 +593,7 @@ export function matchesSubstituteSearch(row: SubstituteSearchRow, query: string)
     getStatusBadgeConfig(row.status).label,
   ];
 
-  return parts.join(' ').toLowerCase().includes(q);
+  return matchesKeyword(parts, query);
 }
 ```
 
@@ -699,7 +755,7 @@ git commit -m "feat: extract substitute history table with search and 3-row coll
 - Modify: `src/components/GoHallSummaryTable.tsx`
 
 **Interfaces:**
-- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1.
+- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1. Also consumes `matchesKeyword(parts: string[], query: string): boolean` from `src/lib/searchMatch.ts` (Task 1).
 - Produces: `matchesGoHallSummarySearch(row: GoHallSummarySearchRow, query: string): boolean`. Not consumed elsewhere.
 
 - [ ] **Step 1: Write the failing tests**
@@ -753,6 +809,7 @@ Create `src/components/goHallSummarySearch.ts`:
 
 ```ts
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { matchesKeyword } from '@/lib/searchMatch';
 
 interface GoHallSummarySearchRow {
   date: Date;
@@ -761,13 +818,10 @@ interface GoHallSummarySearchRow {
 }
 
 export function matchesGoHallSummarySearch(row: GoHallSummarySearchRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-
   const statusLabel = row.registeredCount >= row.capacity ? '已額滿' : '尚有名額';
   const parts = [formatDateWithWeekday(row.date, 'zh-TW'), statusLabel];
 
-  return parts.join(' ').toLowerCase().includes(q);
+  return matchesKeyword(parts, query);
 }
 ```
 
@@ -864,7 +918,7 @@ git commit -m "feat: add search and 3-row collapse to Go-hall summary table"
 - Modify: `src/app/admin/go-hall/page.tsx`
 
 **Interfaces:**
-- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1.
+- Consumes: `DataTable<T>` prop `maxRows?: number` from Task 1. Also consumes `matchesKeyword(parts: string[], query: string): boolean` from `src/lib/searchMatch.ts` (Task 1).
 - Produces: `matchesSessionSearch(row: SessionSearchRow, query: string): boolean`. Not consumed elsewhere.
 
 - [ ] **Step 1: Write the failing tests**
@@ -921,6 +975,7 @@ Create `src/app/admin/go-hall/sessionSearch.ts`:
 
 ```ts
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { matchesKeyword } from '@/lib/searchMatch';
 
 interface SessionSearchRow {
   date: string;
@@ -930,16 +985,13 @@ interface SessionSearchRow {
 }
 
 export function matchesSessionSearch(row: SessionSearchRow, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-
   const parts = [
     formatDateWithWeekday(row.date, 'zh-TW'),
     `${row.startTime}-${row.endTime}`,
     row.teacher.user.name,
   ];
 
-  return parts.join(' ').toLowerCase().includes(q);
+  return matchesKeyword(parts, query);
 }
 ```
 
@@ -1035,13 +1087,13 @@ git commit -m "feat: add search and 3-row collapse to Go-hall session management
 
 - [ ] **Step 1: Run every new unit test together**
 
-Run: `npx vitest run src/components/ui/dataTableRows.test.ts src/app/admin/leaveSearch.test.ts src/app/admin/substituteSearch.test.ts src/components/goHallSummarySearch.test.ts src/app/admin/go-hall/sessionSearch.test.ts`
-Expected: PASS, 32 tests total (4 + 9 + 8 + 5 + 6).
+Run: `npx vitest run src/components/ui/dataTableRows.test.ts src/lib/searchMatch.test.ts src/app/admin/leaveSearch.test.ts src/app/admin/substituteSearch.test.ts src/components/goHallSummarySearch.test.ts src/app/admin/go-hall/sessionSearch.test.ts`
+Expected: PASS, 38 tests total (4 + 6 + 9 + 8 + 5 + 6).
 
 - [ ] **Step 2: Lint**
 
 Run: `npm run lint`
-Expected: no errors (in particular, no unused-import warnings from the `admin/page.tsx` refactor in Task 3).
+Expected: no errors (in particular, no unused-import warnings from the `admin/page.tsx` refactor in Task 3). If run from inside a nested git worktree under this repo's own directory tree, `next lint` may fail with a `Plugin "@next/next" was conflicted` error caused by ESLint resolving both the worktree's and the parent checkout's `.eslintrc.json` — this is an artifact of the worktree's location, not a real lint failure. If that happens, use `npx eslint --no-eslintrc -c .eslintrc.json --ext .ts,.tsx src` instead, which scopes ESLint to only this worktree's config.
 
 - [ ] **Step 3: Type-check the whole project**
 
