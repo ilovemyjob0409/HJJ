@@ -30,14 +30,14 @@
 2. 新增唯讀函式 `getMakeupQuotaStatus(studentId: string): Promise<{ insertionRemaining: number; oneOnOneRemaining: number }>`，依上述公式計算，不需要交易（讀取當下快照即可，實際建立時仍由交易保底防競態）。
 3. `createOneOnOneMakeupRequestTx`：原本只檢查 `oneOnOneUsed > 0`，改成同時檢查 `oneOnOneUsed >= 1` 或 `totalUsed >= 2`（合計插班+一對一），任一成立就丟 `QUOTA_EXCEEDED`（沿用現有錯誤代碼，前端文案不變）。
 4. `createInsertionMakeupRequest`：
-   - 介面 `CreateInsertionInput` 新增 `studentId: string`
-   - 改為透過 `runSerializableWithRetry` 包一層交易（比照一對一的作法），交易內檢查 `totalUsed >= 2` 時丟 `QUOTA_EXCEEDED`
-   - 原本呼叫端（API route）需補上 `studentId`
+   - 改為透過 `runSerializableWithRetry` 包一層交易（比照一對一的作法）
+   - `studentId` 不透過參數傳入，改在交易內用 `input.leaveRequestId` 查出 `leaveRequest.studentId`（`LeaveRequest` model 本來就有 `studentId` 欄位），避免變動 `CreateInsertionInput` 介面與呼叫端
+   - 交易內檢查 `totalUsed >= 2` 時丟 `QUOTA_EXCEEDED`
 
 ### `src/app/api/makeup-requests/route.ts`
 
 - `GET`：當帶 `leaveRequestId` 時，除了原本的 `eligibleClasses`，一併呼叫 `getMakeupQuotaStatus(student.id)`，回傳 `{ eligibleClasses, quota: { insertionRemaining, oneOnOneRemaining } }`
-- `POST`：`INSERTION` 分支呼叫 `createInsertionMakeupRequest` 時補上 `studentId: student.id`
+- `POST`：`INSERTION` 分支不需變動（`createInsertionMakeupRequest` 呼叫方式不變）
 
 ## 前端調整
 
@@ -57,7 +57,6 @@
 - 更新既有「本季已有一對一申請時第二筆丟 QUOTA_EXCEEDED」測試維持通過（子名額 1 次的行為不變）
 - 新增：學生本季已有 2 筆插班（或插班+一對一組合）申請時，第 3 筆插班或一對一皆丟 `QUOTA_EXCEEDED`（驗證總名額 2 次）
 - 新增：`getMakeupQuotaStatus` 在各種已用數量組合下回傳正確的 `insertionRemaining` / `oneOnOneRemaining`（0 用、用 1 次插班、用 1 次一對一、用滿 2 次）
-- `createInsertionMakeupRequest` 相關既有測試需補上 `studentId` 參數
 
 ## 範圍外（Out of Scope）
 
