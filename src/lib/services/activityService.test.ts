@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createActivity, listAllActivities } from './activityService';
+import { createActivity, listAllActivities, listActivitiesForTeacher, listOpenActivitiesForStudent } from './activityService';
 
 beforeEach(async () => {
   await prisma.activityRegistration.deleteMany();
@@ -51,5 +51,49 @@ describe('createActivity / listAllActivities', () => {
     expect(activities[0].teacher).toBeNull();
     expect(activities[0]._count.registrations).toBe(0);
     expect(activities[0].registrations).toEqual([]);
+  });
+});
+
+describe('listActivitiesForTeacher', () => {
+  it('returns only activities assigned to the given teacher', async () => {
+    const teacherA = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const teacherB = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    await createActivity({
+      title: 'A 活動',
+      description: 'a',
+      category: 'CAMP',
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 1),
+      capacity: 10,
+      teacherId: teacherA.id,
+    });
+    await createActivity({
+      title: 'B 活動',
+      description: 'b',
+      category: 'CAMP',
+      startDate: new Date(2026, 7, 2),
+      endDate: new Date(2026, 7, 2),
+      capacity: 10,
+      teacherId: teacherB.id,
+    });
+
+    const results = await listActivitiesForTeacher(teacherA.id);
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe('A 活動');
+  });
+});
+
+describe('listOpenActivitiesForStudent', () => {
+  it('excludes an activity whose endDate is in the past and includes one ending today or later', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    await createActivity({ title: '已結束活動', description: 'x', category: 'CAMP', startDate: yesterday, endDate: yesterday, capacity: 10 });
+    await createActivity({ title: '進行中活動', description: 'x', category: 'CAMP', startDate: tomorrow, endDate: tomorrow, capacity: 10 });
+
+    const results = await listOpenActivitiesForStudent();
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe('進行中活動');
   });
 });
