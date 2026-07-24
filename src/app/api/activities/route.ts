@@ -26,15 +26,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const body = await req.json();
+  const teacherIds: string[] = Array.isArray(body.teacherIds) ? body.teacherIds : [];
+  if (teacherIds.length === 0) {
+    return NextResponse.json({ error: 'TEACHER_REQUIRED' }, { status: 400 });
+  }
   const created = await createActivity({
     title: body.title,
     description: body.description,
-    category: body.category,
+    categoryId: body.categoryId,
     location: body.location || undefined,
     startDate: new Date(body.startDate),
     endDate: new Date(body.endDate),
     capacity: Number(body.capacity),
-    teacherId: body.teacherId || undefined,
+    teacherIds,
   });
   return NextResponse.json(created, { status: 201 });
 }
