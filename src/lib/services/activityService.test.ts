@@ -1,8 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createActivity, listAllActivities, listActivitiesForTeacher, listOpenActivitiesForStudent } from './activityService';
+import {
+  createActivity,
+  listAllActivities,
+  listActivitiesForTeacher,
+  listOpenActivitiesForStudent,
+  registerForActivity,
+} from './activityService';
 
 beforeEach(async () => {
   await prisma.activityRegistration.deleteMany();
@@ -18,6 +24,18 @@ beforeEach(async () => {
   await prisma.teacher.deleteMany();
   await prisma.student.deleteMany();
   await prisma.user.deleteMany();
+});
+
+// Other service test files' beforeEach blocks predate the Activity /
+// ActivityRegistration tables and don't clean them up before deleting
+// Student, so a registration row left behind by this file's last test
+// (e.g. the concurrency test, which intentionally leaves exactly one) would
+// break every test file that runs after this one with a foreign key
+// violation on student.deleteMany(). Clean up after ourselves so this file
+// leaves no residue for other files, regardless of run order.
+afterAll(async () => {
+  await prisma.activityRegistration.deleteMany();
+  await prisma.activity.deleteMany();
 });
 
 describe('createActivity / listAllActivities', () => {
@@ -95,5 +113,45 @@ describe('listOpenActivitiesForStudent', () => {
     const results = await listOpenActivitiesForStudent();
     expect(results).toHaveLength(1);
     expect(results[0].title).toBe('進行中活動');
+  });
+});
+
+describe('registerForActivity', () => {
+  it('creates a registration when under capacity', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    const activity = await prisma.activity.findFirstOrThrow();
+
+    const registration = await registerForActivity(activity.id, student.id);
+    expect(registration.activityId).toBe(activity.id);
+    expect(registration.studentId).toBe(student.id);
+  });
+
+  it('throws ACTIVITY_FULL once capacity is reached', async () => {
+    const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 1 });
+    const activity = await prisma.activity.findFirstOrThrow();
+    await registerForActivity(activity.id, studentA.id);
+
+    await expect(registerForActivity(activity.id, studentB.id)).rejects.toThrow('ACTIVITY_FULL');
+  });
+
+  it('allows only one of two concurrent registrations to succeed when capacity is 1', async () => {
+    const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 1 });
+    const activity = await prisma.activity.findFirstOrThrow();
+
+    const results = await Promise.allSettled([registerForActivity(activity.id, studentA.id), registerForActivity(activity.id, studentB.id)]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.message).toBe('ACTIVITY_FULL');
+
+    const count = await prisma.activityRegistration.count({ where: { activityId: activity.id } });
+    expect(count).toBe(1);
   });
 });

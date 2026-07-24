@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
-import { ActivityCategory } from '@prisma/client';
+import { ActivityCategory, Prisma } from '@prisma/client';
+import { runSerializableWithRetry } from '@/lib/transaction';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -88,4 +89,20 @@ export function listOpenActivitiesForStudent() {
     select: ACTIVITY_STUDENT_LIST_SELECT,
     orderBy: { startDate: 'asc' },
   });
+}
+
+export async function registerForActivity(activityId: string, studentId: string) {
+  return runSerializableWithRetry(() => registerForActivityTx(activityId, studentId));
+}
+
+function registerForActivityTx(activityId: string, studentId: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      const activity = await tx.activity.findUniqueOrThrow({ where: { id: activityId } });
+      const count = await tx.activityRegistration.count({ where: { activityId } });
+      if (count >= activity.capacity) throw new Error('ACTIVITY_FULL');
+      return tx.activityRegistration.create({ data: { activityId, studentId } });
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  );
 }
