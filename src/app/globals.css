@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #3a332b;
   --cream-rgb: 255 241 222;
@@ -18,6 +19,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --background: #211d19;
   --foreground: #f0e9df;
   --cream-rgb: 42 36 32;
@@ -34,6 +36,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --background: #211d19;
     --foreground: #f0e9df;
     --cream-rgb: 42 36 32;
@@ -66,6 +69,20 @@ body {
 
 button:not(:disabled) {
   cursor: pointer;
+}
+
+/* Chrome renders the unset yyyy/mm/dd segments of a date input with a
+   translucent default color; over our warm dark-brown surfaces that
+   blend reads as amber instead of neutral gray. Pin it to the same
+   gray-400 every other placeholder in the app uses (Tailwind's default
+   ::placeholder color) so it's always a plain neutral, filled or not,
+   in either theme. */
+input[type='date']::-webkit-datetime-edit-fields-wrapper,
+input[type='date']::-webkit-datetime-edit-text,
+input[type='date']::-webkit-datetime-edit-year-field,
+input[type='date']::-webkit-datetime-edit-month-field,
+input[type='date']::-webkit-datetime-edit-day-field {
+  color: #9ca3af;
 }
 
 /* Now that the select background matches the surrounding card/page
