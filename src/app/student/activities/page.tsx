@@ -101,7 +101,14 @@ export default function StudentActivitiesPage() {
     {
       header: '操作',
       render: (r) => (
-        <button type="button" className="text-rejected hover:underline" onClick={() => handleCancel(r.id)}>
+        <button
+          type="button"
+          className="text-rejected hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCancel(r.id);
+          }}
+        >
           取消
         </button>
       ),
