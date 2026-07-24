@@ -50,14 +50,15 @@ export default async function AdminDashboard() {
         </Link>
       </div>
 
-      <h2 className="mb-2 font-bold text-ink">學生請假與插班紀錄</h2>
-      <LeaveRecordsTable rows={allLeaves} />
+      <LeaveRecordsTable title="學生請假與插班紀錄" rows={allLeaves} />
 
-      <h2 className="mb-2 mt-6 font-bold text-ink">安排代課紀錄</h2>
-      <SubstituteHistoryTable rows={allSubstitutes} />
+      <div className="mt-6">
+        <SubstituteHistoryTable title="安排代課紀錄" rows={allSubstitutes} />
+      </div>
 
-      <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
-      <GoHallSummaryTable rows={goHallRows} basePath="/admin/go-hall" searchable />
+      <div className="mt-6">
+        <GoHallSummaryTable title="弈廳管理" rows={goHallRows} basePath="/admin/go-hall" searchable />
+      </div>
     </>
   );
 }

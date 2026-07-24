@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
-import Input from '@/components/ui/Input';
+import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
@@ -17,10 +17,12 @@ export interface GoHallSummaryRow {
 }
 
 export default function GoHallSummaryTable({
+  title,
   rows,
   basePath,
   searchable = false,
 }: {
+  title?: string;
   rows: GoHallSummaryRow[];
   basePath: string;
   searchable?: boolean;
@@ -45,14 +47,10 @@ export default function GoHallSummaryTable({
 
   return (
     <>
-      {searchable && (
-        <div className="mb-3">
-          <Input
-            placeholder="搜尋日期或狀態"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-md"
-          />
+      {(title || searchable) && (
+        <div className="mb-2 flex items-center gap-3">
+          {title && <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">{title}</h2>}
+          {searchable && <CollapsibleSearchInput placeholder="搜尋日期或狀態" value={search} onChange={setSearch} />}
         </div>
       )}
       <Card>

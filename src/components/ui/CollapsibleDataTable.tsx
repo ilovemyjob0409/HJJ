@@ -37,18 +37,24 @@ export default function CollapsibleDataTable<T>({
       onRowMouseLeave={onRowMouseLeave}
       footer={
         showFooter ? (
-          <div className="flex items-center justify-between border-t border-borderSubtle px-4 py-2 text-sm text-inkMuted">
-            <span>
-              顯示 {visibleRows.length} / {rows.length} 筆
-            </span>
-            <button
-              type="button"
-              className="font-medium text-brandDark hover:underline"
-              onClick={() => setExpanded((e) => !e)}
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            className="flex w-full cursor-pointer items-center justify-center gap-1 border-t border-borderSubtle px-4 py-2 text-sm font-medium text-brandDark transition-colors hover:bg-stripe"
+          >
+            {expanded ? '收合' : `展開全部（共 ${rows.length} 筆）`}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-4 w-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
             >
-              {expanded ? '收合' : '展開全部'}
-            </button>
-          </div>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
         ) : undefined
       }
     />

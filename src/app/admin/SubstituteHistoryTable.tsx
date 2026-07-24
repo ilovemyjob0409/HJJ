@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Card from '@/components/ui/Card';
-import Input from '@/components/ui/Input';
+import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -19,7 +19,7 @@ interface SubstituteRow {
   substituteTeacher: { user: { name: string } } | null;
 }
 
-export default function SubstituteHistoryTable({ rows }: { rows: SubstituteRow[] }) {
+export default function SubstituteHistoryTable({ title, rows }: { title: string; rows: SubstituteRow[] }) {
   const [search, setSearch] = useState('');
   const filteredRows = rows.filter((r) => matchesSubstituteSearch(r, search));
 
@@ -34,13 +34,9 @@ export default function SubstituteHistoryTable({ rows }: { rows: SubstituteRow[]
 
   return (
     <>
-      <div className="mb-3">
-        <Input
-          placeholder="搜尋班級、老師或原因"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
-        />
+      <div className="mb-2 flex items-center gap-3">
+        <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">{title}</h2>
+        <CollapsibleSearchInput placeholder="搜尋班級、老師或原因" value={search} onChange={setSearch} />
       </div>
       <Card>
         <CollapsibleDataTable

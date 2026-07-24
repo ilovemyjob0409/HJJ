@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
-import Input from '@/components/ui/Input';
+import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -25,7 +25,7 @@ interface LeaveRow {
   } | null;
 }
 
-export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
+export default function LeaveRecordsTable({ title, rows }: { title: string; rows: LeaveRow[] }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const filteredRows = rows.filter((r) => matchesLeaveSearch(r, search));
@@ -59,13 +59,9 @@ export default function LeaveRecordsTable({ rows }: { rows: LeaveRow[] }) {
 
   return (
     <>
-      <div className="mb-3">
-        <Input
-          placeholder="搜尋學生、班級或補課狀態"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
-        />
+      <div className="mb-2 flex items-center gap-3">
+        <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">{title}</h2>
+        <CollapsibleSearchInput placeholder="搜尋學生、班級或補課狀態" value={search} onChange={setSearch} />
       </div>
       <Card>
         <CollapsibleDataTable
