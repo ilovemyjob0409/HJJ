@@ -8,6 +8,8 @@ import {
   listActivitiesForTeacher,
   listOpenActivitiesForStudent,
   registerForActivity,
+  cancelRegistration,
+  adminRemoveRegistration,
 } from './activityService';
 
 beforeEach(async () => {
@@ -24,18 +26,6 @@ beforeEach(async () => {
   await prisma.teacher.deleteMany();
   await prisma.student.deleteMany();
   await prisma.user.deleteMany();
-});
-
-// Other service test files' beforeEach blocks predate the Activity /
-// ActivityRegistration tables and don't clean them up before deleting
-// Student, so a registration row left behind by this file's last test
-// (e.g. the concurrency test, which intentionally leaves exactly one) would
-// break every test file that runs after this one with a foreign key
-// violation on student.deleteMany(). Clean up after ourselves so this file
-// leaves no residue for other files, regardless of run order.
-afterAll(async () => {
-  await prisma.activityRegistration.deleteMany();
-  await prisma.activity.deleteMany();
 });
 
 describe('createActivity / listAllActivities', () => {
@@ -154,4 +144,54 @@ describe('registerForActivity', () => {
     const count = await prisma.activityRegistration.count({ where: { activityId: activity.id } });
     expect(count).toBe(1);
   });
+});
+
+describe('cancelRegistration', () => {
+  it('deletes the registration when the student owns it', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const registration = await registerForActivity(activity.id, student.id);
+
+    await cancelRegistration(registration.id, student.id);
+
+    const remaining = await prisma.activityRegistration.count();
+    expect(remaining).toBe(0);
+  });
+
+  it('throws NOT_OWNER when a different student tries to cancel it', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const registration = await registerForActivity(activity.id, student.id);
+
+    await expect(cancelRegistration(registration.id, otherStudent.id)).rejects.toThrow('NOT_OWNER');
+  });
+});
+
+describe('adminRemoveRegistration', () => {
+  it('deletes the registration regardless of owner', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', category: 'CAMP', startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8 });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const registration = await registerForActivity(activity.id, student.id);
+
+    await adminRemoveRegistration(registration.id);
+
+    const remaining = await prisma.activityRegistration.count();
+    expect(remaining).toBe(0);
+  });
+});
+
+// Other service test files' beforeEach blocks predate the Activity /
+// ActivityRegistration tables and don't clean them up before deleting
+// Student, so a registration row left behind by this file's last test
+// (e.g. the concurrency test, which intentionally leaves exactly one) would
+// break every test file that runs after this one with a foreign key
+// violation on student.deleteMany(). Clean up after ourselves so this file
+// leaves no residue for other files, regardless of run order.
+afterAll(async () => {
+  await prisma.activityRegistration.deleteMany();
+  await prisma.activity.deleteMany();
 });

@@ -106,3 +106,13 @@ function registerForActivityTx(activityId: string, studentId: string) {
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
   );
 }
+
+export async function cancelRegistration(id: string, studentId: string) {
+  const registration = await prisma.activityRegistration.findUniqueOrThrow({ where: { id } });
+  if (registration.studentId !== studentId) throw new Error('NOT_OWNER');
+  await prisma.activityRegistration.delete({ where: { id } });
+}
+
+export async function adminRemoveRegistration(id: string) {
+  await prisma.activityRegistration.delete({ where: { id } });
+}
