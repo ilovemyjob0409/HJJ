@@ -44,43 +44,45 @@ model User {
 }
 
 model Teacher {
-  id                          String                @id @default(cuid())
-  userId                      String                @unique
-  user                        User                  @relation(fields: [userId], references: [id])
-  subjects                    String
-  phone                       String?
-  classes                     Class[]
-  availabilities              TeacherAvailability[]
-  oneOnOneMakeups             MakeupRequest[]       @relation("OneOnOneTeacher")
-  substituteRequestsOriginal  SubstituteRequest[]   @relation("OriginalTeacher")
-  substituteRequestsAssigned  SubstituteRequest[]   @relation("SubstituteTeacher")
-  goHallSessions              GoHallSession[]
+  id                         String                @id @default(cuid())
+  userId                     String                @unique
+  user                       User                  @relation(fields: [userId], references: [id])
+  subjects                   String
+  phone                      String?
+  classes                    Class[]
+  availabilities             TeacherAvailability[]
+  oneOnOneMakeups            MakeupRequest[]       @relation("OneOnOneTeacher")
+  substituteRequestsOriginal SubstituteRequest[]   @relation("OriginalTeacher")
+  substituteRequestsAssigned SubstituteRequest[]   @relation("SubstituteTeacher")
+  goHallSessions             GoHallSession[]
+  activities                 Activity[]
 }
 
 model Student {
-  id            String            @id @default(cuid())
-  userId        String            @unique
-  user          User              @relation(fields: [userId], references: [id])
-  parentPhone   String?
-  enrollments   ClassEnrollment[]
-  leaveRequests LeaveRequest[]
-  goHallRegistrations GoHallRegistration[]
+  id                    String                 @id @default(cuid())
+  userId                String                 @unique
+  user                  User                   @relation(fields: [userId], references: [id])
+  parentPhone           String?
+  enrollments           ClassEnrollment[]
+  leaveRequests         LeaveRequest[]
+  goHallRegistrations   GoHallRegistration[]
+  activityRegistrations ActivityRegistration[]
 }
 
 model Class {
-  id              String              @id @default(cuid())
-  name            String
-  subject         String
-  level           String
-  teacherId       String
-  teacher         Teacher             @relation(fields: [teacherId], references: [id])
-  weekday         Int
-  startTime       String
-  endTime         String
-  enrollments     ClassEnrollment[]
-  leaveRequests   LeaveRequest[]
-  substituteReqs  SubstituteRequest[]
-  insertionTargets MakeupRequest[]    @relation("TargetClass")
+  id               String              @id @default(cuid())
+  name             String
+  subject          String
+  level            String
+  teacherId        String
+  teacher          Teacher             @relation(fields: [teacherId], references: [id])
+  weekday          Int
+  startTime        String
+  endTime          String
+  enrollments      ClassEnrollment[]
+  leaveRequests    LeaveRequest[]
+  substituteReqs   SubstituteRequest[]
+  insertionTargets MakeupRequest[]     @relation("TargetClass")
 }
 
 model ClassEnrollment {
@@ -122,17 +124,17 @@ model MakeupRequest {
   type           MakeupType
   status         MakeupStatus @default(PENDING_ADMIN)
 
-  targetClassId  String?
-  targetClass    Class?       @relation("TargetClass", fields: [targetClassId], references: [id])
-  targetDate     DateTime?
+  targetClassId String?
+  targetClass   Class?    @relation("TargetClass", fields: [targetClassId], references: [id])
+  targetDate    DateTime?
 
-  teacherId      String?
-  teacher        Teacher?     @relation("OneOnOneTeacher", fields: [teacherId], references: [id])
-  slotDate       DateTime?
-  slotStartTime  String?
-  slotEndTime    String?
+  teacherId     String?
+  teacher       Teacher?  @relation("OneOnOneTeacher", fields: [teacherId], references: [id])
+  slotDate      DateTime?
+  slotStartTime String?
+  slotEndTime   String?
 
-  createdAt      DateTime     @default(now())
+  createdAt DateTime @default(now())
 }
 
 model SubstituteRequest {
@@ -176,4 +178,37 @@ model SubjectColor {
   id      String @id @default(cuid())
   subject String @unique
   color   String
+}
+
+enum ActivityCategory {
+  CAMP // 營隊
+  LECTURE // 講座
+  COMPETITION // 比賽
+  OBSERVATION // 觀摩課
+}
+
+model Activity {
+  id            String                 @id @default(cuid())
+  title         String
+  description   String
+  category      ActivityCategory
+  location      String?
+  startDate     DateTime
+  endDate       DateTime
+  capacity      Int
+  teacherId     String?
+  teacher       Teacher?               @relation(fields: [teacherId], references: [id])
+  registrations ActivityRegistration[]
+  createdAt     DateTime               @default(now())
+}
+
+model ActivityRegistration {
+  id         String   @id @default(cuid())
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id])
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([activityId, studentId])
 }
