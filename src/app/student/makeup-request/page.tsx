@@ -164,7 +164,7 @@ export default function MakeupRequestPage() {
               </span>
               {quota && (
                 <span className="text-xs text-inkMuted">
-                  {quota.insertionRemaining > 0 ? `剩餘 ${quota.insertionRemaining} 次` : '請洽櫃檯了解補課規範'}
+                  {quota.insertionRemaining > 0 ? `剩餘 ${quota.insertionRemaining} 次` : '補課次數已使用完畢，請洽櫃檯了解'}
                 </span>
               )}
             </label>
@@ -180,7 +180,7 @@ export default function MakeupRequestPage() {
               </span>
               {quota && (
                 <span className="text-xs text-inkMuted">
-                  {quota.oneOnOneRemaining > 0 ? `剩餘 ${quota.oneOnOneRemaining} 次` : '請洽櫃檯了解補課規範'}
+                  {quota.oneOnOneRemaining > 0 ? `剩餘 ${quota.oneOnOneRemaining} 次` : '補課次數已使用完畢，請洽櫃檯了解'}
                 </span>
               )}
             </label>
