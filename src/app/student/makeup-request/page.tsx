@@ -37,6 +37,11 @@ interface AvailabilityWindow {
   endTime: string;
 }
 
+interface Quota {
+  insertionRemaining: number;
+  oneOnOneRemaining: number;
+}
+
 export default function MakeupRequestPage() {
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [selectedLeaveId, setSelectedLeaveId] = useState('');
@@ -45,6 +50,7 @@ export default function MakeupRequestPage() {
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [availability, setAvailability] = useState<AvailabilityWindow[]>([]);
   const [message, setMessage] = useState('');
+  const [quota, setQuota] = useState<Quota | null>(null);
 
   const [insertionForm, setInsertionForm] = useState({ targetClassId: '', targetDate: '' });
   const [oneOnOneForm, setOneOnOneForm] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
@@ -58,8 +64,20 @@ export default function MakeupRequestPage() {
     if (!selectedLeaveId) return;
     fetch(`/api/makeup-requests?leaveRequestId=${selectedLeaveId}`)
       .then((r) => r.json())
-      .then((data) => setEligibleClasses(data.eligibleClasses));
+      .then((data) => {
+        setEligibleClasses(data.eligibleClasses);
+        setQuota(data.quota);
+      });
   }, [selectedLeaveId]);
+
+  useEffect(() => {
+    if (!quota) return;
+    if (makeupType === 'INSERTION' && quota.insertionRemaining === 0 && quota.oneOnOneRemaining > 0) {
+      setMakeupType('ONE_ON_ONE');
+    } else if (makeupType === 'ONE_ON_ONE' && quota.oneOnOneRemaining === 0 && quota.insertionRemaining > 0) {
+      setMakeupType('INSERTION');
+    }
+  }, [quota, makeupType]);
 
   useEffect(() => {
     if (!oneOnOneForm.teacherId) {
@@ -127,12 +145,38 @@ export default function MakeupRequestPage() {
 
       {selectedLeaveId && (
         <Card className="max-w-md">
-          <div className="mb-4 flex gap-4 text-sm text-ink">
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={makeupType === 'INSERTION'} onChange={() => setMakeupType('INSERTION')} /> 插班補課
+          <div className="mb-4 flex gap-6 text-sm text-ink">
+            <label className="flex flex-col gap-1">
+              <span className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={makeupType === 'INSERTION'}
+                  disabled={quota?.insertionRemaining === 0}
+                  onChange={() => setMakeupType('INSERTION')}
+                />
+                插班補課
+              </span>
+              {quota && (
+                <span className="text-xs text-inkMuted">
+                  {quota.insertionRemaining > 0 ? `剩餘 ${quota.insertionRemaining} 次` : '請洽櫃檯了解補課規範'}
+                </span>
+              )}
             </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={makeupType === 'ONE_ON_ONE'} onChange={() => setMakeupType('ONE_ON_ONE')} /> 一對一補課
+            <label className="flex flex-col gap-1">
+              <span className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={makeupType === 'ONE_ON_ONE'}
+                  disabled={quota?.oneOnOneRemaining === 0}
+                  onChange={() => setMakeupType('ONE_ON_ONE')}
+                />
+                一對一補課
+              </span>
+              {quota && (
+                <span className="text-xs text-inkMuted">
+                  {quota.oneOnOneRemaining > 0 ? `剩餘 ${quota.oneOnOneRemaining} 次` : '請洽櫃檯了解補課規範'}
+                </span>
+              )}
             </label>
           </div>
 
