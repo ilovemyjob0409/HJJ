@@ -97,7 +97,13 @@ export default function MakeupRequestPage() {
       body: JSON.stringify({ type: 'INSERTION', leaveRequestId: selectedLeaveId, ...insertionForm }),
     });
     const data = await res.json();
-    setMessage(res.ok ? '已送出插班申請，待行政確認' : `錯誤：${data.error}`);
+    if (res.ok) {
+      setMessage('已送出插班申請，待行政確認');
+    } else if (data.error === 'QUOTA_EXCEEDED') {
+      setMessage('本季補課名額已使用完畢');
+    } else {
+      setMessage(`錯誤：${data.error}`);
+    }
   }
 
   async function submitOneOnOne(e: React.FormEvent) {
