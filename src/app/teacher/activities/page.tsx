@@ -5,7 +5,6 @@ import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
-import { ACTIVITY_CATEGORY_LABELS, ActivityCategoryValue } from '@/lib/activityCategory';
 
 interface RosterEntry {
   id: string;
@@ -17,12 +16,12 @@ interface ActivityRow {
   id: string;
   title: string;
   description: string;
-  category: ActivityCategoryValue;
+  category: { name: string };
   location: string | null;
   startDate: string;
   endDate: string;
   capacity: number;
-  teacher: { user: { name: string } } | null;
+  teachers: { teacher: { user: { name: string } } }[];
   registrations: RosterEntry[];
   _count: { registrations: number };
 }
@@ -39,8 +38,9 @@ export default function TeacherActivitiesPage() {
 
   const columns: Column<ActivityRow>[] = [
     { header: '標題', render: (a) => a.title },
-    { header: '分類', render: (a) => ACTIVITY_CATEGORY_LABELS[a.category] },
+    { header: '分類', render: (a) => a.category.name },
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
+    { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
     { header: '人數', render: (a) => `${a._count.registrations}/${a.capacity}` },
   ];
 
@@ -61,8 +61,8 @@ export default function TeacherActivitiesPage() {
         {viewing && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-inkMuted">
-              {ACTIVITY_CATEGORY_LABELS[viewing.category]} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
-              {viewing.registrations.length}/{viewing.capacity}
+              {viewing.category.name} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
+              {viewing.teachers.map((t) => t.teacher.user.name).join('、')} · {viewing.registrations.length}/{viewing.capacity}
             </p>
             {viewing.registrations.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生報名</p>
