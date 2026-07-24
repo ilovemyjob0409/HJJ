@@ -9,11 +9,15 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
-import { ACTIVITY_CATEGORIES, ACTIVITY_CATEGORY_LABELS, ActivityCategoryValue } from '@/lib/activityCategory';
 
 interface TeacherOption {
   id: string;
   user: { name: string };
+}
+
+interface CategoryOption {
+  id: string;
+  name: string;
 }
 
 interface RosterEntry {
@@ -26,12 +30,12 @@ interface ActivityRow {
   id: string;
   title: string;
   description: string;
-  category: ActivityCategoryValue;
+  category: { name: string };
   location: string | null;
   startDate: string;
   endDate: string;
   capacity: number;
-  teacher: { user: { name: string } } | null;
+  teachers: { teacher: { user: { name: string } } }[];
   registrations: RosterEntry[];
   _count: { registrations: number };
 }
@@ -46,38 +50,81 @@ export default function AdminActivitiesPage() {
   const { showToast } = useToast();
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({
     title: '',
     description: '',
-    category: ACTIVITY_CATEGORIES[0] as ActivityCategoryValue,
+    categoryId: '',
     location: '',
     startDate: '',
     endDate: '',
     capacity: '20',
-    teacherId: '',
   });
+  const [formTeacherIds, setFormTeacherIds] = useState<string[]>([]);
+  const [formError, setFormError] = useState('');
+  const [showCategoryPanel, setShowCategoryPanel] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [viewing, setViewing] = useState<ActivityRow | null>(null);
 
   async function load() {
-    const [activitiesRes, teachersRes] = await Promise.all([fetch('/api/activities'), fetch('/api/teachers')]);
+    const [activitiesRes, teachersRes, categoriesRes] = await Promise.all([
+      fetch('/api/activities'),
+      fetch('/api/teachers'),
+      fetch('/api/activity-categories'),
+    ]);
     setActivities(await activitiesRes.json());
     setTeachers(await teachersRes.json());
+    setCategories(await categoriesRes.json());
   }
 
   useEffect(() => {
     load();
   }, []);
 
+  function toggleFormTeacher(teacherId: string) {
+    setFormTeacherIds((prev) => (prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId]));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setFormError('');
+    if (formTeacherIds.length === 0) {
+      setFormError('請至少選擇一位帶領老師');
+      return;
+    }
     await fetch('/api/activities', {
       method: 'POST',
-      body: JSON.stringify({ ...form, capacity: Number(form.capacity), teacherId: form.teacherId || undefined }),
+      body: JSON.stringify({ ...form, capacity: Number(form.capacity), teacherIds: formTeacherIds }),
     });
-    setForm({ title: '', description: '', category: ACTIVITY_CATEGORIES[0], location: '', startDate: '', endDate: '', capacity: '20', teacherId: '' });
+    setForm({ title: '', description: '', categoryId: '', location: '', startDate: '', endDate: '', capacity: '20' });
+    setFormTeacherIds([]);
     setShowAddForm(false);
     showToast('已新增活動');
+    load();
+  }
+
+  async function handleAddCategory(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch('/api/activity-categories', { method: 'POST', body: JSON.stringify({ name: newCategoryName }) });
+    if (!res.ok) {
+      const data = await res.json();
+      showToast(data.error === 'CATEGORY_NAME_TAKEN' ? '此分類名稱已存在' : `錯誤：${data.error}`);
+      return;
+    }
+    setNewCategoryName('');
+    showToast('已新增分類');
+    load();
+  }
+
+  async function handleDeleteCategory(id: string) {
+    const res = await fetch(`/api/activity-categories/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json();
+      showToast(data.error === 'CATEGORY_IN_USE' ? '此分類仍有活動使用中，請先處理' : `錯誤：${data.error}`);
+      return;
+    }
+    showToast('已刪除分類');
     load();
   }
 
@@ -105,9 +152,9 @@ export default function AdminActivitiesPage() {
 
   const columns: Column<ActivityRow>[] = [
     { header: '標題', render: (a) => a.title },
-    { header: '分類', render: (a) => ACTIVITY_CATEGORY_LABELS[a.category] },
+    { header: '分類', render: (a) => a.category.name },
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
-    { header: '老師', render: (a) => a.teacher?.user.name ?? '-' },
+    { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
     { header: '人數', render: (a) => `${a._count.registrations}/${a.capacity}` },
     { header: '狀態', render: (a) => (new Date(a.endDate) < startOfToday() ? '已結束' : '進行中') },
     {
@@ -124,11 +171,16 @@ export default function AdminActivitiesPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">活動專區管理</h1>
 
-      {!showAddForm ? (
-        <Button className="mb-6" onClick={() => setShowAddForm(true)}>
-          ＋ 新增活動
-        </Button>
-      ) : (
+      <div className="mb-6 flex flex-wrap gap-3">
+        {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增活動</Button>}
+        {!showCategoryPanel && (
+          <Button variant="secondary" onClick={() => setShowCategoryPanel(true)}>
+            管理分類
+          </Button>
+        )}
+      </div>
+
+      {showAddForm && (
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增活動</h2>
@@ -146,10 +198,11 @@ export default function AdminActivitiesPage() {
               rows={3}
               required
             />
-            <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ActivityCategoryValue })}>
-              {ACTIVITY_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {ACTIVITY_CATEGORY_LABELS[c]}
+            <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required>
+              <option value="">請選擇分類</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </Select>
@@ -164,15 +217,54 @@ export default function AdminActivitiesPage() {
               onChange={(e) => setForm({ ...form, capacity: e.target.value })}
               required
             />
-            <Select value={form.teacherId} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}>
-              <option value="">不指派帶領老師</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.user.name}
-                </option>
-              ))}
-            </Select>
+            <div>
+              <p className="mb-1 text-sm font-medium text-ink">帶領老師（至少選 1 位）</p>
+              <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
+                {teachers.map((t) => (
+                  <label key={t.id} className="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" checked={formTeacherIds.includes(t.id)} onChange={() => toggleFormTeacher(t.id)} />
+                    {t.user.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            {formError && <p className="text-sm text-rejected">{formError}</p>}
             <Button type="submit">新增</Button>
+          </form>
+        </Card>
+      )}
+
+      {showCategoryPanel && (
+        <Card className="mb-6 max-w-md">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-bold text-ink">管理分類</h2>
+            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowCategoryPanel(false)}>
+              收合
+            </button>
+          </div>
+          {categories.length === 0 ? (
+            <p className="mb-3 text-sm text-inkMuted">尚無分類</p>
+          ) : (
+            <ul className="mb-3 flex flex-col gap-1">
+              {categories.map((c) => (
+                <li key={c.id} className="flex items-center justify-between text-sm text-ink">
+                  {c.name}
+                  <button type="button" className="text-rejected hover:underline" onClick={() => handleDeleteCategory(c.id)}>
+                    刪除
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form onSubmit={handleAddCategory} className="flex gap-2">
+            <Input
+              placeholder="新分類名稱"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              required
+              className="flex-1"
+            />
+            <Button type="submit">新增分類</Button>
           </form>
         </Card>
       )}
@@ -191,8 +283,8 @@ export default function AdminActivitiesPage() {
         {viewing && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-inkMuted">
-              {ACTIVITY_CATEGORY_LABELS[viewing.category]} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
-              {viewing.teacher?.user.name ?? '無指派老師'} · {viewing.registrations.length}/{viewing.capacity}
+              {viewing.category.name} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
+              {viewing.teachers.map((t) => t.teacher.user.name).join('、')} · {viewing.registrations.length}/{viewing.capacity}
             </p>
             {viewing.registrations.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生報名</p>
