@@ -9,8 +9,9 @@ import ThemeToggle from './ThemeToggle';
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
-const NAV_LINKS: Record<Role, { href: string; label: string }[]> = {
+const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]> = {
   ADMIN: [
+    { href: '/admin', label: '首頁', exact: true },
     { href: '/admin/teachers', label: '老師名單' },
     { href: '/admin/students', label: '學生名單' },
     { href: '/admin/classes', label: '班級名單' },
@@ -20,11 +21,13 @@ const NAV_LINKS: Record<Role, { href: string; label: string }[]> = {
     { href: '/admin/activities', label: '活動專區' },
   ],
   TEACHER: [
+    { href: '/teacher', label: '首頁', exact: true },
     { href: '/teacher/leave-request', label: '請假/調課申請' },
     { href: '/teacher/availability', label: '設定可補課時段' },
     { href: '/teacher/activities', label: '活動專區' },
   ],
   STUDENT: [
+    { href: '/student', label: '首頁', exact: true },
     { href: '/student/leave-request', label: '請假申請' },
     { href: '/student/makeup-request', label: '補課申請' },
     { href: '/student/go-hall', label: '弈廳' },
@@ -46,24 +49,34 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
   const indicatorPositionedRef = useRef(false);
 
   useLayoutEffect(() => {
-    const indicator = indicatorRef.current;
-    const activeLink = activeLinkRef.current;
-    if (!indicator) return;
-    if (!activeLink) {
-      indicator.style.opacity = '0';
-      return;
-    }
-    indicator.style.opacity = '1';
-    indicator.style.width = `${activeLink.offsetWidth}px`;
-    indicator.style.transform = `translateX(${activeLink.offsetLeft}px)`;
-    if (!indicatorPositionedRef.current) {
-      // Snap into place on first mount instead of sliding in from the edge.
-      indicator.style.transitionDuration = '0s';
-      requestAnimationFrame(() => {
-        indicator.style.transitionDuration = '';
-      });
-      indicatorPositionedRef.current = true;
-    }
+    const positionIndicator = () => {
+      const indicator = indicatorRef.current;
+      const activeLink = activeLinkRef.current;
+      if (!indicator) return;
+      if (!activeLink) {
+        indicator.style.opacity = '0';
+        return;
+      }
+      indicator.style.opacity = '1';
+      indicator.style.width = `${activeLink.offsetWidth}px`;
+      indicator.style.transform = `translateX(${activeLink.offsetLeft}px)`;
+      if (!indicatorPositionedRef.current) {
+        // Snap into place on first mount instead of sliding in from the edge.
+        indicator.style.transitionDuration = '0s';
+        requestAnimationFrame(() => {
+          indicator.style.transitionDuration = '';
+        });
+        indicatorPositionedRef.current = true;
+      }
+    };
+    positionIndicator();
+    // Webfont subsets stream in after first paint and shift link geometry,
+    // so track the links themselves instead of a one-shot fonts.ready.
+    const container = scrollContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(positionIndicator);
+    container.querySelectorAll('a').forEach((link) => observer.observe(link));
+    return () => observer.disconnect();
   }, [pathname]);
 
   useEffect(() => {
@@ -94,7 +107,10 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
               className="pointer-events-none absolute bottom-0.5 top-0.5 left-0 rounded-full bg-brand opacity-0 shadow-sm transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:bottom-1 sm:top-1"
             />
             {NAV_LINKS[role].map((link) => {
-              const active = pathname === link.href || pathname?.startsWith(`${link.href}/`);
+              // Home links use exact match — every route under the role shares their prefix.
+              const active = link.exact
+                ? pathname === link.href
+                : pathname === link.href || pathname?.startsWith(`${link.href}/`);
               return (
                 <Link
                   key={link.href}
