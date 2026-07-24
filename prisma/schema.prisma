@@ -55,7 +55,7 @@ model Teacher {
   substituteRequestsOriginal SubstituteRequest[]   @relation("OriginalTeacher")
   substituteRequestsAssigned SubstituteRequest[]   @relation("SubstituteTeacher")
   goHallSessions             GoHallSession[]
-  activities                 Activity[]
+  activityTeachers           ActivityTeacher[]
 }
 
 model Student {
@@ -180,24 +180,34 @@ model SubjectColor {
   color   String
 }
 
-enum ActivityCategory {
-  CAMP // 營隊
-  LECTURE // 講座
-  COMPETITION // 比賽
-  OBSERVATION // 觀摩課
+model ActivityCategory {
+  id         String     @id @default(cuid())
+  name       String     @unique
+  createdAt  DateTime   @default(now())
+  activities Activity[]
+}
+
+model ActivityTeacher {
+  id         String   @id @default(cuid())
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id])
+  teacherId  String
+  teacher    Teacher  @relation(fields: [teacherId], references: [id])
+
+  @@unique([activityId, teacherId])
 }
 
 model Activity {
   id            String                 @id @default(cuid())
   title         String
   description   String
-  category      ActivityCategory
+  categoryId    String
+  category      ActivityCategory       @relation(fields: [categoryId], references: [id])
   location      String?
   startDate     DateTime
   endDate       DateTime
   capacity      Int
-  teacherId     String?
-  teacher       Teacher?               @relation(fields: [teacherId], references: [id])
+  teachers      ActivityTeacher[]
   registrations ActivityRegistration[]
   createdAt     DateTime               @default(now())
 }
