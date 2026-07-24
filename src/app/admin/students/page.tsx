@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -28,7 +27,8 @@ export default function StudentsPage() {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '', classId: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
+  const [formClassIds, setFormClassIds] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
@@ -48,16 +48,24 @@ export default function StudentsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError('');
-    const res = await fetch('/api/students', { method: 'POST', body: JSON.stringify(form) });
+    const res = await fetch('/api/students', {
+      method: 'POST',
+      body: JSON.stringify({ ...form, classIds: formClassIds }),
+    });
     if (!res.ok) {
       const data = await res.json();
       setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
       return;
     }
-    setForm({ name: '', email: '', password: '', parentPhone: '', classId: '' });
+    setForm({ name: '', email: '', password: '', parentPhone: '' });
+    setFormClassIds([]);
     setShowAddForm(false);
     showToast('已新增');
     load();
+  }
+
+  function toggleFormClass(classId: string) {
+    setFormClassIds((prev) => (prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]));
   }
 
   function openEdit(s: StudentRow) {
@@ -159,14 +167,17 @@ export default function StudentsPage() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
             <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
-            <Select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })}>
-              <option value="">選擇班級（可留空）</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}（{c.subject}）
-                </option>
-              ))}
-            </Select>
+            <div>
+              <p className="mb-1 text-sm font-medium text-ink">所屬班級（可複選，可留空）</p>
+              <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
+                {classes.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" checked={formClassIds.includes(c.id)} onChange={() => toggleFormClass(c.id)} />
+                    {c.name}（{c.subject}）
+                  </label>
+                ))}
+              </div>
+            </div>
             {formError && <p className="text-sm text-rejected">{formError}</p>}
             <Button type="submit">新增</Button>
           </form>
