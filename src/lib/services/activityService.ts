@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { ActivityCategory, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
@@ -11,12 +11,12 @@ const ACTIVITY_LIST_SELECT = {
   id: true,
   title: true,
   description: true,
-  category: true,
+  category: { select: { name: true } },
   location: true,
   startDate: true,
   endDate: true,
   capacity: true,
-  teacher: { select: { user: { select: NAME_ONLY_SELECT } } },
+  teachers: { select: { teacher: { select: { user: { select: NAME_ONLY_SELECT } } } } },
   registrations: {
     select: {
       id: true,
@@ -31,24 +31,24 @@ const ACTIVITY_STUDENT_LIST_SELECT = {
   id: true,
   title: true,
   description: true,
-  category: true,
+  category: { select: { name: true } },
   location: true,
   startDate: true,
   endDate: true,
   capacity: true,
-  teacher: { select: { user: { select: NAME_ONLY_SELECT } } },
+  teachers: { select: { teacher: { select: { user: { select: NAME_ONLY_SELECT } } } } },
   _count: { select: { registrations: true } },
 } as const;
 
 export interface CreateActivityInput {
   title: string;
   description: string;
-  category: ActivityCategory;
+  categoryId: string;
   location?: string;
   startDate: Date;
   endDate: Date;
   capacity: number;
-  teacherId?: string;
+  teacherIds: string[];
 }
 
 export function createActivity(input: CreateActivityInput) {
@@ -56,12 +56,12 @@ export function createActivity(input: CreateActivityInput) {
     data: {
       title: input.title,
       description: input.description,
-      category: input.category,
+      categoryId: input.categoryId,
       location: input.location,
       startDate: input.startDate,
       endDate: input.endDate,
       capacity: input.capacity,
-      teacherId: input.teacherId,
+      teachers: { create: input.teacherIds.map((teacherId) => ({ teacherId })) },
     },
   });
 }
@@ -75,7 +75,7 @@ export function listAllActivities() {
 
 export function listActivitiesForTeacher(teacherId: string) {
   return prisma.activity.findMany({
-    where: { teacherId },
+    where: { teachers: { some: { teacherId } } },
     select: ACTIVITY_LIST_SELECT,
     orderBy: { startDate: 'asc' },
   });
@@ -120,6 +120,7 @@ export async function adminRemoveRegistration(id: string) {
 export async function deleteActivity(id: string) {
   await prisma.$transaction([
     prisma.activityRegistration.deleteMany({ where: { activityId: id } }),
+    prisma.activityTeacher.deleteMany({ where: { activityId: id } }),
     prisma.activity.delete({ where: { id } }),
   ]);
 }
@@ -140,4 +141,18 @@ export function getActivityDetail(id: string) {
     where: { id },
     select: ACTIVITY_LIST_SELECT,
   });
+}
+
+export function listCategories() {
+  return prisma.activityCategory.findMany({ orderBy: { name: 'asc' } });
+}
+
+export function createCategory(name: string) {
+  return prisma.activityCategory.create({ data: { name } });
+}
+
+export async function deleteCategory(id: string) {
+  const count = await prisma.activity.count({ where: { categoryId: id } });
+  if (count > 0) throw new Error('CATEGORY_IN_USE');
+  await prisma.activityCategory.delete({ where: { id } });
 }
