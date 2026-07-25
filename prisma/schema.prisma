@@ -209,6 +209,7 @@ model Activity {
   capacity      Int
   teachers      ActivityTeacher[]
   registrations ActivityRegistration[]
+  images        ActivityImage[]
   createdAt     DateTime               @default(now())
 }
 
@@ -221,4 +222,12 @@ model ActivityRegistration {
   createdAt  DateTime @default(now())
 
   @@unique([activityId, studentId])
+}
+
+model ActivityImage {
+  id          String   @id @default(cuid())
+  activityId  String
+  activity    Activity @relation(fields: [activityId], references: [id])
+  storagePath String
+  createdAt   DateTime @default(now())
 }
