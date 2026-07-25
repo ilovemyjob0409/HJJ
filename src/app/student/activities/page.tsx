@@ -41,11 +41,17 @@ export default function StudentActivitiesPage() {
   const [openActivities, setOpenActivities] = useState<ActivityStudentRow[]>([]);
   const [myRegistrations, setMyRegistrations] = useState<RegistrationRow[]>([]);
   const [viewing, setViewing] = useState<ActivityDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   async function load() {
-    const [activitiesRes, myRes] = await Promise.all([fetch('/api/activities'), fetch('/api/activity-registrations')]);
-    setOpenActivities(await activitiesRes.json());
-    setMyRegistrations(await myRes.json());
+    try {
+      const [activitiesRes, myRes] = await Promise.all([fetch('/api/activities'), fetch('/api/activity-registrations')]);
+      setOpenActivities(await activitiesRes.json());
+      setMyRegistrations(await myRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -54,14 +60,19 @@ export default function StudentActivitiesPage() {
 
   async function handleRegister(activityId: string) {
     if (!confirm('確定要報名這個活動嗎？')) return;
-    const res = await fetch('/api/activity-registrations', { method: 'POST', body: JSON.stringify({ activityId }) });
-    if (!res.ok) {
-      const data = await res.json();
-      showToast(data.error === 'ACTIVITY_FULL' ? '這個活動已經額滿了' : `錯誤：${data.error}`);
-      return;
+    setPendingId(activityId);
+    try {
+      const res = await fetch('/api/activity-registrations', { method: 'POST', body: JSON.stringify({ activityId }) });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error === 'ACTIVITY_FULL' ? '這個活動已經額滿了' : `錯誤：${data.error}`);
+        return;
+      }
+      showToast('已報名');
+      load();
+    } finally {
+      setPendingId(null);
     }
-    showToast('已報名');
-    load();
   }
 
   async function handleCancel(registrationId: string) {
@@ -86,7 +97,12 @@ export default function StudentActivitiesPage() {
     {
       header: '操作',
       render: (a) => (
-        <Button className="px-3 py-1 text-xs" disabled={a._count.registrations >= a.capacity} onClick={() => handleRegister(a.id)}>
+        <Button
+          className="px-3 py-1 text-xs"
+          disabled={a._count.registrations >= a.capacity}
+          onClick={() => handleRegister(a.id)}
+          loading={pendingId === a.id}
+        >
           {a._count.registrations >= a.capacity ? '已額滿' : '報名'}
         </Button>
       ),
@@ -120,7 +136,7 @@ export default function StudentActivitiesPage() {
 
       <h2 className="mb-2 font-bold text-ink">活動列表</h2>
       <Card className="mb-6">
-        <DataTable columns={openColumns} rows={openActivities} keyField={(a) => a.id} />
+        <DataTable columns={openColumns} rows={openActivities} keyField={(a) => a.id} loading={loading} />
       </Card>
 
       <h2 className="mb-2 font-bold text-ink">我的報名紀錄</h2>
@@ -131,6 +147,7 @@ export default function StudentActivitiesPage() {
           keyField={(r) => r.id}
           onRowClick={(r) => openRoster(r.activity.id)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+          loading={loading}
         />
       </Card>
 
