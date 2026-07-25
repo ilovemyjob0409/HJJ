@@ -21,7 +21,9 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/activities/${activityId}/images`);
-      setImages(await res.json());
+      if (res.ok) {
+        setImages(await res.json());
+      }
     } finally {
       setLoading(false);
     }
@@ -108,15 +110,19 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
         <div className="animate-fade-in grid grid-cols-3 gap-2">
           {images.map((img) => (
             <div key={img.id} className="relative">
-              <button
-                type="button"
-                className="block w-full cursor-pointer"
-                onClick={() => window.open(img.url, '_blank', 'noopener')}
-                aria-label="檢視照片"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived; next/image optimization would re-fetch through the server and break on expiry */}
-                <img src={img.url} alt="活動照片" className="aspect-square w-full rounded-lg object-cover" />
-              </button>
+              {img.url ? (
+                <button
+                  type="button"
+                  className="block w-full cursor-pointer"
+                  onClick={() => window.open(img.url, '_blank', 'noopener')}
+                  aria-label="檢視照片"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived; next/image optimization would re-fetch through the server and break on expiry */}
+                  <img src={img.url} alt="活動照片" className="aspect-square w-full rounded-lg object-cover" />
+                </button>
+              ) : (
+                <div className="bg-stripe aspect-square w-full rounded-lg" aria-label="照片無法載入" />
+              )}
               {canManage && (
                 <button
                   type="button"
