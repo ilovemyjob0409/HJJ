@@ -18,6 +18,7 @@ interface Window {
 export default function AvailabilityPage() {
   const { showToast } = useToast();
   const [windows, setWindows] = useState<Window[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
     const res = await fetch('/api/availability');
@@ -41,9 +42,14 @@ export default function AvailabilityPage() {
   }
 
   async function save() {
-    await fetch('/api/availability', { method: 'PUT', body: JSON.stringify({ windows }) });
-    showToast('已儲存');
-    load();
+    setSubmitting(true);
+    try {
+      await fetch('/api/availability', { method: 'PUT', body: JSON.stringify({ windows }) });
+      showToast('已儲存');
+      load();
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -72,7 +78,7 @@ export default function AvailabilityPage() {
           <Button variant="secondary" onClick={addWindow}>
             新增時段
           </Button>
-          <Button onClick={save}>儲存</Button>
+          <Button onClick={save} loading={submitting}>儲存</Button>
         </div>
       </Card>
     </>
