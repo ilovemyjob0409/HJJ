@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
-import { compressImage } from '@/lib/imageCompression';
+import { uploadActivityImageFile } from '@/lib/uploadActivityImage';
 
 interface AlbumImage {
   id: string;
@@ -39,15 +39,8 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
     try {
       let failed = 0;
       for (const file of Array.from(files)) {
-        try {
-          const blob = await compressImage(file);
-          const form = new FormData();
-          form.append('file', new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
-          const res = await fetch(`/api/activities/${activityId}/images`, { method: 'POST', body: form });
-          if (!res.ok) failed += 1;
-        } catch {
-          failed += 1;
-        }
+        const ok = await uploadActivityImageFile(activityId, file);
+        if (!ok) failed += 1;
       }
       showToast(failed === 0 ? '照片已上傳' : `有 ${failed} 張上傳失敗`);
       setLoading(false);

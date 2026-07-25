@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -10,6 +10,13 @@ import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 import ActivityAlbum from '@/components/ActivityAlbum';
+import { compressImage } from '@/lib/imageCompression';
+import { uploadCompressedImage } from '@/lib/uploadActivityImage';
+
+interface StagedPhoto {
+  blob: Blob;
+  previewUrl: string;
+}
 
 interface TeacherOption {
   id: string;
@@ -63,6 +70,7 @@ export default function AdminActivitiesPage() {
     capacity: '20',
   });
   const [formTeacherIds, setFormTeacherIds] = useState<string[]>([]);
+  const [teacherPickerOpen, setTeacherPickerOpen] = useState(false);
   const [formError, setFormError] = useState('');
   const [showCategoryPanel, setShowCategoryPanel] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -70,6 +78,8 @@ export default function AdminActivitiesPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [categorySubmitting, setCategorySubmitting] = useState(false);
+  const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
+  const stagedFileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     try {
@@ -94,6 +104,38 @@ export default function AdminActivitiesPage() {
     setFormTeacherIds((prev) => (prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId]));
   }
 
+  function clearStagedPhotos() {
+    setStagedPhotos((prev) => {
+      prev.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return [];
+    });
+  }
+
+  function closeAddForm() {
+    setShowAddForm(false);
+    clearStagedPhotos();
+  }
+
+  async function handleStagePhotos(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    for (const file of Array.from(files)) {
+      try {
+        const blob = await compressImage(file);
+        setStagedPhotos((prev) => [...prev, { blob, previewUrl: URL.createObjectURL(blob) }]);
+      } catch {
+        showToast('有照片壓縮失敗');
+      }
+    }
+    if (stagedFileInputRef.current) stagedFileInputRef.current.value = '';
+  }
+
+  function removeStagedPhoto(index: number) {
+    setStagedPhotos((prev) => {
+      URL.revokeObjectURL(prev[index].previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -103,14 +145,26 @@ export default function AdminActivitiesPage() {
         setFormError('請至少選擇一位帶領老師');
         return;
       }
-      await fetch('/api/activities', {
+      const res = await fetch('/api/activities', {
         method: 'POST',
         body: JSON.stringify({ ...form, capacity: Number(form.capacity), teacherIds: formTeacherIds }),
       });
+      if (!res.ok) {
+        setFormError('新增活動失敗，請稍後再試');
+        return;
+      }
+      const created = await res.json();
+      let failedPhotos = 0;
+      for (const photo of stagedPhotos) {
+        const ok = await uploadCompressedImage(created.id, photo.blob);
+        if (!ok) failedPhotos += 1;
+      }
+      clearStagedPhotos();
       setForm({ title: '', description: '', categoryId: '', location: '', startDate: '', endDate: '', capacity: '20' });
       setFormTeacherIds([]);
+      setTeacherPickerOpen(false);
       setShowAddForm(false);
-      showToast('已新增活動');
+      showToast(failedPhotos === 0 ? '已新增活動' : `已新增活動，但有 ${failedPhotos} 張照片上傳失敗`);
       load();
     } finally {
       setSubmitting(false);
@@ -179,7 +233,7 @@ export default function AdminActivitiesPage() {
       header: '操作',
       render: (a) => (
         <button className="text-brandDark hover:underline" onClick={() => setViewing(a)}>
-          查看名單
+          編輯
         </button>
       ),
     },
@@ -202,7 +256,7 @@ export default function AdminActivitiesPage() {
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增活動</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
+            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={closeAddForm}>
               收合
             </button>
           </div>
@@ -236,15 +290,65 @@ export default function AdminActivitiesPage() {
               required
             />
             <div>
-              <p className="mb-1 text-sm font-medium text-ink">帶領老師（至少選 1 位）</p>
-              <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
-                {teachers.map((t) => (
-                  <label key={t.id} className="flex items-center gap-2 text-sm text-ink">
-                    <input type="checkbox" checked={formTeacherIds.includes(t.id)} onChange={() => toggleFormTeacher(t.id)} />
-                    {t.user.name}
-                  </label>
-                ))}
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-sm font-medium text-ink"
+                onClick={() => setTeacherPickerOpen((open) => !open)}
+              >
+                <span>
+                  帶領老師（至少選 1 位{formTeacherIds.length > 0 ? `，已選 ${formTeacherIds.length} 位` : ''}）
+                </span>
+                <span className="text-xs text-inkMuted">{teacherPickerOpen ? '收合' : '展開'}</span>
+              </button>
+              {teacherPickerOpen && (
+                <div className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
+                  {teachers.map((t) => (
+                    <label key={t.id} className="flex items-center gap-2 text-sm text-ink">
+                      <input type="checkbox" checked={formTeacherIds.includes(t.id)} onChange={() => toggleFormTeacher(t.id)} />
+                      {t.user.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-sm font-medium text-ink">照片（選填）</p>
+                <input
+                  ref={stagedFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleStagePhotos(e.target.files)}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="px-3 py-1 text-xs"
+                  onClick={() => stagedFileInputRef.current?.click()}
+                >
+                  ＋ 選擇照片
+                </Button>
               </div>
+              {stagedPhotos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {stagedPhotos.map((photo, i) => (
+                    <div key={photo.previewUrl} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- local blob preview, not a remote asset next/image can optimize */}
+                      <img src={photo.previewUrl} alt="待上傳照片" className="aspect-square w-full rounded-lg object-cover" />
+                      <button
+                        type="button"
+                        aria-label="移除照片"
+                        onClick={() => removeStagedPhoto(i)}
+                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-xs text-white hover:bg-black/80"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             {formError && <p className="text-sm text-rejected">{formError}</p>}
             <Button type="submit" loading={submitting}>新增</Button>
