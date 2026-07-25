@@ -22,16 +22,21 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setSubmitting(true);
-    const result = await signIn('credentials', { email, password, redirect: false });
-    if (result?.error) {
+    try {
+      const result = await signIn('credentials', { email, password, redirect: false });
+      if (result?.error) {
+        setSubmitting(false);
+        setError('帳號或密碼錯誤');
+        return;
+      }
+      // Deliberately leave `submitting` true on success: navigation unmounts this
+      // page, and resetting early would un-disable the button mid-redirect.
+      showToast('登入成功');
+      router.push('/');
+    } catch {
       setSubmitting(false);
-      setError('帳號或密碼錯誤');
-      return;
+      setError('發生錯誤，請稍後再試');
     }
-    // Deliberately leave `submitting` true on success: navigation unmounts this
-    // page, and resetting early would un-disable the button mid-redirect.
-    showToast('登入成功');
-    router.push('/');
   }
 
   return (
