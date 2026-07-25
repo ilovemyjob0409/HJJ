@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
+import { deleteActivityImages } from '@/lib/storage';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -118,11 +119,16 @@ export async function adminRemoveRegistration(id: string) {
 }
 
 export async function deleteActivity(id: string) {
+  const images = await prisma.activityImage.findMany({ where: { activityId: id }, select: { storagePath: true } });
   await prisma.$transaction([
+    prisma.activityImage.deleteMany({ where: { activityId: id } }),
     prisma.activityRegistration.deleteMany({ where: { activityId: id } }),
     prisma.activityTeacher.deleteMany({ where: { activityId: id } }),
     prisma.activity.delete({ where: { id } }),
   ]);
+  try {
+    await deleteActivityImages(images.map((i) => i.storagePath));
+  } catch {}
 }
 
 export function listRegistrationsForStudent(studentId: string) {

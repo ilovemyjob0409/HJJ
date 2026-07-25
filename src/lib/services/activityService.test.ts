@@ -1,7 +1,14 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
+
+vi.mock('@/lib/storage', () => ({
+  uploadActivityImage: vi.fn(),
+  createSignedUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://signed/${p}`]))),
+  deleteActivityImages: vi.fn(async () => {}),
+}));
+
 import {
   createActivity,
   listAllActivities,
@@ -19,6 +26,7 @@ import {
 } from './activityService';
 
 beforeEach(async () => {
+  await prisma.activityImage.deleteMany();
   await prisma.activityRegistration.deleteMany();
   await prisma.activityTeacher.deleteMany();
   await prisma.activity.deleteMany();
