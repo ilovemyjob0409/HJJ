@@ -59,11 +59,17 @@ function AdminGoHallContent() {
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
   const [highlightDismissed, setHighlightDismissed] = useState(false);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
-    const [sessionsRes, teachersRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/teachers')]);
-    setSessions(await sessionsRes.json());
-    setTeachers(await teachersRes.json());
+    try {
+      const [sessionsRes, teachersRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/teachers')]);
+      setSessions(await sessionsRes.json());
+      setTeachers(await teachersRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -100,14 +106,19 @@ function AdminGoHallContent() {
     if (!previewDates) return;
     const dates = previewDates.filter((_, i) => !excludedDates.has(i)).map((d) => d.toISOString());
     if (dates.length === 0) return;
-    await fetch('/api/go-hall-sessions', {
-      method: 'POST',
-      body: JSON.stringify({ dates, startTime: form.startTime, endTime: form.endTime, capacity: Number(form.capacity), teacherId: form.teacherId }),
-    });
-    setPreviewDates(null);
-    setShowAddForm(false);
-    showToast('已建立場次');
-    load();
+    setSubmitting(true);
+    try {
+      await fetch('/api/go-hall-sessions', {
+        method: 'POST',
+        body: JSON.stringify({ dates, startTime: form.startTime, endTime: form.endTime, capacity: Number(form.capacity), teacherId: form.teacherId }),
+      });
+      setPreviewDates(null);
+      setShowAddForm(false);
+      showToast('已建立場次');
+      load();
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function openRoster(id: string) {
@@ -243,7 +254,7 @@ function AdminGoHallContent() {
                 ))}
               </div>
               <div className="flex gap-2">
-                <Button type="button" onClick={handleConfirmCreate}>
+                <Button type="button" onClick={handleConfirmCreate} loading={submitting}>
                   確認建立
                 </Button>
                 <Button type="button" variant="secondary" onClick={() => setPreviewDates(null)}>
@@ -274,6 +285,7 @@ function AdminGoHallContent() {
             if (s.id === highlightId) setHighlightDismissed(true);
           }}
           maxRows={search.trim() || highlightId ? undefined : 3}
+          loading={loading}
         />
       </Card>
 

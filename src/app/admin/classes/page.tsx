@@ -46,11 +46,17 @@ export default function ClassesPage() {
   const [editForm, setEditForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
   const [editError, setEditError] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
-    const [classesRes, teachersRes] = await Promise.all([fetch('/api/classes'), fetch('/api/teachers')]);
-    setClasses(await classesRes.json());
-    setTeachers(await teachersRes.json());
+    try {
+      const [classesRes, teachersRes] = await Promise.all([fetch('/api/classes'), fetch('/api/teachers')]);
+      setClasses(await classesRes.json());
+      setTeachers(await teachersRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -59,14 +65,19 @@ export default function ClassesPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await fetch('/api/classes', {
-      method: 'POST',
-      body: JSON.stringify({ ...form, weekday: Number(form.weekday) }),
-    });
-    setForm({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
-    setShowAddForm(false);
-    showToast('已新增');
-    load();
+    setSubmitting(true);
+    try {
+      await fetch('/api/classes', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, weekday: Number(form.weekday) }),
+      });
+      setForm({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
+      setShowAddForm(false);
+      showToast('已新增');
+      load();
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function openEdit(c: ClassRow) {
@@ -86,19 +97,24 @@ export default function ClassesPage() {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
-    setEditError('');
-    const res = await fetch(`/api/classes/${editing.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ ...editForm, weekday: Number(editForm.weekday) }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setEditError(`錯誤：${data.error}`);
-      return;
+    setSubmitting(true);
+    try {
+      setEditError('');
+      const res = await fetch(`/api/classes/${editing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ...editForm, weekday: Number(editForm.weekday) }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setEditError(`錯誤：${data.error}`);
+        return;
+      }
+      setEditing(null);
+      showToast('已儲存');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    setEditing(null);
-    showToast('已儲存');
-    load();
   }
 
   async function removeStudent(studentId: string) {
@@ -204,13 +220,13 @@ export default function ClassesPage() {
             </Select>
             <Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
             <Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
-            <Button type="submit">新增</Button>
+            <Button type="submit" loading={submitting}>新增</Button>
           </form>
         </Card>
       )}
 
       <Card>
-        <DataTable columns={columns} rows={filteredClasses} keyField={(c) => c.id} />
+        <DataTable columns={columns} rows={filteredClasses} keyField={(c) => c.id} loading={loading} />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯班級">
@@ -236,7 +252,7 @@ export default function ClassesPage() {
           <Input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} />
           <Input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} />
           {editError && <p className="text-sm text-rejected">{editError}</p>}
-          <Button type="submit">儲存</Button>
+          <Button type="submit" loading={submitting}>儲存</Button>
         </form>
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
           刪除班級

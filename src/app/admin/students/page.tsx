@@ -34,11 +34,17 @@ export default function StudentsPage() {
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [editClassIds, setEditClassIds] = useState<string[]>([]);
   const [editError, setEditError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
-    const [studentsRes, classesRes] = await Promise.all([fetch('/api/students'), fetch('/api/classes')]);
-    setStudents(await studentsRes.json());
-    setClasses(await classesRes.json());
+    try {
+      const [studentsRes, classesRes] = await Promise.all([fetch('/api/students'), fetch('/api/classes')]);
+      setStudents(await studentsRes.json());
+      setClasses(await classesRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -47,21 +53,26 @@ export default function StudentsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setFormError('');
-    const res = await fetch('/api/students', {
-      method: 'POST',
-      body: JSON.stringify({ ...form, classIds: formClassIds }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
-      return;
+    setSubmitting(true);
+    try {
+      setFormError('');
+      const res = await fetch('/api/students', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, classIds: formClassIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+        return;
+      }
+      setForm({ name: '', email: '', password: '', parentPhone: '' });
+      setFormClassIds([]);
+      setShowAddForm(false);
+      showToast('已新增');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    setForm({ name: '', email: '', password: '', parentPhone: '' });
-    setFormClassIds([]);
-    setShowAddForm(false);
-    showToast('已新增');
-    load();
   }
 
   function toggleFormClass(classId: string) {
@@ -82,19 +93,24 @@ export default function StudentsPage() {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
-    setEditError('');
-    const res = await fetch(`/api/students/${editing.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ ...editForm, classIds: editClassIds }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setEditError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
-      return;
+    setSubmitting(true);
+    try {
+      setEditError('');
+      const res = await fetch(`/api/students/${editing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ...editForm, classIds: editClassIds }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setEditError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+        return;
+      }
+      setEditing(null);
+      showToast('已儲存');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    setEditing(null);
-    showToast('已儲存');
-    load();
   }
 
   async function handleDelete() {
@@ -179,13 +195,13 @@ export default function StudentsPage() {
               </div>
             </div>
             {formError && <p className="text-sm text-rejected">{formError}</p>}
-            <Button type="submit">新增</Button>
+            <Button type="submit" loading={submitting}>新增</Button>
           </form>
         </Card>
       )}
 
       <Card>
-        <DataTable columns={columns} rows={filteredStudents} keyField={(s) => s.id} />
+        <DataTable columns={columns} rows={filteredStudents} keyField={(s) => s.id} loading={loading} />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生">
@@ -223,7 +239,7 @@ export default function StudentsPage() {
           </div>
 
           {editError && <p className="text-sm text-rejected">{editError}</p>}
-          <Button type="submit">儲存</Button>
+          <Button type="submit" loading={submitting}>儲存</Button>
         </form>
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
           刪除學生

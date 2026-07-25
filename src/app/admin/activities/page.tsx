@@ -66,16 +66,23 @@ export default function AdminActivitiesPage() {
   const [showCategoryPanel, setShowCategoryPanel] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [viewing, setViewing] = useState<ActivityRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [categorySubmitting, setCategorySubmitting] = useState(false);
 
   async function load() {
-    const [activitiesRes, teachersRes, categoriesRes] = await Promise.all([
-      fetch('/api/activities'),
-      fetch('/api/teachers'),
-      fetch('/api/activity-categories'),
-    ]);
-    setActivities(await activitiesRes.json());
-    setTeachers(await teachersRes.json());
-    setCategories(await categoriesRes.json());
+    try {
+      const [activitiesRes, teachersRes, categoriesRes] = await Promise.all([
+        fetch('/api/activities'),
+        fetch('/api/teachers'),
+        fetch('/api/activity-categories'),
+      ]);
+      setActivities(await activitiesRes.json());
+      setTeachers(await teachersRes.json());
+      setCategories(await categoriesRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -88,33 +95,43 @@ export default function AdminActivitiesPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setFormError('');
-    if (formTeacherIds.length === 0) {
-      setFormError('請至少選擇一位帶領老師');
-      return;
+    setSubmitting(true);
+    try {
+      setFormError('');
+      if (formTeacherIds.length === 0) {
+        setFormError('請至少選擇一位帶領老師');
+        return;
+      }
+      await fetch('/api/activities', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, capacity: Number(form.capacity), teacherIds: formTeacherIds }),
+      });
+      setForm({ title: '', description: '', categoryId: '', location: '', startDate: '', endDate: '', capacity: '20' });
+      setFormTeacherIds([]);
+      setShowAddForm(false);
+      showToast('已新增活動');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    await fetch('/api/activities', {
-      method: 'POST',
-      body: JSON.stringify({ ...form, capacity: Number(form.capacity), teacherIds: formTeacherIds }),
-    });
-    setForm({ title: '', description: '', categoryId: '', location: '', startDate: '', endDate: '', capacity: '20' });
-    setFormTeacherIds([]);
-    setShowAddForm(false);
-    showToast('已新增活動');
-    load();
   }
 
   async function handleAddCategory(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch('/api/activity-categories', { method: 'POST', body: JSON.stringify({ name: newCategoryName }) });
-    if (!res.ok) {
-      const data = await res.json();
-      showToast(data.error === 'CATEGORY_NAME_TAKEN' ? '此分類名稱已存在' : `錯誤：${data.error}`);
-      return;
+    setCategorySubmitting(true);
+    try {
+      const res = await fetch('/api/activity-categories', { method: 'POST', body: JSON.stringify({ name: newCategoryName }) });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error === 'CATEGORY_NAME_TAKEN' ? '此分類名稱已存在' : `錯誤：${data.error}`);
+        return;
+      }
+      setNewCategoryName('');
+      showToast('已新增分類');
+      load();
+    } finally {
+      setCategorySubmitting(false);
     }
-    setNewCategoryName('');
-    showToast('已新增分類');
-    load();
   }
 
   async function handleDeleteCategory(id: string) {
@@ -229,7 +246,7 @@ export default function AdminActivitiesPage() {
               </div>
             </div>
             {formError && <p className="text-sm text-rejected">{formError}</p>}
-            <Button type="submit">新增</Button>
+            <Button type="submit" loading={submitting}>新增</Button>
           </form>
         </Card>
       )}
@@ -264,7 +281,7 @@ export default function AdminActivitiesPage() {
               required
               className="flex-1"
             />
-            <Button type="submit">新增分類</Button>
+            <Button type="submit" loading={categorySubmitting}>新增分類</Button>
           </form>
         </Card>
       )}
@@ -276,6 +293,7 @@ export default function AdminActivitiesPage() {
           keyField={(a) => a.id}
           onRowClick={(a) => setViewing(a)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+          loading={loading}
         />
       </Card>
 
