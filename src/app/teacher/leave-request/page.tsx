@@ -15,6 +15,7 @@ export default function TeacherLeaveRequestPage() {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [form, setForm] = useState({ classId: '', date: '', reason: '' });
   const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetch('/api/classes').then((r) => r.json()).then(setClasses);
@@ -22,9 +23,14 @@ export default function TeacherLeaveRequestPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch('/api/substitute-requests', { method: 'POST', body: JSON.stringify(form) });
-    setMessage(res.ok ? '已送出，行政將安排代課老師' : '送出失敗');
-    setForm({ classId: '', date: '', reason: '' });
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/substitute-requests', { method: 'POST', body: JSON.stringify(form) });
+      setMessage(res.ok ? '已送出，行政將安排代課老師' : '送出失敗');
+      setForm({ classId: '', date: '', reason: '' });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -42,7 +48,7 @@ export default function TeacherLeaveRequestPage() {
           </Select>
           <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
           <Input placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
-          <Button type="submit">送出</Button>
+          <Button type="submit" loading={submitting}>送出</Button>
         </form>
         {message && <p className="mt-4 text-sm text-ink">{message}</p>}
       </Card>

@@ -100,19 +100,20 @@ select {
   background-size: 0.7rem;
 }
 
-/* Universal hover highlight: every clickable element brightens slightly on
-   hover — links, buttons, dropdowns, checkboxes, and anything opted into
-   clickability via cursor-pointer (e.g. clickable table rows). Scoped to
-   (hover: hover) so touch devices don't get sticky highlight states.
-   Element-specific hover styles (bg swaps, underlines) still apply on top. */
+/* Universal hover highlight + press feedback for every clickable element —
+   links, buttons, dropdowns, checkboxes, and anything opted into
+   clickability via cursor-pointer (e.g. clickable table rows).
+   Hover brightness is scoped to (hover: hover) so touch devices don't get
+   sticky highlight states; the :active press-scale applies everywhere
+   (touch fires :active too). Transform-only, so no layout work happens. */
+a,
+button:not(:disabled),
+select,
+input[type='checkbox']:not(:disabled),
+.cursor-pointer {
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
 @media (hover: hover) {
-  a,
-  button:not(:disabled),
-  select,
-  input[type='checkbox']:not(:disabled),
-  .cursor-pointer {
-    transition: filter 0.15s ease;
-  }
   a:hover,
   button:not(:disabled):hover,
   select:hover,
@@ -120,6 +121,71 @@ select {
   .cursor-pointer:hover {
     filter: brightness(1.12);
   }
+}
+a:active,
+button:not(:disabled):active,
+select:active,
+input[type='checkbox']:not(:disabled):active,
+.cursor-pointer:active {
+  transform: scale(0.97);
+}
+/* Table rows are large surfaces — a 3% dip looks like a glitch, keep it subtle. */
+tr.cursor-pointer:active {
+  transform: scale(0.995);
+}
+
+/* ── Motion tokens ─────────────────────────────────────────────
+   Durations: press 100ms / transitions 150-200ms / entrances 200-300ms.
+   Signature easing (borrowed from the nav pill): cubic-bezier(0.22, 1, 0.36, 1).
+   Only transform/opacity/filter are animated, ever. */
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+/* Toast keyframes own the full transform, including the -50% centering
+   (the component must NOT also apply -translate-x-1/2). */
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 8px); }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.animate-rise-in {
+  animation: rise-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease both;
+}
+.animate-modal-in {
+  animation: modal-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-toast-in {
+  animation: toast-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-toast-out {
+  animation: toast-out 0.2s ease both;
+}
+/* Skeleton bars: theme-aware via the existing surface variables. */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--stripe) 25%, var(--border-subtle) 37%, var(--stripe) 63%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
 }
 
 @layer utilities {
@@ -133,5 +199,18 @@ select {
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* Accessibility: kill all animation for users who asked for less motion.
+   Loading spinners remain visible (they just stop rotating) — they're
+   state indicators, not decoration. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

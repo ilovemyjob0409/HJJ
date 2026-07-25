@@ -42,11 +42,17 @@ function StudentGoHallContent() {
   const [myRegistrations, setMyRegistrations] = useState<RegistrationRow[]>([]);
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
   const [highlightDismissed, setHighlightDismissed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   async function load() {
-    const [sessionsRes, myRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/go-hall-registrations')]);
-    setOpenSessions(await sessionsRes.json());
-    setMyRegistrations(await myRes.json());
+    try {
+      const [sessionsRes, myRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/go-hall-registrations')]);
+      setOpenSessions(await sessionsRes.json());
+      setMyRegistrations(await myRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -66,14 +72,19 @@ function StudentGoHallContent() {
 
   async function handleRegister(sessionId: string) {
     if (!confirm('確定要報名這場嗎？')) return;
-    const res = await fetch('/api/go-hall-registrations', { method: 'POST', body: JSON.stringify({ sessionId }) });
-    if (!res.ok) {
-      const data = await res.json();
-      showToast(data.error === 'SESSION_FULL' ? '這場已經額滿了' : `錯誤：${data.error}`);
-      return;
+    setPendingId(sessionId);
+    try {
+      const res = await fetch('/api/go-hall-registrations', { method: 'POST', body: JSON.stringify({ sessionId }) });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error === 'SESSION_FULL' ? '這場已經額滿了' : `錯誤：${data.error}`);
+        return;
+      }
+      showToast('已報名');
+      load();
+    } finally {
+      setPendingId(null);
     }
-    showToast('已報名');
-    load();
   }
 
   async function handleCancel(registrationId: string) {
@@ -96,7 +107,12 @@ function StudentGoHallContent() {
     {
       header: '操作',
       render: (s) => (
-        <Button className="px-3 py-1 text-xs" disabled={s._count.registrations >= s.capacity} onClick={() => handleRegister(s.id)}>
+        <Button
+          className="px-3 py-1 text-xs"
+          disabled={s._count.registrations >= s.capacity}
+          onClick={() => handleRegister(s.id)}
+          loading={pendingId === s.id}
+        >
           {s._count.registrations >= s.capacity ? '已額滿' : '報名'}
         </Button>
       ),
@@ -129,6 +145,7 @@ function StudentGoHallContent() {
           keyField={(s) => s.id}
           onRowClick={(s) => openRoster(s.id)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+          loading={loading}
         />
       </Card>
 
@@ -143,6 +160,7 @@ function StudentGoHallContent() {
           onRowMouseLeave={(r) => {
             if (r.id === highlightId) setHighlightDismissed(true);
           }}
+          loading={loading}
         />
       </Card>
 

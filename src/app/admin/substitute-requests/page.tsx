@@ -27,11 +27,17 @@ export default function AdminSubstituteRequestsPage() {
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   async function load() {
-    const [reqRes, teacherRes] = await Promise.all([fetch('/api/substitute-requests'), fetch('/api/teachers')]);
-    setRows(await reqRes.json());
-    setTeachers(await teacherRes.json());
+    try {
+      const [reqRes, teacherRes] = await Promise.all([fetch('/api/substitute-requests'), fetch('/api/teachers')]);
+      setRows(await reqRes.json());
+      setTeachers(await teacherRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -41,9 +47,14 @@ export default function AdminSubstituteRequestsPage() {
   async function assign(id: string) {
     const substituteTeacherId = selected[id];
     if (!substituteTeacherId) return;
-    await fetch(`/api/substitute-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ substituteTeacherId }) });
-    showToast('已指派');
-    load();
+    setPendingId(id);
+    try {
+      await fetch(`/api/substitute-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ substituteTeacherId }) });
+      showToast('已指派');
+      load();
+    } finally {
+      setPendingId(null);
+    }
   }
 
   const columns: Column<PendingRow>[] = [
@@ -64,7 +75,7 @@ export default function AdminSubstituteRequestsPage() {
               </option>
             ))}
           </Select>
-          <Button className="px-3 py-1 text-xs" onClick={() => assign(r.id)}>
+          <Button className="px-3 py-1 text-xs" onClick={() => assign(r.id)} loading={pendingId === r.id}>
             指派
           </Button>
         </div>
@@ -76,7 +87,7 @@ export default function AdminSubstituteRequestsPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">待安排代課</h1>
       <Card>
-        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} />
+        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} loading={loading} />
       </Card>
     </>
   );

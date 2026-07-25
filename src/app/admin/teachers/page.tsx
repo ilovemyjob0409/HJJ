@@ -25,10 +25,16 @@ export default function TeachersPage() {
   const [editing, setEditing] = useState<TeacherRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', subjects: '', phone: '' });
   const [editError, setEditError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
-    const res = await fetch('/api/teachers');
-    setTeachers(await res.json());
+    try {
+      const res = await fetch('/api/teachers');
+      setTeachers(await res.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -37,17 +43,22 @@ export default function TeachersPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setFormError('');
-    const res = await fetch('/api/teachers', { method: 'POST', body: JSON.stringify(form) });
-    if (!res.ok) {
-      const data = await res.json();
-      setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
-      return;
+    setSubmitting(true);
+    try {
+      setFormError('');
+      const res = await fetch('/api/teachers', { method: 'POST', body: JSON.stringify(form) });
+      if (!res.ok) {
+        const data = await res.json();
+        setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+        return;
+      }
+      setForm({ name: '', email: '', password: '', subjects: '', phone: '' });
+      setShowAddForm(false);
+      showToast('已新增');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    setForm({ name: '', email: '', password: '', subjects: '', phone: '' });
-    setShowAddForm(false);
-    showToast('已新增');
-    load();
   }
 
   function openEdit(t: TeacherRow) {
@@ -59,16 +70,21 @@ export default function TeachersPage() {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
-    setEditError('');
-    const res = await fetch(`/api/teachers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(editForm) });
-    if (!res.ok) {
-      const data = await res.json();
-      setEditError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
-      return;
+    setSubmitting(true);
+    try {
+      setEditError('');
+      const res = await fetch(`/api/teachers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(editForm) });
+      if (!res.ok) {
+        const data = await res.json();
+        setEditError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+        return;
+      }
+      setEditing(null);
+      showToast('已儲存');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    setEditing(null);
-    showToast('已儲存');
-    load();
   }
 
   async function handleDelete() {
@@ -145,13 +161,13 @@ export default function TeachersPage() {
             <Input placeholder="任教科目" value={form.subjects} onChange={(e) => setForm({ ...form, subjects: e.target.value })} required />
             <Input placeholder="電話" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             {formError && <p className="text-sm text-rejected">{formError}</p>}
-            <Button type="submit">新增</Button>
+            <Button type="submit" loading={submitting}>新增</Button>
           </form>
         </Card>
       )}
 
       <Card>
-        <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} />
+        <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} loading={loading} />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯老師">
@@ -178,7 +194,7 @@ export default function TeachersPage() {
           />
           <Input placeholder="電話" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
           {editError && <p className="text-sm text-rejected">{editError}</p>}
-          <Button type="submit">儲存</Button>
+          <Button type="submit" loading={submitting}>儲存</Button>
         </form>
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
           刪除老師

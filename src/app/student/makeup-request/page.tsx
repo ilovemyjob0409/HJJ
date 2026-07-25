@@ -54,6 +54,7 @@ export default function MakeupRequestPage() {
 
   const [insertionForm, setInsertionForm] = useState({ targetClassId: '', targetDate: '' });
   const [oneOnOneForm, setOneOnOneForm] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetch('/api/leave-requests').then((r) => r.json()).then(setLeaves);
@@ -91,46 +92,56 @@ export default function MakeupRequestPage() {
 
   async function submitInsertion(e: React.FormEvent) {
     e.preventDefault();
-    setMessage('');
-    const res = await fetch('/api/makeup-requests', {
-      method: 'POST',
-      body: JSON.stringify({ type: 'INSERTION', leaveRequestId: selectedLeaveId, ...insertionForm }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setMessage('已送出插班申請，待行政確認');
-    } else if (data.error === 'QUOTA_EXCEEDED') {
-      setMessage('本季補課名額已使用完畢');
-    } else {
-      setMessage(`錯誤：${data.error}`);
+    setSubmitting(true);
+    try {
+      setMessage('');
+      const res = await fetch('/api/makeup-requests', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'INSERTION', leaveRequestId: selectedLeaveId, ...insertionForm }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage('已送出插班申請，待行政確認');
+      } else if (data.error === 'QUOTA_EXCEEDED') {
+        setMessage('本季補課名額已使用完畢');
+      } else {
+        setMessage(`錯誤：${data.error}`);
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
   async function submitOneOnOne(e: React.FormEvent) {
     e.preventDefault();
-    setMessage('');
-    const res = await fetch('/api/makeup-requests', {
-      method: 'POST',
-      body: JSON.stringify({
-        type: 'ONE_ON_ONE',
-        leaveRequestId: selectedLeaveId,
-        teacherId: oneOnOneForm.teacherId,
-        slotDate: oneOnOneForm.slotDate,
-        slotStartTime: oneOnOneForm.slotStartTime,
-        slotEndTime: oneOnOneForm.slotEndTime,
-      }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setMessage('已送出一對一補課申請，待行政確認');
-    } else if (data.error === 'QUOTA_EXCEEDED') {
-      setMessage('本季一對一補課名額已使用');
-    } else if (data.error === 'OUTSIDE_AVAILABILITY') {
-      setMessage('該時段不在老師可補課時段內');
-    } else if (data.error === 'SLOT_CONFLICT') {
-      setMessage('該時段已被其他學生預約');
-    } else {
-      setMessage(`錯誤：${data.error}`);
+    setSubmitting(true);
+    try {
+      setMessage('');
+      const res = await fetch('/api/makeup-requests', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'ONE_ON_ONE',
+          leaveRequestId: selectedLeaveId,
+          teacherId: oneOnOneForm.teacherId,
+          slotDate: oneOnOneForm.slotDate,
+          slotStartTime: oneOnOneForm.slotStartTime,
+          slotEndTime: oneOnOneForm.slotEndTime,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage('已送出一對一補課申請，待行政確認');
+      } else if (data.error === 'QUOTA_EXCEEDED') {
+        setMessage('本季一對一補課名額已使用');
+      } else if (data.error === 'OUTSIDE_AVAILABILITY') {
+        setMessage('該時段不在老師可補課時段內');
+      } else if (data.error === 'SLOT_CONFLICT') {
+        setMessage('該時段已被其他學生預約');
+      } else {
+        setMessage(`錯誤：${data.error}`);
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -206,7 +217,7 @@ export default function MakeupRequestPage() {
                 onChange={(e) => setInsertionForm({ ...insertionForm, targetDate: e.target.value })}
                 required
               />
-              <Button type="submit">送出插班申請</Button>
+              <Button type="submit" loading={submitting}>送出插班申請</Button>
             </form>
           )}
 
@@ -255,7 +266,7 @@ export default function MakeupRequestPage() {
                   onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotEndTime: e.target.value })}
                 />
               </div>
-              <Button type="submit">送出一對一申請</Button>
+              <Button type="submit" loading={submitting}>送出一對一申請</Button>
             </form>
           )}
         </Card>

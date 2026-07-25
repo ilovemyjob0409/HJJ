@@ -32,10 +32,15 @@ function TeacherGoHallContent() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
   const [highlightDismissed, setHighlightDismissed] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   async function load() {
-    const res = await fetch('/api/go-hall-sessions');
-    setSessions(await res.json());
+    try {
+      const res = await fetch('/api/go-hall-sessions');
+      setSessions(await res.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -70,6 +75,7 @@ function TeacherGoHallContent() {
         <DataTable
           columns={columns}
           rows={sessions}
+          loading={loading}
           keyField={(s) => s.id}
           onRowClick={(s) => openRoster(s.id)}
           rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-stripe')}

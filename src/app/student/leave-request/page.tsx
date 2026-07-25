@@ -30,11 +30,17 @@ export default function StudentLeaveRequestPage() {
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [form, setForm] = useState({ classId: '', date: '', reason: '' });
   const [formError, setFormError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
-    const [classesRes, leavesRes] = await Promise.all([fetch('/api/classes'), fetch('/api/leave-requests')]);
-    setClasses(await classesRes.json());
-    setLeaves(await leavesRes.json());
+    try {
+      const [classesRes, leavesRes] = await Promise.all([fetch('/api/classes'), fetch('/api/leave-requests')]);
+      setClasses(await classesRes.json());
+      setLeaves(await leavesRes.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -43,16 +49,21 @@ export default function StudentLeaveRequestPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setFormError('');
-    const res = await fetch('/api/leave-requests', { method: 'POST', body: JSON.stringify(form) });
-    if (!res.ok) {
-      const data = await res.json();
-      setFormError(`錯誤：${data.error}`);
-      return;
+    setSubmitting(true);
+    try {
+      setFormError('');
+      const res = await fetch('/api/leave-requests', { method: 'POST', body: JSON.stringify(form) });
+      if (!res.ok) {
+        const data = await res.json();
+        setFormError(`錯誤：${data.error}`);
+        return;
+      }
+      setForm({ classId: '', date: '', reason: '' });
+      showToast('已送出');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    setForm({ classId: '', date: '', reason: '' });
-    showToast('已送出');
-    load();
   }
 
   const columns: Column<LeaveRow>[] = [
@@ -90,13 +101,13 @@ export default function StudentLeaveRequestPage() {
           <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
           <Input placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
           {formError && <p className="text-sm text-rejected">{formError}</p>}
-          <Button type="submit">送出請假</Button>
+          <Button type="submit" loading={submitting}>送出請假</Button>
         </form>
       </Card>
 
       <h2 className="mb-2 font-bold text-ink">我的請假紀錄</h2>
       <Card>
-        <DataTable columns={columns} rows={leaves} keyField={(l) => l.id} />
+        <DataTable columns={columns} rows={leaves} keyField={(l) => l.id} loading={loading} />
       </Card>
     </>
   );

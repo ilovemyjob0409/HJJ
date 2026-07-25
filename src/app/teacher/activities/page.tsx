@@ -29,11 +29,13 @@ interface ActivityRow {
 export default function TeacherActivitiesPage() {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [viewing, setViewing] = useState<ActivityRow | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/activities')
       .then((res) => res.json())
-      .then(setActivities);
+      .then(setActivities)
+      .finally(() => setLoading(false));
   }, []);
 
   const columns: Column<ActivityRow>[] = [
@@ -51,6 +53,7 @@ export default function TeacherActivitiesPage() {
         <DataTable
           columns={columns}
           rows={activities}
+          loading={loading}
           keyField={(a) => a.id}
           onRowClick={(a) => setViewing(a)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}

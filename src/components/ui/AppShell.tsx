@@ -133,7 +133,11 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
           </button>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl p-6">{children}</main>
+      <main className="mx-auto max-w-5xl p-6">
+        <div key={pathname ?? ''} className="animate-rise-in">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

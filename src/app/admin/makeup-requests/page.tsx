@@ -26,10 +26,16 @@ function AdminMakeupRequestsContent() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
   const [rows, setRows] = useState<PendingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch('/api/makeup-requests/pending');
-    setRows(await res.json());
+    try {
+      const res = await fetch('/api/makeup-requests/pending');
+      setRows(await res.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -42,9 +48,14 @@ function AdminMakeupRequestsContent() {
   }, [highlightId, rows]);
 
   async function decide(id: string, decision: 'APPROVED' | 'REJECTED') {
-    await fetch(`/api/makeup-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
-    showToast(decision === 'APPROVED' ? '已核准' : '已拒絕');
-    load();
+    setPendingId(id);
+    try {
+      await fetch(`/api/makeup-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
+      showToast(decision === 'APPROVED' ? '已核准' : '已拒絕');
+      load();
+    } finally {
+      setPendingId(null);
+    }
   }
 
   const columns: Column<PendingRow>[] = [
@@ -63,10 +74,15 @@ function AdminMakeupRequestsContent() {
       header: '操作',
       render: (r) => (
         <div className="flex gap-2">
-          <Button className="px-3 py-1 text-xs" onClick={() => decide(r.id, 'APPROVED')}>
+          <Button className="px-3 py-1 text-xs" onClick={() => decide(r.id, 'APPROVED')} loading={pendingId === r.id}>
             核准
           </Button>
-          <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => decide(r.id, 'REJECTED')}>
+          <Button
+            variant="secondary"
+            className="px-3 py-1 text-xs"
+            onClick={() => decide(r.id, 'REJECTED')}
+            loading={pendingId === r.id}
+          >
             拒絕
           </Button>
         </div>
@@ -83,6 +99,7 @@ function AdminMakeupRequestsContent() {
           rows={rows}
           keyField={(r) => r.id}
           rowClassName={(r) => (r.id === highlightId ? 'bg-pendingBg' : '')}
+          loading={loading}
         />
       </Card>
     </>

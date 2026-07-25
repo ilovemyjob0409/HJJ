@@ -16,17 +16,27 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    const result = await signIn('credentials', { email, password, redirect: false });
-    if (result?.error) {
-      setError('帳號或密碼錯誤');
-      return;
+    setSubmitting(true);
+    try {
+      const result = await signIn('credentials', { email, password, redirect: false });
+      if (result?.error) {
+        setSubmitting(false);
+        setError('帳號或密碼錯誤');
+        return;
+      }
+      // Deliberately leave `submitting` true on success: navigation unmounts this
+      // page, and resetting early would un-disable the button mid-redirect.
+      showToast('登入成功');
+      router.push('/');
+    } catch {
+      setSubmitting(false);
+      setError('發生錯誤，請稍後再試');
     }
-    showToast('登入成功');
-    router.push('/');
   }
 
   return (
@@ -39,14 +49,14 @@ export default function LoginPage() {
         <p className="text-sm text-inkMuted">一站式請假／補課／調課平台</p>
       </div>
       <div className="flex flex-1 items-center justify-center bg-cream p-6 md:bg-card md:p-10">
-        <Card className="w-full max-w-sm md:shadow-none">
+        <Card className="animate-rise-in w-full max-w-sm md:shadow-none">
           <Logo className="mb-4 h-8 w-auto md:hidden" />
           <h2 className="mb-4 hidden text-lg font-bold text-ink md:block">登入</h2>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <Input type="text" placeholder="帳號" value={email} onChange={(e) => setEmail(e.target.value)} required />
             <Input type="password" placeholder="密碼" value={password} onChange={(e) => setPassword(e.target.value)} required />
             {error && <p className="text-sm text-rejected">{error}</p>}
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" loading={submitting}>
               登入
             </Button>
           </form>
