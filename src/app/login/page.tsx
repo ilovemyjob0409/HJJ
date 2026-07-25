@@ -39,7 +39,7 @@ export default function LoginPage() {
         <p className="text-sm text-inkMuted">一站式請假／補課／調課平台</p>
       </div>
       <div className="flex flex-1 items-center justify-center bg-cream p-6 md:bg-card md:p-10">
-        <Card className="w-full max-w-sm md:shadow-none">
+        <Card className="animate-rise-in w-full max-w-sm md:shadow-none">
           <Logo className="mb-4 h-8 w-auto md:hidden" />
           <h2 className="mb-4 hidden text-lg font-bold text-ink md:block">登入</h2>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
