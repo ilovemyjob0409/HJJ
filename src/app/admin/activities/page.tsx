@@ -9,6 +9,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
+import ActivityAlbum from '@/components/ActivityAlbum';
 
 interface TeacherOption {
   id: string;
@@ -321,6 +322,7 @@ export default function AdminActivitiesPage() {
             <button type="button" className="mt-2 text-left text-sm text-rejected hover:underline" onClick={handleDeleteActivity}>
               刪除此活動
             </button>
+            <ActivityAlbum activityId={viewing.id} canManage />
           </div>
         )}
       </Modal>

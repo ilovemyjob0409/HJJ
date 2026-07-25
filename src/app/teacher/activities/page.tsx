@@ -5,6 +5,7 @@ import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
+import ActivityAlbum from '@/components/ActivityAlbum';
 
 interface RosterEntry {
   id: string;
@@ -78,6 +79,7 @@ export default function TeacherActivitiesPage() {
                 ))}
               </ul>
             )}
+            <ActivityAlbum activityId={viewing.id} canManage={false} />
           </div>
         )}
       </Modal>

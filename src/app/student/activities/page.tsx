@@ -7,6 +7,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
+import ActivityAlbum from '@/components/ActivityAlbum';
 
 interface ActivityStudentRow {
   id: string;
@@ -169,6 +170,7 @@ export default function StudentActivitiesPage() {
                 ))}
               </ul>
             )}
+            <ActivityAlbum activityId={viewing.id} canManage={false} />
           </div>
         )}
       </Modal>
