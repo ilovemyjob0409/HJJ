@@ -22,17 +22,16 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setSubmitting(true);
-    try {
-      const result = await signIn('credentials', { email, password, redirect: false });
-      if (result?.error) {
-        setError('帳號或密碼錯誤');
-        return;
-      }
-      showToast('登入成功');
-      router.push('/');
-    } finally {
+    const result = await signIn('credentials', { email, password, redirect: false });
+    if (result?.error) {
       setSubmitting(false);
+      setError('帳號或密碼錯誤');
+      return;
     }
+    // Deliberately leave `submitting` true on success: navigation unmounts this
+    // page, and resetting early would un-disable the button mid-redirect.
+    showToast('登入成功');
+    router.push('/');
   }
 
   return (
