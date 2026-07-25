@@ -16,17 +16,23 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    const result = await signIn('credentials', { email, password, redirect: false });
-    if (result?.error) {
-      setError('帳號或密碼錯誤');
-      return;
+    setSubmitting(true);
+    try {
+      const result = await signIn('credentials', { email, password, redirect: false });
+      if (result?.error) {
+        setError('帳號或密碼錯誤');
+        return;
+      }
+      showToast('登入成功');
+      router.push('/');
+    } finally {
+      setSubmitting(false);
     }
-    showToast('登入成功');
-    router.push('/');
   }
 
   return (
@@ -46,7 +52,7 @@ export default function LoginPage() {
             <Input type="text" placeholder="帳號" value={email} onChange={(e) => setEmail(e.target.value)} required />
             <Input type="password" placeholder="密碼" value={password} onChange={(e) => setPassword(e.target.value)} required />
             {error && <p className="text-sm text-rejected">{error}</p>}
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" loading={submitting}>
               登入
             </Button>
           </form>
