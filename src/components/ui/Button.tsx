@@ -23,7 +23,12 @@ export default function Button({
       ? 'bg-brand text-brandInk hover:bg-brandDark'
       : 'border border-borderStrong bg-card text-ink hover:bg-stripe';
   return (
-    <button className={`${base} ${cursor} ${styles} ${className}`} disabled={disabled || loading} {...props}>
+    <button
+      className={`${base} ${cursor} ${styles} ${className}`}
+      disabled={disabled || loading}
+      aria-busy={loading}
+      {...props}
+    >
       {loading && (
         <span
           aria-hidden
