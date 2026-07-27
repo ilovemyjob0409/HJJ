@@ -164,8 +164,8 @@ model ClassEnrollment {
 
 - `PATCH /api/students/:id`：body 的 `classIds: string[]` 改為 `enrollments: { classId, totalSessions? }[]`，`setStudentEnrollments` 對「維持勾選未變動」的既有 enrollment 也要更新 `totalSessions`（不只新增/刪除時處理），供學生編輯 modal 的初始堂數設定使用
 - `PATCH /api/classes/:id/enrollments` — body `{ studentId, addSessions: number }`，`totalSessions += addSessions`（新增，供「+堂數」加買動作使用，與整份表單的 Save 分開、即點即生效）
-- `GET /api/students/:id` 回傳內容擴充：每筆 `enrollments` 附上 `totalSessions`、`usedSessions`（`count(ClassAttendance WHERE classId,studentId,status != ON_LEAVE)`）、`remaining`——供學生編輯 modal 顯示
-- `GET /api/classes/:id` 回傳內容擴充：`enrollments`（已加入學生清單）每筆學生附上同樣的 `totalSessions`/`usedSessions`/`remaining`——供班級編輯 modal 的學生堂數清單顯示（唯讀）
+- `GET /api/students`（既有清單端點，兩個編輯 modal 的資料都來自各自頁面已抓好的清單，沒有個別 `:id` 的 GET）回傳內容擴充：每筆學生的 `enrollments` 附上 `totalSessions`、`usedSessions`（`count(ClassAttendance WHERE classId,studentId,status != ON_LEAVE)`）、`remaining`——供學生編輯 modal 顯示
+- `GET /api/classes` 回傳內容擴充：每筆班級的 `enrollments`（已加入學生清單）附上同樣的 `totalSessions`/`usedSessions`/`remaining`——供班級編輯 modal 的學生堂數清單顯示（唯讀）
 
 權限：ADMIN 全開；TEACHER 僅限「班級/場次/補課的老師欄位是自己」，不符合回 403；日期缺漏/格式錯回 400。
 
