@@ -11,7 +11,7 @@ export async function uploadCompressedImage(activityId: string, blob: Blob): Pro
   }
 }
 
-export async function uploadActivityImageFile(activityId: string, file: File): Promise<boolean> {
+export async function uploadActivityImageFile(activityId: string, file: Blob): Promise<boolean> {
   try {
     const blob = await compressImage(file);
     return await uploadCompressedImage(activityId, blob);

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@/components/ui/Button';
+import ImageCropModal from '@/components/ImageCropModal';
 import { useToast } from '@/components/ui/Toast';
 import { uploadActivityImageFile } from '@/lib/uploadActivityImage';
 
@@ -10,12 +11,23 @@ interface AlbumImage {
   url: string;
 }
 
-export default function ActivityAlbum({ activityId, canManage }: { activityId: string; canManage: boolean }) {
+interface ActivityAlbumProps {
+  activityId: string;
+  canManage: boolean;
+  // Notifies the parent after an upload or delete changes which image is
+  // earliest (and therefore the list's cover thumbnail) — the album has no
+  // way to know the parent is also showing a coverUrl derived from the same
+  // data, so without this the cover silently goes stale until reload.
+  onImagesChanged?: () => void;
+}
+
+export default function ActivityAlbum({ activityId, canManage, onImagesChanged }: ActivityAlbumProps) {
   const { showToast } = useToast();
   const [images, setImages] = useState<AlbumImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -33,21 +45,28 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
     load();
   }, [load]);
 
-  async function handleFiles(files: FileList | null) {
+  function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    setCropQueue(Array.from(files));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleCroppedPhotos(blobs: Blob[]) {
+    setCropQueue([]);
+    if (blobs.length === 0) return;
     setUploading(true);
     try {
       let failed = 0;
-      for (const file of Array.from(files)) {
-        const ok = await uploadActivityImageFile(activityId, file);
+      for (const blob of blobs) {
+        const ok = await uploadActivityImageFile(activityId, blob);
         if (!ok) failed += 1;
       }
       showToast(failed === 0 ? '照片已上傳' : `有 ${failed} 張上傳失敗`);
       setLoading(false);
       await load();
+      onImagesChanged?.();
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -59,6 +78,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
       if (res.ok) {
         setImages((prev) => prev.filter((i) => i.id !== imageId));
         showToast('照片已刪除');
+        onImagesChanged?.();
       }
     } finally {
       setPendingId(null);
@@ -68,7 +88,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink">相簿</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-inkMuted">相簿</h3>
         {canManage && (
           <>
             <input
@@ -131,6 +151,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
           ))}
         </div>
       )}
+      <ImageCropModal files={cropQueue} onDone={handleCroppedPhotos} />
     </div>
   );
 }

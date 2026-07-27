@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { deleteActivityImages } from '@/lib/storage';
+import { createSignedUrls, deleteActivityImages } from '@/lib/storage';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -18,6 +18,7 @@ const ACTIVITY_LIST_SELECT = {
   endDate: true,
   capacity: true,
   teachers: { select: { teacher: { select: { user: { select: NAME_ONLY_SELECT } } } } },
+  images: { orderBy: { createdAt: 'asc' as const }, take: 1, select: { storagePath: true } },
   registrations: {
     select: {
       id: true,
@@ -38,8 +39,24 @@ const ACTIVITY_STUDENT_LIST_SELECT = {
   endDate: true,
   capacity: true,
   teachers: { select: { teacher: { select: { user: { select: NAME_ONLY_SELECT } } } } },
+  images: { orderBy: { createdAt: 'asc' as const }, take: 1, select: { storagePath: true } },
   _count: { select: { registrations: true } },
 } as const;
+
+async function attachCoverUrl<T extends { images: { storagePath: string }[] }>(
+  rows: T[],
+): Promise<(Omit<T, 'images'> & { coverUrl: string | null })[]> {
+  const paths = rows.map((r) => r.images[0]?.storagePath).filter((p): p is string => !!p);
+  // A Storage outage must not take down the activity list itself — every
+  // role's list (and the student's registrations) routes through this
+  // helper, so a signing failure here degrades to placeholder covers
+  // instead of a 500 across the whole feature.
+  const urls = paths.length ? await createSignedUrls(paths).catch(() => new Map<string, string>()) : new Map<string, string>();
+  return rows.map(({ images, ...rest }) => ({
+    ...rest,
+    coverUrl: images[0] ? (urls.get(images[0].storagePath) ?? null) : null,
+  }));
+}
 
 export interface CreateActivityInput {
   title: string;
@@ -67,29 +84,32 @@ export function createActivity(input: CreateActivityInput) {
   });
 }
 
-export function listAllActivities() {
-  return prisma.activity.findMany({
+export async function listAllActivities() {
+  const rows = await prisma.activity.findMany({
     select: ACTIVITY_LIST_SELECT,
     orderBy: { startDate: 'asc' },
   });
+  return attachCoverUrl(rows);
 }
 
-export function listActivitiesForTeacher(teacherId: string) {
-  return prisma.activity.findMany({
+export async function listActivitiesForTeacher(teacherId: string) {
+  const rows = await prisma.activity.findMany({
     where: { teachers: { some: { teacherId } } },
     select: ACTIVITY_LIST_SELECT,
     orderBy: { startDate: 'asc' },
   });
+  return attachCoverUrl(rows);
 }
 
-export function listOpenActivitiesForStudent() {
+export async function listOpenActivitiesForStudent() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return prisma.activity.findMany({
+  const rows = await prisma.activity.findMany({
     where: { endDate: { gte: today } },
     select: ACTIVITY_STUDENT_LIST_SELECT,
     orderBy: { startDate: 'asc' },
   });
+  return attachCoverUrl(rows);
 }
 
 export async function registerForActivity(activityId: string, studentId: string) {
@@ -131,8 +151,8 @@ export async function deleteActivity(id: string) {
   } catch {}
 }
 
-export function listRegistrationsForStudent(studentId: string) {
-  return prisma.activityRegistration.findMany({
+export async function listRegistrationsForStudent(studentId: string) {
+  const rows = await prisma.activityRegistration.findMany({
     where: { studentId },
     select: {
       id: true,
@@ -140,13 +160,17 @@ export function listRegistrationsForStudent(studentId: string) {
     },
     orderBy: { activity: { startDate: 'desc' } },
   });
+  const activitiesWithCover = await attachCoverUrl(rows.map((r) => r.activity));
+  return rows.map((r, i) => ({ id: r.id, activity: activitiesWithCover[i] }));
 }
 
-export function getActivityDetail(id: string) {
-  return prisma.activity.findUniqueOrThrow({
+export async function getActivityDetail(id: string) {
+  const activity = await prisma.activity.findUniqueOrThrow({
     where: { id },
     select: ACTIVITY_LIST_SELECT,
   });
+  const [withCover] = await attachCoverUrl([activity]);
+  return withCover;
 }
 
 export function listCategories() {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
+import { createSignedUrls } from '@/lib/storage';
 
 vi.mock('@/lib/storage', () => ({
   uploadActivityImage: vi.fn(),
@@ -349,6 +350,82 @@ describe('listCategories / createCategory / deleteCategory', () => {
   });
 });
 
+describe('coverUrl on list/detail queries', () => {
+  it('returns null coverUrl for an activity with no images', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const camp = await createCategory('營隊');
+    const activity = await createActivity({
+      title: '無照片活動',
+      description: 'd',
+      categoryId: camp.id,
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 2),
+      capacity: 10,
+      teacherIds: [teacher.id],
+    });
+
+    const [all] = await listAllActivities();
+    expect(all.coverUrl).toBeNull();
+
+    const detail = await getActivityDetail(activity.id);
+    expect(detail.coverUrl).toBeNull();
+  });
+
+  it('returns the earliest-uploaded image as a signed coverUrl, and omits the raw images field', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    const camp = await createCategory('營隊');
+    const activity = await createActivity({
+      title: '有照片活動',
+      description: 'd',
+      categoryId: camp.id,
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 2),
+      capacity: 10,
+      teacherIds: [teacher.id],
+    });
+    await prisma.activityImage.create({ data: { activityId: activity.id, storagePath: `${activity.id}/1.jpg` } });
+    await new Promise((r) => setTimeout(r, 5)); // ensure distinct createdAt ordering
+    await prisma.activityImage.create({ data: { activityId: activity.id, storagePath: `${activity.id}/2.jpg` } });
+
+    const [all] = await listAllActivities();
+    expect(all.coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+    expect((all as unknown as { images?: unknown }).images).toBeUndefined();
+
+    const forTeacher = await listActivitiesForTeacher(teacher.id);
+    expect(forTeacher[0].coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+
+    const open = await listOpenActivitiesForStudent();
+    expect(open[0].coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+
+    const detail = await getActivityDetail(activity.id);
+    expect(detail.coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x', parentPhone: '' });
+    await prisma.activityRegistration.create({ data: { activityId: activity.id, studentId: student.id } });
+    const registrations = await listRegistrationsForStudent(student.id);
+    expect(registrations[0].activity.coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+  });
+
+  it('falls back to a null coverUrl instead of failing the whole list when signing URLs errors', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin2@example.com', password: 'x', subjects: '圍棋' });
+    const camp = await createCategory('營隊');
+    const activity = await createActivity({
+      title: '簽名失敗活動',
+      description: 'd',
+      categoryId: camp.id,
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 2),
+      capacity: 10,
+      teacherIds: [teacher.id],
+    });
+    await prisma.activityImage.create({ data: { activityId: activity.id, storagePath: `${activity.id}/1.jpg` } });
+
+    vi.mocked(createSignedUrls).mockRejectedValueOnce(new Error('storage outage'));
+    const [all] = await listAllActivities();
+    expect(all.coverUrl).toBeNull();
+  });
+});
+
 // Other service test files' beforeEach blocks predate the Activity /
 // ActivityRegistration tables and don't clean them up before deleting
 // Student, so a registration row left behind by this file's last test
@@ -357,6 +434,7 @@ describe('listCategories / createCategory / deleteCategory', () => {
 // violation on student.deleteMany(). Clean up after ourselves so this file
 // leaves no residue for other files, regardless of run order.
 afterAll(async () => {
+  await prisma.activityImage.deleteMany();
   await prisma.activityRegistration.deleteMany();
   await prisma.activityTeacher.deleteMany();
   await prisma.activity.deleteMany();

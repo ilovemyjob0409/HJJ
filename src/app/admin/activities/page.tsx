@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 import ActivityAlbum from '@/components/ActivityAlbum';
+import ImageCropModal from '@/components/ImageCropModal';
 import { compressImage } from '@/lib/imageCompression';
 import { uploadCompressedImage } from '@/lib/uploadActivityImage';
 
@@ -36,6 +37,7 @@ interface RosterEntry {
 
 interface ActivityRow {
   id: string;
+  coverUrl: string | null;
   title: string;
   description: string;
   category: { name: string };
@@ -79,6 +81,7 @@ export default function AdminActivitiesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [categorySubmitting, setCategorySubmitting] = useState(false);
   const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
   const stagedFileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -116,17 +119,22 @@ export default function AdminActivitiesPage() {
     clearStagedPhotos();
   }
 
-  async function handleStagePhotos(files: FileList | null) {
+  function handleStagePhotos(files: FileList | null) {
     if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
+    setCropQueue(Array.from(files));
+    if (stagedFileInputRef.current) stagedFileInputRef.current.value = '';
+  }
+
+  async function handleCroppedPhotos(blobs: Blob[]) {
+    setCropQueue([]);
+    for (const blob of blobs) {
       try {
-        const blob = await compressImage(file);
-        setStagedPhotos((prev) => [...prev, { blob, previewUrl: URL.createObjectURL(blob) }]);
+        const compressed = await compressImage(blob);
+        setStagedPhotos((prev) => [...prev, { blob: compressed, previewUrl: URL.createObjectURL(compressed) }]);
       } catch {
         showToast('有照片壓縮失敗');
       }
     }
-    if (stagedFileInputRef.current) stagedFileInputRef.current.value = '';
   }
 
   function removeStagedPhoto(index: number) {
@@ -223,6 +231,16 @@ export default function AdminActivitiesPage() {
   }
 
   const columns: Column<ActivityRow>[] = [
+    {
+      header: '封面',
+      render: (a) =>
+        a.coverUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
+          <img src={a.coverUrl} alt="封面" className="mx-auto h-10 w-10 rounded object-cover" />
+        ) : (
+          <div className="bg-stripe mx-auto h-10 w-10 rounded" />
+        ),
+    },
     { header: '標題', render: (a) => a.title },
     { header: '分類', render: (a) => a.category.name },
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
@@ -356,6 +374,8 @@ export default function AdminActivitiesPage() {
         </Card>
       )}
 
+      <ImageCropModal files={cropQueue} onDone={handleCroppedPhotos} />
+
       {showCategoryPanel && (
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
@@ -426,7 +446,7 @@ export default function AdminActivitiesPage() {
             <button type="button" className="mt-2 text-left text-sm text-rejected hover:underline" onClick={handleDeleteActivity}>
               刪除此活動
             </button>
-            <ActivityAlbum activityId={viewing.id} canManage />
+            <ActivityAlbum activityId={viewing.id} canManage onImagesChanged={load} />
           </div>
         )}
       </Modal>
