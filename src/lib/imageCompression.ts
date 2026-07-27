@@ -5,7 +5,7 @@
 const MAX_EDGE = 2000;
 const JPEG_QUALITY = 0.85;
 
-export async function compressImage(file: File): Promise<Blob> {
+export async function compressImage(file: Blob): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
   const width = Math.round(bitmap.width * scale);
