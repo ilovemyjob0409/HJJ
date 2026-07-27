@@ -143,6 +143,10 @@ model ClassEnrollment {
 
 `totalSessions`/已上/剩餘只存在於 `ClassEnrollment`，其餘三種場合沒有「在籍」概念，不適用堂數，只有單純的出席狀態記錄。
 
+### 加堂（學生加買堂數）
+
+行政幫學生註冊班級時填寫的是初始總堂數；之後學生加買，行政用「+堂數」直接把加買的數量疊加到既有 `totalSessions` 上（`totalSessions = (totalSessions ?? 0) + amount`——若原本沒設定過堂數（null），視為從 0 開始疊加），不記錄「誰在何時加了幾堂」的歷史（比照本系統其餘出席紀錄一貫的「無版本歷史」原則），只留最新的總堂數。加堂後「剩餘」自動反映（因為是用 `totalSessions - 已上` 即時算出，不是存好的快照）。
+
 ## API 層
 
 沿用既有 `getServerSession` + inline role 檢查慣例：
@@ -155,7 +159,13 @@ model ClassEnrollment {
 - `GET/POST /api/attendance/activity/:activityId?date=` — 名單來自 `ActivityRegistration`
 - `GET /api/attendance/me` — 學生查自己的紀錄（跨四張表彙整，依日期排序）
 - `GET /api/attendance/stats?studentId=|classId=&from=&to=` — 行政統計用彙總（各狀態次數）
-- `classIds` 陣列改為 `{ classId, totalSessions? }[]`：擴充 `PATCH /api/students/:id`（或既有 enrollments 端點）讓行政同時設定堂數；`setStudentEnrollments` 對「維持勾選未變動」的既有 enrollment 也要更新 `totalSessions`（不只新增/刪除時處理）
+
+### 堂數相關端點
+
+- `PATCH /api/students/:id`：body 的 `classIds: string[]` 改為 `enrollments: { classId, totalSessions? }[]`，`setStudentEnrollments` 對「維持勾選未變動」的既有 enrollment 也要更新 `totalSessions`（不只新增/刪除時處理），供學生編輯 modal 的初始堂數設定使用
+- `PATCH /api/classes/:id/enrollments` — body `{ studentId, addSessions: number }`，`totalSessions += addSessions`（新增，供「+堂數」加買動作使用，與整份表單的 Save 分開、即點即生效）
+- `GET /api/students/:id` 回傳內容擴充：每筆 `enrollments` 附上 `totalSessions`、`usedSessions`（`count(ClassAttendance WHERE classId,studentId,status != ON_LEAVE)`）、`remaining`——供學生編輯 modal 顯示
+- `GET /api/classes/:id` 回傳內容擴充：`enrollments`（已加入學生清單）每筆學生附上同樣的 `totalSessions`/`usedSessions`/`remaining`——供班級編輯 modal 的學生堂數清單顯示（唯讀）
 
 權限：ADMIN 全開；TEACHER 僅限「班級/場次/補課的老師欄位是自己」，不符合回 403；日期缺漏/格式錯回 400。
 
@@ -171,7 +181,12 @@ model ClassEnrollment {
 - **學生端**：
   - `/student` 首頁「我的班級」表格新增「剩餘堂數」欄（`totalSessions` 未設定則顯示 `-`）
   - 新增 `/student/attendance`「我的出席紀錄」頁，`DataTable` 列出四類出席紀錄（類型／日期／狀態／簽到簽退時間），依日期新到舊排序
-- **行政班級/學生管理畫面**：學生的班級勾選清單，勾選的班級旁新增「堂數」數字輸入框（沿用既有 checkbox-list 編輯介面，非新頁面）
+- **`/admin/students` 學生名單**：
+  - 整列可點擊（`DataTable` 的 `onRowClick`，現有「編輯」按鈕保留）開現有編輯 modal
+  - modal 內既有的班級勾選清單，每個勾選的班級旁新增「堂數」輸入框（設定初始總堂數，隨主表單一起 Save）＋「已上 X／剩餘 Y」顯示＋獨立的「+堂數」小輸入框和按鈕（加買，即點即送出，不用等主表單 Save，送出後立即更新畫面上的總堂數/剩餘）
+- **`/admin/classes` 班級名單**：
+  - 整列可點擊（現有「編輯」按鈕保留）開現有編輯 modal
+  - modal 內既有的「已加入學生（N）」清單，每位學生旁新增「總堂數／已上／剩餘」顯示，**唯讀**——這裡不能改堂數，要改回學生名單那邊
 
 ## 錯誤處理
 
@@ -186,6 +201,7 @@ model ClassEnrollment {
 - **名單合併**：班級名單正確合併在籍學生 + 當天核准插班，請假學生自動預帶「請假」狀態
 - **upsert 語意**：同一天重複儲存會覆蓋既有紀錄而非產生重複列
 - **堂數計算**：`totalSessions` 為 null 時不計算；請假不扣堂；缺席未請假扣堂；插班補課寫入目標班級不影響原班堂數
+- **加堂**：`addSessions` 正確疊加到既有 `totalSessions`（不是覆蓋）；對沒設定過 `totalSessions`（null）的 enrollment 加堂後應等於 `amount`（視為從 0 開始疊加）
 - **權限**：非任教老師操作回錯誤
 - **統計彙總**：跨日期區間各狀態次數加總正確
-- 完成後手動瀏覽器驗證：老師點名 → 學生「我的出席紀錄」看得到、「我的班級」剩餘堂數正確扣減 → 行政統計數字正確
+- 完成後手動瀏覽器驗證：老師點名 → 學生「我的出席紀錄」看得到、「我的班級」剩餘堂數正確扣減；行政在學生名單設定堂數、加堂，班級名單同步看到唯讀更新；行政統計數字正確
