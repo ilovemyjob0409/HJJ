@@ -11,6 +11,7 @@ import ActivityAlbum from '@/components/ActivityAlbum';
 
 interface ActivityStudentRow {
   id: string;
+  coverUrl: string | null;
   title: string;
   description: string;
   category: { name: string };
@@ -89,6 +90,16 @@ export default function StudentActivitiesPage() {
   }
 
   const openColumns: Column<ActivityStudentRow>[] = [
+    {
+      header: '封面',
+      render: (a) =>
+        a.coverUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
+          <img src={a.coverUrl} alt="封面" className="mx-auto h-10 w-10 rounded object-cover" />
+        ) : (
+          <div className="bg-stripe mx-auto h-10 w-10 rounded" />
+        ),
+    },
     { header: '標題', render: (a) => a.title },
     { header: '分類', render: (a) => a.category.name },
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
@@ -111,6 +122,16 @@ export default function StudentActivitiesPage() {
   ];
 
   const myColumns: Column<RegistrationRow>[] = [
+    {
+      header: '封面',
+      render: (r) =>
+        r.activity.coverUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
+          <img src={r.activity.coverUrl} alt="封面" className="mx-auto h-10 w-10 rounded object-cover" />
+        ) : (
+          <div className="bg-stripe mx-auto h-10 w-10 rounded" />
+        ),
+    },
     { header: '標題', render: (r) => r.activity.title },
     { header: '分類', render: (r) => r.activity.category.name },
     { header: '日期區間', render: (r) => formatActivityDateRange(r.activity.startDate, r.activity.endDate, 'zh-TW') },
