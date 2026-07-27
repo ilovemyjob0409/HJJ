@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@/components/ui/Button';
+import ImageCropModal from '@/components/ImageCropModal';
 import { useToast } from '@/components/ui/Toast';
 import { uploadActivityImageFile } from '@/lib/uploadActivityImage';
 
@@ -16,6 +17,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -33,13 +35,20 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
     load();
   }, [load]);
 
-  async function handleFiles(files: FileList | null) {
+  function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    setCropQueue(Array.from(files));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleCroppedPhotos(blobs: Blob[]) {
+    setCropQueue([]);
+    if (blobs.length === 0) return;
     setUploading(true);
     try {
       let failed = 0;
-      for (const file of Array.from(files)) {
-        const ok = await uploadActivityImageFile(activityId, file);
+      for (const blob of blobs) {
+        const ok = await uploadActivityImageFile(activityId, blob);
         if (!ok) failed += 1;
       }
       showToast(failed === 0 ? '照片已上傳' : `有 ${failed} 張上傳失敗`);
@@ -47,7 +56,6 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
       await load();
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -131,6 +139,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
           ))}
         </div>
       )}
+      <ImageCropModal files={cropQueue} onDone={handleCroppedPhotos} />
     </div>
   );
 }
