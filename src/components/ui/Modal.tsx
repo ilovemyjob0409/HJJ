@@ -20,9 +20,9 @@ export default function Modal({ open, onClose, title, children, maxWidthClassNam
         className={`animate-modal-in max-h-[90vh] w-full ${maxWidthClassName} overflow-y-auto rounded-xl bg-card p-5 shadow-lg`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-bold text-ink">{title}</h2>
-          <button onClick={onClose} className="text-inkMuted hover:text-ink" aria-label="關閉">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <h2 className="min-w-0 truncate text-lg font-bold text-ink">{title}</h2>
+          <button onClick={onClose} className="shrink-0 text-inkMuted hover:text-ink" aria-label="關閉">
             ✕
           </button>
         </div>

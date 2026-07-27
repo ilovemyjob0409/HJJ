@@ -76,7 +76,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink">相簿</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-inkMuted">相簿</h3>
         {canManage && (
           <>
             <input
