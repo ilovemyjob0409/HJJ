@@ -11,7 +11,17 @@ interface AlbumImage {
   url: string;
 }
 
-export default function ActivityAlbum({ activityId, canManage }: { activityId: string; canManage: boolean }) {
+interface ActivityAlbumProps {
+  activityId: string;
+  canManage: boolean;
+  // Notifies the parent after an upload or delete changes which image is
+  // earliest (and therefore the list's cover thumbnail) — the album has no
+  // way to know the parent is also showing a coverUrl derived from the same
+  // data, so without this the cover silently goes stale until reload.
+  onImagesChanged?: () => void;
+}
+
+export default function ActivityAlbum({ activityId, canManage, onImagesChanged }: ActivityAlbumProps) {
   const { showToast } = useToast();
   const [images, setImages] = useState<AlbumImage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +64,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
       showToast(failed === 0 ? '照片已上傳' : `有 ${failed} 張上傳失敗`);
       setLoading(false);
       await load();
+      onImagesChanged?.();
     } finally {
       setUploading(false);
     }
@@ -67,6 +78,7 @@ export default function ActivityAlbum({ activityId, canManage }: { activityId: s
       if (res.ok) {
         setImages((prev) => prev.filter((i) => i.id !== imageId));
         showToast('照片已刪除');
+        onImagesChanged?.();
       }
     } finally {
       setPendingId(null);

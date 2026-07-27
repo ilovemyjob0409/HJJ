@@ -88,10 +88,21 @@ export default function StudentActivitiesPage() {
 
   async function handleCancel(registrationId: string) {
     if (!confirm('確定要取消這個活動的報名嗎？')) return;
-    await fetch(`/api/activity-registrations/${registrationId}`, { method: 'DELETE' });
-    showToast('已取消');
-    closeDetail();
-    load();
+    setPendingId(registrationId);
+    try {
+      const res = await fetch(`/api/activity-registrations/${registrationId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        showToast('取消失敗，請稍後再試');
+        load();
+        if (viewing) openDetail(viewing.id, registrationId);
+        return;
+      }
+      showToast('已取消');
+      closeDetail();
+      load();
+    } finally {
+      setPendingId(null);
+    }
   }
 
   async function openDetail(activityId: string, registrationId: string | null) {
@@ -161,7 +172,7 @@ export default function StudentActivitiesPage() {
           columns={openColumns}
           rows={openActivities}
           keyField={(a) => a.id}
-          onRowClick={(a) => openDetail(a.id, null)}
+          onRowClick={(a) => openDetail(a.id, myRegistrations.find((r) => r.activity.id === a.id)?.id ?? null)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
           loading={loading}
         />
@@ -224,6 +235,7 @@ export default function StudentActivitiesPage() {
                   variant="secondary"
                   className="border-rejected text-rejected hover:bg-rejectedBg"
                   onClick={() => handleCancel(viewing.registrationId as string)}
+                  loading={pendingId === viewing.registrationId}
                 >
                   取消報名
                 </Button>

@@ -47,7 +47,11 @@ async function attachCoverUrl<T extends { images: { storagePath: string }[] }>(
   rows: T[],
 ): Promise<(Omit<T, 'images'> & { coverUrl: string | null })[]> {
   const paths = rows.map((r) => r.images[0]?.storagePath).filter((p): p is string => !!p);
-  const urls = paths.length ? await createSignedUrls(paths) : new Map<string, string>();
+  // A Storage outage must not take down the activity list itself — every
+  // role's list (and the student's registrations) routes through this
+  // helper, so a signing failure here degrades to placeholder covers
+  // instead of a 500 across the whole feature.
+  const urls = paths.length ? await createSignedUrls(paths).catch(() => new Map<string, string>()) : new Map<string, string>();
   return rows.map(({ images, ...rest }) => ({
     ...rest,
     coverUrl: images[0] ? (urls.get(images[0].storagePath) ?? null) : null,

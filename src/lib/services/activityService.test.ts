@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
+import { createSignedUrls } from '@/lib/storage';
 
 vi.mock('@/lib/storage', () => ({
   uploadActivityImage: vi.fn(),
@@ -403,6 +404,25 @@ describe('coverUrl on list/detail queries', () => {
     await prisma.activityRegistration.create({ data: { activityId: activity.id, studentId: student.id } });
     const registrations = await listRegistrationsForStudent(student.id);
     expect(registrations[0].activity.coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+  });
+
+  it('falls back to a null coverUrl instead of failing the whole list when signing URLs errors', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin2@example.com', password: 'x', subjects: '圍棋' });
+    const camp = await createCategory('營隊');
+    const activity = await createActivity({
+      title: '簽名失敗活動',
+      description: 'd',
+      categoryId: camp.id,
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 2),
+      capacity: 10,
+      teacherIds: [teacher.id],
+    });
+    await prisma.activityImage.create({ data: { activityId: activity.id, storagePath: `${activity.id}/1.jpg` } });
+
+    vi.mocked(createSignedUrls).mockRejectedValueOnce(new Error('storage outage'));
+    const [all] = await listAllActivities();
+    expect(all.coverUrl).toBeNull();
   });
 });
 

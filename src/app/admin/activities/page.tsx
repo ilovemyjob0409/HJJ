@@ -446,7 +446,7 @@ export default function AdminActivitiesPage() {
             <button type="button" className="mt-2 text-left text-sm text-rejected hover:underline" onClick={handleDeleteActivity}>
               刪除此活動
             </button>
-            <ActivityAlbum activityId={viewing.id} canManage />
+            <ActivityAlbum activityId={viewing.id} canManage onImagesChanged={load} />
           </div>
         )}
       </Modal>
