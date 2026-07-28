@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { updateStudent, deleteStudent } from '@/lib/services/studentService';
 import { setStudentEnrollments } from '@/lib/services/classService';
+import { p2002TargetsField } from '@/lib/prismaErrors';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -19,8 +20,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json(updated);
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      const target = Array.isArray(err.meta?.target) ? (err.meta.target as string[]) : [];
-      const error = target.includes('studentNumber') ? 'STUDENT_NUMBER_TAKEN' : 'EMAIL_TAKEN';
+      const error = p2002TargetsField(err, 'studentNumber') ? 'STUDENT_NUMBER_TAKEN' : 'EMAIL_TAKEN';
       return NextResponse.json({ error }, { status: 409 });
     }
     throw err;

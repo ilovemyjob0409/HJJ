@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { todayDateInput } from '@/components/AttendanceHub';
 
-type CheckInResultKind = 'NOT_FOUND' | 'NO_SESSION' | 'CHECKED_IN' | 'CHECKED_OUT';
+type CheckInResultKind = 'NOT_FOUND' | 'NO_SESSION' | 'CHECKED_IN' | 'CHECKED_OUT' | 'ERROR';
 
 interface CheckInResponse {
   result: CheckInResultKind;
@@ -22,12 +22,14 @@ const RESULT_STYLE: Record<CheckInResultKind, string> = {
   CHECKED_OUT: 'text-approved',
   NOT_FOUND: 'text-rejected',
   NO_SESSION: 'text-rejected',
+  ERROR: 'text-rejected',
 };
 
 function resultMessage(r: CheckInResponse): string {
   if (r.result === 'CHECKED_IN') return `✓ ${r.studentName} 已簽到 ${r.time} — ${r.sessionTitle}`;
   if (r.result === 'CHECKED_OUT') return `✓ ${r.studentName} 已簽退 ${r.time} — ${r.sessionTitle}`;
   if (r.result === 'NOT_FOUND') return '查無此學號，請洽行政人員';
+  if (r.result === 'ERROR') return '系統發生錯誤，請洽行政人員（可能需要重新登入）';
   return '找不到可報到的課程，請洽行政人員';
 }
 
@@ -52,13 +54,21 @@ export default function CheckinKioskPage() {
     const trimmed = value.trim();
     if (!trimmed) return;
     setCode('');
-    const res = await fetch('/api/attendance/checkin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: trimmed, date: todayDateInput(), time: nowTimeInput() }),
-    });
-    const data: CheckInResponse = await res.json();
-    setResult(data);
+    try {
+      const res = await fetch('/api/attendance/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: trimmed, date: todayDateInput(), time: nowTimeInput() }),
+      });
+      if (!res.ok) {
+        setResult({ result: 'ERROR' });
+      } else {
+        const data: CheckInResponse = await res.json();
+        setResult(data);
+      }
+    } catch {
+      setResult({ result: 'ERROR' });
+    }
     if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
     clearTimerRef.current = setTimeout(() => setResult(null), 4000);
   }
@@ -77,7 +87,6 @@ export default function CheckinKioskPage() {
           }
         }}
         className="absolute h-px w-px opacity-0"
-        aria-hidden
       />
       {result ? (
         <p className={`text-4xl font-bold ${RESULT_STYLE[result.result]}`}>{resultMessage(result)}</p>

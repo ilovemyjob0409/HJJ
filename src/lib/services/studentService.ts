@@ -30,7 +30,7 @@ export async function createStudent(input: CreateStudentInput) {
       data: { name: input.name, email: input.email.trim().toLowerCase(), password: hashed, role: 'STUDENT' },
     });
     return tx.student.create({
-      data: { userId: user.id, parentPhone: input.parentPhone, studentNumber: input.studentNumber },
+      data: { userId: user.id, parentPhone: input.parentPhone, studentNumber: input.studentNumber?.trim() || null },
       select: STUDENT_SELECT,
     });
   });
@@ -68,7 +68,10 @@ export async function updateStudent(id: string, input: UpdateStudentInput) {
     });
     return tx.student.update({
       where: { id },
-      data: { parentPhone: input.parentPhone, studentNumber: input.studentNumber },
+      data: {
+        parentPhone: input.parentPhone,
+        studentNumber: input.studentNumber === undefined ? undefined : input.studentNumber.trim() || null,
+      },
       select: STUDENT_SELECT,
     });
   });

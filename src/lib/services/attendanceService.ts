@@ -512,7 +512,8 @@ function toMinutes(hhmm: string): number {
 interface CheckInCandidate {
   diffMinutes: number;
   title: string;
-  alreadyCheckedIn: boolean;
+  checkInTime: string | null;
+  checkOutTime: string | null;
   apply: () => Promise<'CHECKED_IN' | 'CHECKED_OUT'>;
 }
 
@@ -583,7 +584,7 @@ export async function checkInByStudentNumber(
   const weekday = date.getDay();
   const nowMinutes = toMinutes(timeStr);
 
-  const [enrollments, insertions, oneOnOnes] = await Promise.all([
+  const [enrollments, insertions, oneOnOnes, leaveRequests] = await Promise.all([
     prisma.classEnrollment.findMany({
       where: { studentId: student.id, class: { weekday } },
       select: { class: { select: { id: true, name: true, startTime: true } } },
@@ -596,31 +597,41 @@ export async function checkInByStudentNumber(
       where: { type: 'ONE_ON_ONE', status: 'APPROVED', slotDate: date, leaveRequest: { studentId: student.id } },
       select: { id: true, slotStartTime: true },
     }),
+    prisma.leaveRequest.findMany({
+      where: { studentId: student.id, date },
+      select: { classId: true },
+    }),
   ]);
+
+  const excludedClassIds = new Set(leaveRequests.map((l) => l.classId));
 
   const candidates: CheckInCandidate[] = [];
 
   for (const e of enrollments) {
     const cls = e.class;
+    if (excludedClassIds.has(cls.id)) continue;
     const existing = await prisma.classAttendance.findUnique({
       where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date } },
     });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
       title: cls.name,
-      alreadyCheckedIn: !!existing?.checkInTime,
+      checkInTime: existing?.checkInTime ?? null,
+      checkOutTime: existing?.checkOutTime ?? null,
       apply: () => applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById }),
     });
   }
 
+  const enrolledClassIds = new Set(enrollments.map((e) => e.class.id));
   for (const ins of insertions) {
-    if (!ins.targetClass) continue;
+    if (!ins.targetClass || enrolledClassIds.has(ins.targetClass.id) || excludedClassIds.has(ins.targetClass.id)) continue;
     const cls = ins.targetClass;
     const existing = await prisma.classAttendance.findUnique({ where: { makeupRequestId: ins.id } });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
       title: cls.name,
-      alreadyCheckedIn: !!existing?.checkInTime,
+      checkInTime: existing?.checkInTime ?? null,
+      checkOutTime: existing?.checkOutTime ?? null,
       apply: () =>
         applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById, makeupRequestId: ins.id }),
     });
@@ -631,17 +642,24 @@ export async function checkInByStudentNumber(
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(o.slotStartTime!)),
       title: '一對一補課',
-      alreadyCheckedIn: !!existing?.checkInTime,
+      checkInTime: existing?.checkInTime ?? null,
+      checkOutTime: existing?.checkOutTime ?? null,
       apply: () => applyOneOnOneAttendance({ makeupRequestId: o.id, timeStr, markedById }),
     });
   }
 
-  // Check-out has no time window: an already-open session (checked in, not yet
-  // out) always wins, however late the scan is — a class's natural check-out
-  // time can be well over 60 minutes past its start. Only when nothing is
-  // already open do we fall through to window-filtered matching for a new
-  // check-in.
-  const openSessions = candidates.filter((c) => c.alreadyCheckedIn);
+  // Three priority tiers, checked in order — the first non-empty tier wins:
+  //
+  // 1. Open (checked in, not yet out): always wins, no time window — a
+  //    class's natural check-out can be well over 60 minutes past its start.
+  // 2. Not yet checked in, within the window: a genuinely new check-in.
+  //    This tier is what lets a student check into a SECOND session later
+  //    the same day after finishing their first — without it, tier 3 below
+  //    would grab the first (already-completed) session on every later scan
+  //    and the student could never check into anything else that day.
+  // 3. Already checked in AND out: only reached if nothing is open and
+  //    nothing new is in-window — overwrites the check-out time again.
+  const openSessions = candidates.filter((c) => c.checkInTime && !c.checkOutTime);
   if (openSessions.length > 0) {
     openSessions.sort((a, b) => a.diffMinutes - b.diffMinutes);
     const match = openSessions[0];
@@ -649,11 +667,21 @@ export async function checkInByStudentNumber(
     return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
   }
 
-  const withinWindow = candidates.filter((c) => c.diffMinutes <= CHECKIN_WINDOW_MINUTES);
-  if (withinWindow.length === 0) return { result: 'NO_SESSION' };
-  withinWindow.sort((a, b) => a.diffMinutes - b.diffMinutes);
-  const match = withinWindow[0];
+  const freshWithinWindow = candidates.filter((c) => !c.checkInTime && c.diffMinutes <= CHECKIN_WINDOW_MINUTES);
+  if (freshWithinWindow.length > 0) {
+    freshWithinWindow.sort((a, b) => a.diffMinutes - b.diffMinutes);
+    const match = freshWithinWindow[0];
+    const action = await match.apply();
+    return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
+  }
 
-  const action = await match.apply();
-  return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
+  const completed = candidates.filter((c) => c.checkInTime && c.checkOutTime);
+  if (completed.length > 0) {
+    completed.sort((a, b) => a.diffMinutes - b.diffMinutes);
+    const match = completed[0];
+    const action = await match.apply();
+    return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
+  }
+
+  return { result: 'NO_SESSION' };
 }

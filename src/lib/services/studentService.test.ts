@@ -66,6 +66,12 @@ describe('createStudent', () => {
     ).rejects.toThrow();
     expect(await prisma.user.findUnique({ where: { email: 'sn-ming2@example.com' } })).toBeNull();
   });
+
+  it('normalizes a blank student number to null so a second blank one does not collide', async () => {
+    await createStudent({ name: '小華', email: 'sn-blank1@example.com', password: 'secret123', studentNumber: '' });
+    const second = await createStudent({ name: '小明', email: 'sn-blank2@example.com', password: 'secret123', studentNumber: '' });
+    expect(second.studentNumber).toBeNull();
+  });
 });
 
 describe('listStudents', () => {
@@ -149,6 +155,22 @@ describe('updateStudent', () => {
     const updated = await updateStudent(student.id, { studentNumber: 'S200' });
 
     expect(updated.studentNumber).toBe('S200');
+  });
+
+  it('leaves an existing student number untouched when the update omits the field', async () => {
+    const student = await createStudent({ name: '小華', email: 'sn-omit-hua@example.com', password: 'secret123', studentNumber: 'S201' });
+
+    const updated = await updateStudent(student.id, { parentPhone: '0966666666' });
+
+    expect(updated.studentNumber).toBe('S201');
+  });
+
+  it('normalizes a blank student number to null on update', async () => {
+    const student = await createStudent({ name: '小華', email: 'sn-update-blank@example.com', password: 'secret123', studentNumber: 'S202' });
+
+    const updated = await updateStudent(student.id, { studentNumber: '' });
+
+    expect(updated.studentNumber).toBeNull();
   });
 });
 

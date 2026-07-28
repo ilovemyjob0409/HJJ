@@ -474,4 +474,42 @@ describe('checkInByStudentNumber', () => {
     });
     expect(recordA?.checkOutTime).toBeNull();
   });
+
+  it('lets a student check into a second class later the same day after completing the first', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen8@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S008', 'checkin-ming8@example.com');
+    const morningClass = await createClass({ name: '早班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '15:00' });
+    const eveningClass = await createClass({ name: '晚班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '20:00' });
+    await enrollStudent(morningClass.id, student.id);
+    await enrollStudent(eveningClass.id, student.id);
+
+    const morningIn = await checkInByStudentNumber('S008', '2026-08-04', '13:55', 'marker-1');
+    expect(morningIn).toEqual({ result: 'CHECKED_IN', studentName: '小明', sessionTitle: '早班', time: '13:55' });
+    const morningOut = await checkInByStudentNumber('S008', '2026-08-04', '15:05', 'marker-1');
+    expect(morningOut.result).toBe('CHECKED_OUT');
+
+    const eveningIn = await checkInByStudentNumber('S008', '2026-08-04', '18:55', 'marker-1');
+    expect(eveningIn).toEqual({ result: 'CHECKED_IN', studentName: '小明', sessionTitle: '晚班', time: '18:55' });
+
+    const morningRecord = await prisma.classAttendance.findUnique({
+      where: { classId_studentId_date: { classId: morningClass.id, studentId: student.id, date: new Date('2026-08-04') } },
+    });
+    expect(morningRecord?.checkOutTime).toBe('15:05');
+  });
+
+  it('excludes a class the student has an approved leave request for today', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen9@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S009', 'checkin-ming9@example.com');
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date('2026-08-04'), reason: '感冒' });
+
+    const result = await checkInByStudentNumber('S009', '2026-08-04', '18:55', 'marker-1');
+
+    expect(result).toEqual({ result: 'NO_SESSION' });
+    const record = await prisma.classAttendance.findUnique({
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: new Date('2026-08-04') } },
+    });
+    expect(record).toBeNull();
+  });
 });
