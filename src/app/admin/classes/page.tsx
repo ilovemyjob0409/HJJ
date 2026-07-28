@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -39,6 +40,7 @@ interface ClassRow {
 }
 
 export default function ClassesPage() {
+  const router = useRouter();
   const { showToast } = useToast();
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
@@ -47,6 +49,7 @@ export default function ClassesPage() {
   const [form, setForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
+  const [showEditFields, setShowEditFields] = useState(false);
   const [editError, setEditError] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -94,6 +97,7 @@ export default function ClassesPage() {
       startTime: c.startTime,
       endTime: c.endTime,
     });
+    setShowEditFields(false);
     setEditError('');
   }
 
@@ -240,30 +244,50 @@ export default function ClassesPage() {
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯班級">
-        <form onSubmit={handleEditSubmit} className="flex flex-col gap-2">
-          <Input placeholder="班名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
-          <Input placeholder="科目" value={editForm.subject} onChange={(e) => setEditForm({ ...editForm, subject: e.target.value })} required />
-          <Input placeholder="等級" value={editForm.level} onChange={(e) => setEditForm({ ...editForm, level: e.target.value })} required />
-          <Select value={editForm.teacherId} onChange={(e) => setEditForm({ ...editForm, teacherId: e.target.value })} required>
-            <option value="">選擇老師</option>
-            {teachers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.user.name}
-              </option>
-            ))}
-          </Select>
-          <Select value={editForm.weekday} onChange={(e) => setEditForm({ ...editForm, weekday: e.target.value })}>
-            {WEEKDAYS.map((w, i) => (
-              <option key={i} value={i}>
-                週{w}
-              </option>
-            ))}
-          </Select>
-          <Input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} />
-          <Input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} />
-          {editError && <p className="text-sm text-rejected">{editError}</p>}
-          <Button type="submit" loading={submitting}>儲存</Button>
-        </form>
+        <div className="flex items-center justify-between gap-2">
+          {editing && !showEditFields && (
+            <div className="min-w-0">
+              <p className="truncate font-medium text-ink">{editing.name}</p>
+              <p className="truncate text-xs text-inkMuted">
+                {editing.subject} / {editing.level} · {editing.teacher.user.name} · 週{WEEKDAYS[editing.weekday]} {editing.startTime}-
+                {editing.endTime}
+              </p>
+            </div>
+          )}
+          <button
+            type="button"
+            className="ml-auto shrink-0 text-sm text-brandDark hover:underline"
+            onClick={() => setShowEditFields((v) => !v)}
+          >
+            {showEditFields ? '收合' : '編輯班級資料'}
+          </button>
+        </div>
+        {showEditFields && (
+          <form onSubmit={handleEditSubmit} className="mt-3 flex flex-col gap-2">
+            <Input placeholder="班名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+            <Input placeholder="科目" value={editForm.subject} onChange={(e) => setEditForm({ ...editForm, subject: e.target.value })} required />
+            <Input placeholder="等級" value={editForm.level} onChange={(e) => setEditForm({ ...editForm, level: e.target.value })} required />
+            <Select value={editForm.teacherId} onChange={(e) => setEditForm({ ...editForm, teacherId: e.target.value })} required>
+              <option value="">選擇老師</option>
+              {teachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.user.name}
+                </option>
+              ))}
+            </Select>
+            <Select value={editForm.weekday} onChange={(e) => setEditForm({ ...editForm, weekday: e.target.value })}>
+              {WEEKDAYS.map((w, i) => (
+                <option key={i} value={i}>
+                  週{w}
+                </option>
+              ))}
+            </Select>
+            <Input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} />
+            <Input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} />
+            {editError && <p className="text-sm text-rejected">{editError}</p>}
+            <Button type="submit" loading={submitting}>儲存</Button>
+          </form>
+        )}
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
           刪除班級
         </button>
@@ -274,23 +298,41 @@ export default function ClassesPage() {
             {editing.enrollments.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生加入</p>
             ) : (
-              <ul className="flex flex-col gap-1">
-                {editing.enrollments.map((en) => (
-                  <li key={en.id} className="flex items-center justify-between text-sm text-ink">
-                    <span>
-                      {en.student.user.name}
-                      {en.totalSessions !== null && (
-                        <span className="ml-2 text-xs text-inkMuted">
-                          （總堂數 {en.totalSessions}／已上 {en.usedSessions}／剩餘 {en.remaining}）
+              <DataTable
+                columns={[
+                  { header: '學生', render: (en: EnrollmentRow) => en.student.user.name },
+                  {
+                    header: '堂數',
+                    render: (en: EnrollmentRow) =>
+                      en.totalSessions !== null ? (
+                        <span className="text-xs text-inkMuted">
+                          總堂數 {en.totalSessions}／已上 {en.usedSessions}／剩餘 {en.remaining}
                         </span>
-                      )}
-                    </span>
-                    <button type="button" className="text-rejected hover:underline" onClick={() => removeStudent(en.studentId)}>
-                      移除
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                      ) : (
+                        <span className="text-xs text-inkMuted">未追蹤</span>
+                      ),
+                  },
+                  {
+                    header: '',
+                    render: (en: EnrollmentRow) => (
+                      <button
+                        type="button"
+                        className="text-xs text-rejected hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeStudent(en.studentId);
+                        }}
+                      >
+                        移除
+                      </button>
+                    ),
+                  },
+                ]}
+                rows={editing.enrollments}
+                keyField={(en) => en.id}
+                onRowClick={(en) => router.push(`/admin/students?studentId=${en.studentId}`)}
+                rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+              />
             )}
           </div>
         )}

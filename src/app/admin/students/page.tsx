@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -28,7 +29,9 @@ interface ClassOption {
   subject: string;
 }
 
-export default function StudentsPage() {
+function StudentsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
@@ -66,6 +69,15 @@ export default function StudentsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    const studentId = searchParams.get('studentId');
+    if (!studentId || students.length === 0) return;
+    const s = students.find((st) => st.id === studentId);
+    if (s) openEdit(s);
+    router.replace('/admin/students');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, students]);
 
   function enrollmentsFromMap(map: Record<string, string>) {
     return Object.entries(map).map(([classId, val]) => ({
@@ -494,5 +506,13 @@ export default function StudentsPage() {
         </button>
       </Modal>
     </>
+  );
+}
+
+export default function StudentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudentsContent />
+    </Suspense>
   );
 }
