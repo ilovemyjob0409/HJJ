@@ -41,11 +41,15 @@ model Student {
 2. **列出今天候選場次**（沿用 `getClassRoster`／`listAttendanceSessionsForDate` 已有的查詢邏輯，不重新發明）：
    - 班級課：該學生的 `ClassEnrollment` 中，`Class.weekday` 等於今天星期幾；加上今天核准的插班補課（`MakeupRequest` type=INSERTION, status=APPROVED, targetDate=今天, 且該生的請假單）
    - 一對一補課：今天核准的 `MakeupRequest`（type=ONE_ON_ONE, status=APPROVED, slotDate=今天）且屬於該學生
-3. **篩選時間窗**：每個候選場次都有開始時間（`Class.startTime` 或 `slotStartTime`）。只保留「現在時間」與「開始時間」相差在 60 分鐘以內（不分前後）的場次；一個都沒有 → 回傳 `NO_SESSION`。
-4. **取最接近的一個**：時間差最小的場次勝出（理論上不會同時有兩堂時間完全相同的候選，不特別處理平手）。
-5. **依現有點名紀錄決定動作**（`ClassAttendance` 或 `OneOnOneAttendance`，依場次類型，key 對應現有規則：插班用 `makeupRequestId`，本班用 `classId+studentId+date`，一對一用 `makeupRequestId`）：
+3. **先看有沒有「今天已經簽到、還沒簽退（或已簽退但還想再更新）」的候選場次**（查每個候選場次現有的 `ClassAttendance`／`OneOnOneAttendance` 紀錄，`checkInTime` 已填代表「已簽到過」）：
+   - 有 → 這是簽退動作，**不受時間窗限制**（下課時間本來就可能離上課時間超過 60 分鐘，例如兩小時的課）。若同時有多個這樣的場次（理論上少見），取時間差最小的一個，避免任意挑選。
+   - 沒有 → 進入第 4 步，走「新簽到」的時間窗邏輯。
+4. **篩選時間窗（僅用於新簽到）**：每個候選場次都有開始時間（`Class.startTime` 或 `slotStartTime`）。只保留「現在時間」與「開始時間」相差在 60 分鐘以內（不分前後）的場次；一個都沒有 → 回傳 `NO_SESSION`。
+5. **取最接近的一個**：時間差最小的場次勝出（理論上不會同時有兩堂時間完全相同的候選，不特別處理平手）。
+6. **依現有點名紀錄決定動作**（`ClassAttendance` 或 `OneOnOneAttendance`，依場次類型，key 對應現有規則：插班用 `makeupRequestId`，本班用 `classId+studentId+date`，一對一用 `makeupRequestId`）：
    - 尚無 `checkInTime` → upsert：`status=PRESENT`, `checkInTime=now`（"HH:mm"), `markedById`。回傳 `CHECKED_IN`。
    - 已有 `checkInTime`（不論 `checkOutTime` 是否已填）→ 更新 `checkOutTime=now`（覆寫成最新時間，`status` 不變）。回傳 `CHECKED_OUT`。
+   - 這一步的「已有 checkInTime」候選，只會是第 3 步選出來的那個；第 4-5 步選出來的候選必定尚無 `checkInTime`（否則早在第 3 步就被選走了），所以一定會走「新簽到」分支。
 6. 回傳內容一律附上場次標題（班名或「一對一補課」）與時間，供前端顯示。
 
 `markedById` 一律填「目前登入的行政帳號」——雖然是學生自己掃的，但沿用現有欄位語意（誰的帳號完成了這筆紀錄）。

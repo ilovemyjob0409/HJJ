@@ -220,12 +220,12 @@ describe('checkInByStudentNumber', () => {
     const checkIn = await checkInByStudentNumber('S005', '2026-08-04', '14:55', 'marker-1');
     expect(checkIn).toEqual({ result: 'CHECKED_IN', studentName: '小明', sessionTitle: '一對一補課', time: '14:55' });
 
-    const checkOut = await checkInByStudentNumber('S005', '2026-08-04', '15:58', 'marker-1');
+    const checkOut = await checkInByStudentNumber('S005', '2026-08-04', '16:25', 'marker-1');
     expect(checkOut.result).toBe('CHECKED_OUT');
 
     const record = await prisma.oneOnOneAttendance.findUnique({ where: { makeupRequestId: makeup.id } });
     expect(record?.checkInTime).toBe('14:55');
-    expect(record?.checkOutTime).toBe('15:58');
+    expect(record?.checkOutTime).toBe('16:25');
   });
 
   it('picks the nearer of two candidate classes when both are within the window', async () => {
@@ -244,8 +244,33 @@ describe('checkInByStudentNumber', () => {
     });
     expect(recordA).toBeNull();
   });
+
+  it('checks out the nearer of two already-open sessions when both exist, leaving the other untouched', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen7@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S007', 'checkin-ming7@example.com');
+    const classA = await createClass({ name: 'A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '20:00' });
+    const classB = await createClass({ name: 'B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:30', endTime: '20:30' });
+    await enrollStudent(classA.id, student.id);
+    await enrollStudent(classB.id, student.id);
+    await prisma.classAttendance.create({
+      data: { classId: classA.id, studentId: student.id, date: new Date('2026-08-04'), status: 'PRESENT', checkInTime: '18:55', markedById: 'marker-1' },
+    });
+    await prisma.classAttendance.create({
+      data: { classId: classB.id, studentId: student.id, date: new Date('2026-08-04'), status: 'PRESENT', checkInTime: '19:25', markedById: 'marker-1' },
+    });
+
+    const result = await checkInByStudentNumber('S007', '2026-08-04', '22:00', 'marker-1');
+
+    expect(result).toEqual({ result: 'CHECKED_OUT', studentName: '小明', sessionTitle: 'B班', time: '22:00' });
+    const recordA = await prisma.classAttendance.findUnique({
+      where: { classId_studentId_date: { classId: classA.id, studentId: student.id, date: new Date('2026-08-04') } },
+    });
+    expect(recordA?.checkOutTime).toBeNull();
+  });
 });
 ```
+
+**Design note (fixed during review — read before implementing):** the first draft of this task computed every candidate's `diffMinutes` purely from its *start* time and applied the 60-minute window uniformly to both check-in and check-out. That's wrong for check-out: a 19:00-21:00 class's natural check-out time (~20:50-21:00) is 110+ minutes from its *start* time, outside any ±60 window centered there — exactly what the "checks out on a second scan" test above exercises (18:55 check-in, 20:50/20:55 check-out, both well past 60 minutes from `19:00`). The corrected algorithm below checks **first** whether the student already has an open (checked-in, not-yet-out) session among today's candidates — if so, that always wins for check-out, with no window applied — and only falls through to the window-filtered nearest-match logic when nothing is already open (i.e., for a genuine new check-in). This keeps the window meaningful for its actual purpose (deciding which *new arrival* to check in) without arbitrarily blocking legitimate check-outs, and — unlike an unconstrained "find any open record for this student today" query — stays scoped to the same day-specific candidate list used for check-in, so picking the nearest among multiple open sessions is deterministic instead of relying on unordered DB row order.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -274,6 +299,7 @@ function toMinutes(hhmm: string): number {
 interface CheckInCandidate {
   diffMinutes: number;
   title: string;
+  alreadyCheckedIn: boolean;
   apply: () => Promise<'CHECKED_IN' | 'CHECKED_OUT'>;
 }
 
@@ -363,9 +389,13 @@ export async function checkInByStudentNumber(
 
   for (const e of enrollments) {
     const cls = e.class;
+    const existing = await prisma.classAttendance.findUnique({
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date } },
+    });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
       title: cls.name,
+      alreadyCheckedIn: !!existing?.checkInTime,
       apply: () => applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById }),
     });
   }
@@ -373,20 +403,37 @@ export async function checkInByStudentNumber(
   for (const ins of insertions) {
     if (!ins.targetClass) continue;
     const cls = ins.targetClass;
+    const existing = await prisma.classAttendance.findUnique({ where: { makeupRequestId: ins.id } });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
       title: cls.name,
+      alreadyCheckedIn: !!existing?.checkInTime,
       apply: () =>
         applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById, makeupRequestId: ins.id }),
     });
   }
 
   for (const o of oneOnOnes) {
+    const existing = await prisma.oneOnOneAttendance.findUnique({ where: { makeupRequestId: o.id } });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(o.slotStartTime!)),
       title: '一對一補課',
+      alreadyCheckedIn: !!existing?.checkInTime,
       apply: () => applyOneOnOneAttendance({ makeupRequestId: o.id, timeStr, markedById }),
     });
+  }
+
+  // Check-out has no time window: an already-open session (checked in, not yet
+  // out) always wins, however late the scan is — a class's natural check-out
+  // time can be well over 60 minutes past its start. Only when nothing is
+  // already open do we fall through to window-filtered matching for a new
+  // check-in.
+  const openSessions = candidates.filter((c) => c.alreadyCheckedIn);
+  if (openSessions.length > 0) {
+    openSessions.sort((a, b) => a.diffMinutes - b.diffMinutes);
+    const match = openSessions[0];
+    const action = await match.apply();
+    return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
   }
 
   const withinWindow = candidates.filter((c) => c.diffMinutes <= CHECKIN_WINDOW_MINUTES);
@@ -402,7 +449,7 @@ export async function checkInByStudentNumber(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/lib/services/attendanceService.test.ts`
-Expected: PASS — all tests in the file green (pre-existing ones plus the 7 new ones).
+Expected: PASS — all tests in the file green (pre-existing ones plus the 8 new ones).
 
 - [ ] **Step 5: Commit**
 
