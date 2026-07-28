@@ -26,6 +26,24 @@ const TYPE_LABEL: Record<SessionType, string> = {
   ACTIVITY: '活動',
 };
 
+interface ClassRosterApiRow {
+  studentId: string;
+  studentName: string;
+  makeupRequestId: string | null;
+  onLeave: boolean;
+  status: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+}
+
+interface SimpleRosterApiRow {
+  studentId: string;
+  studentName: string;
+  status: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+}
+
 export function todayDateInput() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -70,7 +88,7 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       const res = await fetch(`/api/attendance/class/${s.id}?date=${date}`);
       const { roster, quotaByStudentId } = await res.json();
       setRosterRows(
-        roster.map((r: any) => ({
+        roster.map((r: ClassRosterApiRow) => ({
           key: r.makeupRequestId ?? r.studentId,
           studentId: r.studentId,
           studentName: r.studentName + (r.makeupRequestId ? '（插班）' : ''),
@@ -101,7 +119,7 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       const res = await fetch(`/api/attendance/go-hall/${s.id}`);
       const roster = await res.json();
       setRosterRows(
-        roster.map((r: any) => ({
+        roster.map((r: SimpleRosterApiRow) => ({
           key: r.studentId,
           studentId: r.studentId,
           studentName: r.studentName,
@@ -114,7 +132,7 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       const res = await fetch(`/api/attendance/activity/${s.id}?date=${date}`);
       const roster = await res.json();
       setRosterRows(
-        roster.map((r: any) => ({
+        roster.map((r: SimpleRosterApiRow) => ({
           key: r.studentId,
           studentId: r.studentId,
           studentName: r.studentName,
