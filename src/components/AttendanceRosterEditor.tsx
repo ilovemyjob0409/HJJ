@@ -5,8 +5,10 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 
 export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT';
+type EditableStatus = AttendanceStatusValue | 'UNMARKED';
 
-const STATUS_OPTIONS: { value: AttendanceStatusValue; label: string }[] = [
+const STATUS_OPTIONS: { value: EditableStatus; label: string }[] = [
+  { value: 'UNMARKED', label: '未點名' },
   { value: 'PRESENT', label: '出席' },
   { value: 'LATE', label: '遲到' },
   { value: 'LEFT_EARLY', label: '早退' },
@@ -39,12 +41,12 @@ interface Props {
 }
 
 export default function AttendanceRosterEditor({ rows, onSave }: Props) {
-  const [edits, setEdits] = useState<Record<string, { status: AttendanceStatusValue; checkInTime: string; checkOutTime: string }>>(() =>
+  const [edits, setEdits] = useState<Record<string, { status: EditableStatus; checkInTime: string; checkOutTime: string }>>(() =>
     Object.fromEntries(
       rows.map((r) => [
         r.key,
         {
-          status: r.status ?? (r.defaultOnLeave ? 'ON_LEAVE' : 'PRESENT'),
+          status: r.status ?? (r.defaultOnLeave ? 'ON_LEAVE' : 'UNMARKED'),
           checkInTime: r.checkInTime ?? '',
           checkOutTime: r.checkOutTime ?? '',
         },
@@ -53,7 +55,7 @@ export default function AttendanceRosterEditor({ rows, onSave }: Props) {
   );
   const [saving, setSaving] = useState(false);
 
-  function updateStatus(key: string, status: AttendanceStatusValue) {
+  function updateStatus(key: string, status: EditableStatus) {
     setEdits((prev) => ({ ...prev, [key]: { ...prev[key], status } }));
   }
   function updateTime(key: string, field: 'checkInTime' | 'checkOutTime', value: string) {
@@ -61,17 +63,23 @@ export default function AttendanceRosterEditor({ rows, onSave }: Props) {
   }
 
   async function handleSave() {
+    // Students still left at UNMARKED are skipped entirely — same as never
+    // having a record at all — so opening a roster and saving without
+    // touching anything writes nothing, instead of defaulting everyone to
+    // PRESENT.
+    const records = rows
+      .filter((r) => edits[r.key].status !== 'UNMARKED')
+      .map((r) => ({
+        studentId: r.studentId,
+        key: r.key,
+        status: edits[r.key].status as AttendanceStatusValue,
+        checkInTime: edits[r.key].checkInTime || undefined,
+        checkOutTime: edits[r.key].checkOutTime || undefined,
+      }));
+    if (records.length === 0) return;
     setSaving(true);
     try {
-      await onSave(
-        rows.map((r) => ({
-          studentId: r.studentId,
-          key: r.key,
-          status: edits[r.key].status,
-          checkInTime: edits[r.key].checkInTime || undefined,
-          checkOutTime: edits[r.key].checkOutTime || undefined,
-        }))
-      );
+      await onSave(records);
     } finally {
       setSaving(false);
     }
@@ -89,20 +97,24 @@ export default function AttendanceRosterEditor({ rows, onSave }: Props) {
               {r.quotaLabel && <span className="text-xs text-inkMuted">{r.quotaLabel}</span>}
             </div>
             <div className="flex flex-wrap gap-2">
-              {STATUS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => updateStatus(r.key, opt.value)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    edits[r.key].status === opt.value
-                      ? 'bg-brand text-brandInk'
-                      : 'border border-borderStrong text-inkMuted hover:bg-stripe'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {STATUS_OPTIONS.map((opt) => {
+                const selected = edits[r.key].status === opt.value;
+                const className = selected
+                  ? opt.value === 'UNMARKED'
+                    ? 'bg-stripe text-inkMuted'
+                    : 'bg-brand text-brandInk'
+                  : 'border border-borderStrong text-inkMuted hover:bg-stripe';
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => updateStatus(r.key, opt.value)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${className}`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
             <div className="flex gap-2">
               <Input
