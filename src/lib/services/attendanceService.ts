@@ -512,6 +512,7 @@ function toMinutes(hhmm: string): number {
 interface CheckInCandidate {
   diffMinutes: number;
   title: string;
+  alreadyCheckedIn: boolean;
   apply: () => Promise<'CHECKED_IN' | 'CHECKED_OUT'>;
 }
 
@@ -601,9 +602,13 @@ export async function checkInByStudentNumber(
 
   for (const e of enrollments) {
     const cls = e.class;
+    const existing = await prisma.classAttendance.findUnique({
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date } },
+    });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
       title: cls.name,
+      alreadyCheckedIn: !!existing?.checkInTime,
       apply: () => applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById }),
     });
   }
@@ -611,53 +616,41 @@ export async function checkInByStudentNumber(
   for (const ins of insertions) {
     if (!ins.targetClass) continue;
     const cls = ins.targetClass;
+    const existing = await prisma.classAttendance.findUnique({ where: { makeupRequestId: ins.id } });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
       title: cls.name,
+      alreadyCheckedIn: !!existing?.checkInTime,
       apply: () =>
         applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById, makeupRequestId: ins.id }),
     });
   }
 
   for (const o of oneOnOnes) {
+    const existing = await prisma.oneOnOneAttendance.findUnique({ where: { makeupRequestId: o.id } });
     candidates.push({
       diffMinutes: Math.abs(nowMinutes - toMinutes(o.slotStartTime!)),
       title: '一對一補課',
+      alreadyCheckedIn: !!existing?.checkInTime,
       apply: () => applyOneOnOneAttendance({ makeupRequestId: o.id, timeStr, markedById }),
     });
   }
 
-  const withinWindow = candidates.filter((c) => c.diffMinutes <= CHECKIN_WINDOW_MINUTES);
-  if (withinWindow.length === 0) {
-    const existingClass = await prisma.classAttendance.findFirst({
-      where: { studentId: student.id, date, checkInTime: { not: null } },
-      select: { classId: true, makeupRequestId: true, class: { select: { name: true } } },
-    });
-    if (existingClass) {
-      const action = await applyClassAttendance({
-        classId: existingClass.classId,
-        studentId: student.id,
-        date,
-        timeStr,
-        markedById,
-        makeupRequestId: existingClass.makeupRequestId ?? undefined,
-      });
-      return { result: action, studentName: student.user.name, sessionTitle: existingClass.class.name, time: timeStr };
-    }
-    const existingOneOnOne = await prisma.oneOnOneAttendance.findFirst({
-      where: { makeupRequest: { leaveRequest: { studentId: student.id }, slotDate: date }, checkInTime: { not: null } },
-      select: { makeupRequestId: true },
-    });
-    if (existingOneOnOne) {
-      const action = await applyOneOnOneAttendance({
-        makeupRequestId: existingOneOnOne.makeupRequestId,
-        timeStr,
-        markedById,
-      });
-      return { result: action, studentName: student.user.name, sessionTitle: '一對一補課', time: timeStr };
-    }
-    return { result: 'NO_SESSION' };
+  // Check-out has no time window: an already-open session (checked in, not yet
+  // out) always wins, however late the scan is — a class's natural check-out
+  // time can be well over 60 minutes past its start. Only when nothing is
+  // already open do we fall through to window-filtered matching for a new
+  // check-in.
+  const openSessions = candidates.filter((c) => c.alreadyCheckedIn);
+  if (openSessions.length > 0) {
+    openSessions.sort((a, b) => a.diffMinutes - b.diffMinutes);
+    const match = openSessions[0];
+    const action = await match.apply();
+    return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
   }
+
+  const withinWindow = candidates.filter((c) => c.diffMinutes <= CHECKIN_WINDOW_MINUTES);
+  if (withinWindow.length === 0) return { result: 'NO_SESSION' };
   withinWindow.sort((a, b) => a.diffMinutes - b.diffMinutes);
   const match = withinWindow[0];
 
