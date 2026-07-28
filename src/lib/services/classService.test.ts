@@ -54,6 +54,24 @@ describe('createClass / listClasses', () => {
     expect(classes).toHaveLength(1);
     expect(classes[0].teacher.user.name).toBe('陳老師');
   });
+
+  it('includes per-enrollment session quota alongside the existing enrollment fields', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-list-quota-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-list-quota-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await enrollStudent(cls.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 12 } });
+
+    const classes = await listClasses();
+
+    const found = classes.find((c) => c.id === cls.id);
+    expect(found?.enrollments).toHaveLength(1);
+    expect(found?.enrollments[0].studentId).toBe(student.id);
+    expect(found?.enrollments[0].student.user.name).toBe('小明');
+    expect(found?.enrollments[0].totalSessions).toBe(12);
+    expect(found?.enrollments[0].usedSessions).toBe(0);
+    expect(found?.enrollments[0].remaining).toBe(12);
+  });
 });
 
 describe('listClassesBySubjectAndLevel', () => {
@@ -211,6 +229,21 @@ describe('listStudentEnrolledClasses', () => {
     const result = await listStudentEnrolledClasses(student.id);
 
     expect(result.map((c) => c.id)).toEqual([classA.id]);
+  });
+
+  it('includes the enrolled student\'s own session quota', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-enrolled-quota-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-enrolled-quota-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await enrollStudent(cls.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 12 } });
+
+    const result = await listStudentEnrolledClasses(student.id);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].quota.totalSessions).toBe(12);
+    expect(result[0].quota.usedSessions).toBe(0);
+    expect(result[0].quota.remaining).toBe(12);
   });
 });
 

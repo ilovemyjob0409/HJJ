@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { getClassEnrollmentQuota } from './attendanceService';
 
 export interface CreateClassInput {
   name: string;
@@ -75,7 +76,15 @@ export async function listClasses() {
     select: CLASS_WITH_TEACHER_SELECT,
     orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
   });
-  return classes.sort((a, b) => {
+  const enriched = await Promise.all(
+    classes.map(async (c) => ({
+      ...c,
+      enrollments: await Promise.all(
+        c.enrollments.map(async (e) => ({ ...e, ...(await getClassEnrollmentQuota(c.id, e.studentId)) }))
+      ),
+    }))
+  );
+  return enriched.sort((a, b) => {
     const rank = (subject: string) => {
       const i = SUBJECT_ORDER.indexOf(subject);
       return i === -1 ? SUBJECT_ORDER.length : i;
@@ -151,12 +160,13 @@ export function unenrollStudent(classId: string, studentId: string) {
   return prisma.classEnrollment.delete({ where: { studentId_classId: { studentId, classId } } });
 }
 
-export function listStudentEnrolledClasses(studentId: string) {
-  return prisma.class.findMany({
+export async function listStudentEnrolledClasses(studentId: string) {
+  const classes = await prisma.class.findMany({
     where: { enrollments: { some: { studentId } } },
     select: CLASS_BOOKING_SELECT,
     orderBy: { name: 'asc' },
   });
+  return Promise.all(classes.map(async (c) => ({ ...c, quota: await getClassEnrollmentQuota(c.id, studentId) })));
 }
 
 // Blocks deletion when the class has leave-request or substitute-request
