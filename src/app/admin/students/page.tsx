@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -44,6 +44,11 @@ export default function StudentsPage() {
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const editingRef = useRef<StudentRow | null>(null);
+
+  useEffect(() => {
+    editingRef.current = editing;
+  }, [editing]);
 
   async function load() {
     try {
@@ -143,11 +148,12 @@ export default function StudentsPage() {
 
   async function handleAddSessions(classId: string) {
     if (!editing) return;
+    const targetStudentId = editing.id;
     const amount = Number(addAmount[classId]);
     if (!amount || amount <= 0) return;
     const res = await fetch(`/api/classes/${classId}/enrollments`, {
       method: 'PATCH',
-      body: JSON.stringify({ studentId: editing.id, addSessions: amount }),
+      body: JSON.stringify({ studentId: targetStudentId, addSessions: amount }),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -159,8 +165,11 @@ export default function StudentsPage() {
     const studentsRes = await fetch('/api/students');
     const updatedStudents: StudentRow[] = await studentsRes.json();
     setStudents(updatedStudents);
-    const updatedEditing = updatedStudents.find((s) => s.id === editing.id);
-    if (updatedEditing) {
+    const updatedEditing = updatedStudents.find((s) => s.id === targetStudentId);
+    // Only touch the modal state if it's still showing the same student we
+    // just updated — the admin may have closed the modal or switched to a
+    // different student's modal while the PATCH/refetch were in flight.
+    if (updatedEditing && editingRef.current?.id === targetStudentId) {
       setEditing(updatedEditing);
       setEditEnrollments(
         Object.fromEntries(updatedEditing.enrollments.map((en) => [en.classId, en.totalSessions === null ? '' : String(en.totalSessions)]))
