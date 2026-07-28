@@ -294,3 +294,91 @@ export async function saveActivityAttendance(
     )
   );
 }
+
+export type AttendanceSessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY';
+
+export interface AttendanceSessionSummary {
+  type: AttendanceSessionType;
+  id: string;
+  title: string;
+  timeLabel: string;
+  markedCount: number;
+  totalCount: number;
+}
+
+export async function listAttendanceSessionsForDate(
+  date: Date,
+  teacherId: string | null
+): Promise<AttendanceSessionSummary[]> {
+  const weekday = date.getDay();
+
+  const [classes, oneOnOnes, goHallSessions, activities] = await Promise.all([
+    prisma.class.findMany({
+      where: { weekday, ...(teacherId ? { teacherId } : {}) },
+      select: { id: true, name: true, startTime: true, endTime: true, _count: { select: { enrollments: true } } },
+    }),
+    prisma.makeupRequest.findMany({
+      where: { type: 'ONE_ON_ONE', status: 'APPROVED', slotDate: date, ...(teacherId ? { teacherId } : {}) },
+      select: {
+        id: true,
+        slotStartTime: true,
+        slotEndTime: true,
+        leaveRequest: { select: { student: { select: NAME_SELECT } } },
+      },
+    }),
+    prisma.goHallSession.findMany({
+      where: { date, ...(teacherId ? { teacherId } : {}) },
+      select: { id: true, startTime: true, endTime: true, _count: { select: { registrations: true } } },
+    }),
+    prisma.activity.findMany({
+      where: { startDate: { lte: date }, endDate: { gte: date }, ...(teacherId ? { teachers: { some: { teacherId } } } : {}) },
+      select: { id: true, title: true, _count: { select: { registrations: true } } },
+    }),
+  ]);
+
+  const classRows: AttendanceSessionSummary[] = await Promise.all(
+    classes.map(async (c) => ({
+      type: 'CLASS' as const,
+      id: c.id,
+      title: c.name,
+      timeLabel: `${c.startTime}-${c.endTime}`,
+      markedCount: await prisma.classAttendance.count({ where: { classId: c.id, date } }),
+      totalCount: c._count.enrollments,
+    }))
+  );
+
+  const oneOnOneRows: AttendanceSessionSummary[] = await Promise.all(
+    oneOnOnes.map(async (o) => ({
+      type: 'ONE_ON_ONE' as const,
+      id: o.id,
+      title: `${o.leaveRequest.student.user.name}（一對一）`,
+      timeLabel: `${o.slotStartTime}-${o.slotEndTime}`,
+      markedCount: (await prisma.oneOnOneAttendance.count({ where: { makeupRequestId: o.id } })) > 0 ? 1 : 0,
+      totalCount: 1,
+    }))
+  );
+
+  const goHallRows: AttendanceSessionSummary[] = await Promise.all(
+    goHallSessions.map(async (s) => ({
+      type: 'GO_HALL' as const,
+      id: s.id,
+      title: '弈廳',
+      timeLabel: `${s.startTime}-${s.endTime}`,
+      markedCount: await prisma.goHallAttendance.count({ where: { sessionId: s.id } }),
+      totalCount: s._count.registrations,
+    }))
+  );
+
+  const activityRows: AttendanceSessionSummary[] = await Promise.all(
+    activities.map(async (a) => ({
+      type: 'ACTIVITY' as const,
+      id: a.id,
+      title: a.title,
+      timeLabel: '',
+      markedCount: await prisma.activityAttendance.count({ where: { activityId: a.id, date } }),
+      totalCount: a._count.registrations,
+    }))
+  );
+
+  return [...classRows, ...oneOnOneRows, ...goHallRows, ...activityRows];
+}

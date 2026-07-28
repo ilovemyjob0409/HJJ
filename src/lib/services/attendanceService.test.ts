@@ -5,7 +5,7 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, getActivityRoster, saveActivityAttendance } from './attendanceService';
+import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, getActivityRoster, saveActivityAttendance, listAttendanceSessionsForDate } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 
@@ -246,5 +246,40 @@ describe('getActivityRoster / saveActivityAttendance', () => {
 
     const day2 = await getActivityRoster(activity.id, new Date('2026-08-02'));
     expect(day2[0].status).toBeNull();
+  });
+});
+
+describe('listAttendanceSessionsForDate', () => {
+  it('lists a class scheduled on that weekday, with marked/total counts', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    const date = new Date('2026-08-04'); // a Tuesday, matches weekday: 2 in setupClassWithStudent
+
+    let sessions = await listAttendanceSessionsForDate(date, null);
+    const classRow = sessions.find((s) => s.type === 'CLASS' && s.id === cls.id);
+    expect(classRow).toBeDefined();
+    expect(classRow!.markedCount).toBe(0);
+    expect(classRow!.totalCount).toBe(1);
+
+    await saveClassAttendance(cls.id, date, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    sessions = await listAttendanceSessionsForDate(date, null);
+    expect(sessions.find((s) => s.type === 'CLASS' && s.id === cls.id)!.markedCount).toBe(1);
+  });
+
+  it('excludes classes scheduled on a different weekday', async () => {
+    const { cls } = await setupClassWithStudent();
+    const sessions = await listAttendanceSessionsForDate(new Date('2026-08-05'), null); // a Wednesday
+    expect(sessions.find((s) => s.type === 'CLASS' && s.id === cls.id)).toBeUndefined();
+  });
+
+  it('scopes to a given teacherId when provided', async () => {
+    const { teacher, cls } = await setupClassWithStudent();
+    const otherTeacher = await createTeacher({ name: '林老師', email: 'lin2@example.com', password: 'x', subjects: '圍棋' });
+    const date = new Date('2026-08-04');
+
+    const scoped = await listAttendanceSessionsForDate(date, otherTeacher.id);
+    expect(scoped.find((s) => s.type === 'CLASS' && s.id === cls.id)).toBeUndefined();
+
+    const own = await listAttendanceSessionsForDate(date, teacher.id);
+    expect(own.find((s) => s.type === 'CLASS' && s.id === cls.id)).toBeDefined();
   });
 });
