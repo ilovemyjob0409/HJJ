@@ -36,10 +36,12 @@ export default function StudentsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [formEnrollments, setFormEnrollments] = useState<Record<string, string>>({});
+  const [formClassQuery, setFormClassQuery] = useState('');
   const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
+  const [addClassQuery, setAddClassQuery] = useState('');
   const [addAmount, setAddAmount] = useState<Record<string, string>>({});
   const [addingSessions, setAddingSessions] = useState<Record<string, boolean>>({});
   const [editError, setEditError] = useState('');
@@ -112,6 +114,7 @@ export default function StudentsPage() {
     setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '' });
     setEditEnrollments(Object.fromEntries(s.enrollments.map((e) => [e.classId, e.totalSessions === null ? '' : String(e.totalSessions)])));
     setAddAmount({});
+    setAddClassQuery('');
     setEditError('');
   }
 
@@ -249,7 +252,7 @@ export default function StudentsPage() {
         {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增學生</Button>}
       </div>
       {showAddForm && (
-        <Card className="mb-6 max-w-md">
+        <Card className="mb-6 max-w-xl">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增學生</h2>
             <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
@@ -268,27 +271,53 @@ export default function StudentsPage() {
             <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
             <div>
               <p className="mb-1 text-sm font-medium text-ink">所屬班級（可複選，可留空）</p>
-              <div className="flex max-h-40 flex-col gap-2 overflow-y-auto rounded-lg border border-borderStrong p-2">
-                {classes.map((c) => {
-                  const checked = c.id in formEnrollments;
-                  return (
-                    <div key={c.id} className="flex items-center gap-2">
-                      <label className="flex flex-1 items-center gap-2 text-sm text-ink">
-                        <input type="checkbox" checked={checked} onChange={() => toggleFormClass(c.id)} />
-                        {c.name}（{c.subject}）
-                      </label>
-                      {checked && (
-                        <Input
-                          type="number"
-                          placeholder="總堂數"
-                          value={formEnrollments[c.id] ?? ''}
-                          onChange={(e) => setFormEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                          className="w-24"
-                        />
-                      )}
-                    </div>
-                  );
-                })}
+              <Input
+                placeholder="搜尋班級名稱或科目"
+                value={formClassQuery}
+                onChange={(e) => setFormClassQuery(e.target.value)}
+                className="mb-2"
+              />
+              <div className="max-h-64 overflow-y-auto">
+                <DataTable
+                  columns={[
+                    {
+                      header: '',
+                      render: (c) => (
+                        <input type="checkbox" checked={c.id in formEnrollments} onChange={() => toggleFormClass(c.id)} />
+                      ),
+                    },
+                    {
+                      header: '班級',
+                      render: (c) => (
+                        <div className="text-left">
+                          <div className="font-medium">{c.name}</div>
+                          <div className="text-xs text-inkMuted">{c.subject}</div>
+                        </div>
+                      ),
+                    },
+                    {
+                      header: '總堂數',
+                      render: (c) =>
+                        c.id in formEnrollments ? (
+                          <Input
+                            type="number"
+                            placeholder="留空＝不計"
+                            value={formEnrollments[c.id] ?? ''}
+                            onChange={(e) => setFormEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                            className="w-24"
+                          />
+                        ) : (
+                          <span className="text-inkMuted">—</span>
+                        ),
+                    },
+                  ]}
+                  rows={classes.filter((c) => {
+                    const q = formClassQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    return c.name.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q);
+                  })}
+                  keyField={(c) => c.id}
+                />
               </div>
             </div>
             {formError && <p className="text-sm text-rejected">{formError}</p>}
@@ -308,7 +337,7 @@ export default function StudentsPage() {
         />
       </Card>
 
-      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生">
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生" maxWidthClassName="max-w-2xl">
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
           <Input placeholder="姓名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
           <Input
@@ -331,56 +360,130 @@ export default function StudentsPage() {
           />
 
           <div>
-            <p className="mb-1 text-sm font-medium text-ink">所屬班級</p>
-            <div className="flex max-h-64 flex-col gap-2 overflow-y-auto rounded-lg border border-borderStrong p-2">
-              {classes.map((c) => {
-                const checked = c.id in editEnrollments;
-                const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
-                return (
-                  <div key={c.id} className="flex flex-col gap-1 border-b border-borderSubtle pb-2 last:border-b-0 last:pb-0">
-                    <label className="flex items-center gap-2 text-sm text-ink">
-                      <input type="checkbox" checked={checked} onChange={() => toggleClass(c.id)} />
-                      {c.name}（{c.subject}）
-                    </label>
-                    {checked && (
-                      <div className="ml-6 flex flex-wrap items-center gap-2">
-                        <Input
-                          type="number"
-                          placeholder="總堂數"
-                          value={editEnrollments[c.id] ?? ''}
-                          onChange={(e) => setEditEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                          className="w-24"
-                        />
-                        {enrollment && (
-                          <>
-                            {enrollment.totalSessions !== null && (
-                              <span className="text-xs text-inkMuted">
-                                已上 {enrollment.usedSessions}／剩餘 {enrollment.remaining}
-                              </span>
-                            )}
-                            <Input
-                              type="number"
-                              placeholder="+堂數"
-                              value={addAmount[c.id] ?? ''}
-                              onChange={(e) => setAddAmount((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                              className="w-20"
-                            />
-                            <button
-                              type="button"
-                              className="text-xs text-brandDark hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
-                              disabled={addingSessions[c.id]}
-                              onClick={() => handleAddSessions(c.id)}
-                            >
-                              {addingSessions[c.id] ? '加堂中…' : '加堂'}
-                            </button>
-                          </>
-                        )}
+            <p className="mb-1 text-sm font-medium text-ink">已加入班級</p>
+            {Object.keys(editEnrollments).length === 0 ? (
+              <p className="rounded-lg border border-dashed border-borderStrong p-3 text-center text-sm text-inkMuted">
+                尚未加入任何班級
+              </p>
+            ) : (
+              <DataTable
+                columns={[
+                  {
+                    header: '班級',
+                    render: (c) => (
+                      <div className="text-left">
+                        <div className="font-medium">{c.name}</div>
+                        <div className="text-xs text-inkMuted">{c.subject}</div>
                       </div>
-                    )}
+                    ),
+                  },
+                  {
+                    header: '總堂數',
+                    render: (c) => (
+                      <Input
+                        type="number"
+                        placeholder="留空＝不計"
+                        value={editEnrollments[c.id] ?? ''}
+                        onChange={(e) => setEditEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                        className="w-24"
+                      />
+                    ),
+                  },
+                  {
+                    header: '已上／剩餘',
+                    render: (c) => {
+                      const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                      if (!enrollment || enrollment.totalSessions === null) {
+                        return <span className="text-xs text-inkMuted">未追蹤</span>;
+                      }
+                      return (
+                        <span className="text-xs text-inkMuted">
+                          已上 {enrollment.usedSessions}／剩餘 {enrollment.remaining}
+                        </span>
+                      );
+                    },
+                  },
+                  {
+                    header: '加堂',
+                    render: (c) => {
+                      const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                      if (!enrollment) {
+                        return <span className="text-xs text-inkMuted">先儲存</span>;
+                      }
+                      return (
+                        <div className="flex items-center justify-center gap-1">
+                          <Input
+                            type="number"
+                            placeholder="+堂數"
+                            value={addAmount[c.id] ?? ''}
+                            onChange={(e) => setAddAmount((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                            className="w-16"
+                          />
+                          <button
+                            type="button"
+                            className="text-xs text-brandDark hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+                            disabled={addingSessions[c.id]}
+                            onClick={() => handleAddSessions(c.id)}
+                          >
+                            {addingSessions[c.id] ? '處理中' : '加堂'}
+                          </button>
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    header: '',
+                    render: (c) => (
+                      <button type="button" className="text-xs text-rejected hover:underline" onClick={() => toggleClass(c.id)}>
+                        移除
+                      </button>
+                    ),
+                  },
+                ]}
+                rows={classes.filter((c) => c.id in editEnrollments)}
+                keyField={(c) => c.id}
+              />
+            )}
+          </div>
+
+          <div>
+            <p className="mb-1 text-sm font-medium text-ink">加入新班級</p>
+            <Input
+              placeholder="搜尋班級名稱或科目加入…"
+              value={addClassQuery}
+              onChange={(e) => setAddClassQuery(e.target.value)}
+            />
+            {addClassQuery.trim() &&
+              (() => {
+                const q = addClassQuery.trim().toLowerCase();
+                const matches = classes
+                  .filter((c) => !(c.id in editEnrollments))
+                  .filter((c) => c.name.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q))
+                  .slice(0, 8);
+                if (matches.length === 0) {
+                  return <p className="mt-2 text-sm text-inkMuted">找不到符合的班級</p>;
+                }
+                return (
+                  <div className="mt-2 flex max-h-40 flex-col overflow-y-auto rounded-lg border border-borderStrong">
+                    {matches.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          toggleClass(c.id);
+                          setAddClassQuery('');
+                        }}
+                        className="flex items-center justify-between border-b border-borderSubtle px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stripe"
+                      >
+                        <span>
+                          {c.name}（{c.subject}）
+                        </span>
+                        <span className="text-xs text-brandDark">加入</span>
+                      </button>
+                    ))}
                   </div>
                 );
-              })}
-            </div>
+              })()}
           </div>
 
           {editError && <p className="text-sm text-rejected">{editError}</p>}
