@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Select from '@/components/ui/Select';
 import Input from '@/components/ui/Input';
@@ -94,13 +95,16 @@ export default function AdminAttendancePage() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">點名</h1>
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <Button variant={tab === 'roll' ? 'primary' : 'secondary'} onClick={() => setTab('roll')}>
           點名總覽
         </Button>
         <Button variant={tab === 'stats' ? 'primary' : 'secondary'} onClick={() => setTab('stats')}>
           統計
         </Button>
+        <Link href="/admin/attendance/checkin" className="ml-auto">
+          <Button variant="secondary">櫃檯報到模式</Button>
+        </Link>
       </div>
       {tab === 'roll' ? <AttendanceHub /> : <AttendanceStatsPanel />}
     </>
