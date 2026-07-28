@@ -174,3 +174,62 @@ export async function saveOneOnOneAttendance(
     },
   });
 }
+
+export interface GoHallRosterEntry {
+  studentId: string;
+  studentName: string;
+  status: AttendanceStatusValue | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+}
+
+export async function getGoHallRoster(sessionId: string): Promise<GoHallRosterEntry[]> {
+  const [registrations, existing] = await Promise.all([
+    prisma.goHallRegistration.findMany({
+      where: { sessionId },
+      select: { studentId: true, student: { select: NAME_SELECT } },
+    }),
+    prisma.goHallAttendance.findMany({ where: { sessionId } }),
+  ]);
+  const existingByStudentId = new Map(existing.map((a) => [a.studentId, a]));
+  return registrations
+    .map((r) => {
+      const record = existingByStudentId.get(r.studentId);
+      return {
+        studentId: r.studentId,
+        studentName: r.student.user.name,
+        status: (record?.status as AttendanceStatusValue) ?? null,
+        checkInTime: record?.checkInTime ?? null,
+        checkOutTime: record?.checkOutTime ?? null,
+      };
+    })
+    .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
+}
+
+export async function saveGoHallAttendance(
+  sessionId: string,
+  markedById: string,
+  records: SaveAttendanceRecordInput[]
+): Promise<void> {
+  await prisma.$transaction(
+    records.map((r) =>
+      prisma.goHallAttendance.upsert({
+        where: { sessionId_studentId: { sessionId, studentId: r.studentId } },
+        create: {
+          sessionId,
+          studentId: r.studentId,
+          status: r.status,
+          checkInTime: r.checkInTime,
+          checkOutTime: r.checkOutTime,
+          markedById,
+        },
+        update: {
+          status: r.status,
+          checkInTime: r.checkInTime,
+          checkOutTime: r.checkOutTime,
+          markedById,
+        },
+      })
+    )
+  );
+}

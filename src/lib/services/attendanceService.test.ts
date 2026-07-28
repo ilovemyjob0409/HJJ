@@ -5,7 +5,8 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance } from './attendanceService';
+import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance } from './attendanceService';
+import { createSessions, registerForSession } from './goHallService';
 
 beforeEach(async () => {
   await prisma.classAttendance.deleteMany();
@@ -192,6 +193,29 @@ describe('getOneOnOneAttendance / saveOneOnOneAttendance', () => {
     expect(entry.checkInTime).toBe('15:05');
 
     const count = await prisma.oneOnOneAttendance.count({ where: { makeupRequestId: makeup.id } });
+    expect(count).toBe(1);
+  });
+});
+
+describe('getGoHallRoster / saveGoHallAttendance', () => {
+  it('lists registered students with no status yet, then reflects a save', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createSessions({ dates: [new Date('2026-08-01')], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+
+    let roster = await getGoHallRoster(session.id);
+    expect(roster).toHaveLength(1);
+    expect(roster[0].studentId).toBe(student.id);
+    expect(roster[0].status).toBeNull();
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    roster = await getGoHallRoster(session.id);
+    expect(roster[0].status).toBe('PRESENT');
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
+    const count = await prisma.goHallAttendance.count({ where: { sessionId: session.id, studentId: student.id } });
     expect(count).toBe(1);
   });
 });
