@@ -10,6 +10,7 @@ import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
+import AttendanceHub from '@/components/AttendanceHub';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
@@ -85,12 +86,15 @@ export default async function TeacherDashboard() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/teacher/leave-request">
           <Card className="text-ink transition-shadow hover:shadow-md">請假/調課申請</Card>
         </Link>
         <Link href="/teacher/availability">
           <Card className="text-ink transition-shadow hover:shadow-md">設定可補課時段</Card>
+        </Link>
+        <Link href="/teacher/attendance">
+          <Card className="text-ink transition-shadow hover:shadow-md">點名</Card>
         </Link>
       </div>
 
@@ -98,6 +102,11 @@ export default async function TeacherDashboard() {
       <Card className="mb-6">
         <DataTable columns={substituteColumns} rows={substitutes} keyField={(r) => r.id} />
       </Card>
+
+      <h2 className="mb-2 font-bold text-ink">今日點名</h2>
+      <div className="mb-6">
+        <AttendanceHub hideDatePicker />
+      </div>
 
       <h2 className="mb-2 font-bold text-ink">學生請假紀錄</h2>
       <Card className="mb-6">
