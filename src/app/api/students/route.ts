@@ -18,11 +18,11 @@ export async function POST(req: NextRequest) {
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const { classIds, ...input } = await req.json();
+  const { enrollments, ...input } = await req.json();
   try {
     const student = await createStudent(input);
-    if (Array.isArray(classIds) && classIds.length > 0) {
-      await setStudentEnrollments(student.id, classIds);
+    if (Array.isArray(enrollments) && enrollments.length > 0) {
+      await setStudentEnrollments(student.id, enrollments);
     }
     return NextResponse.json(student, { status: 201 });
   } catch (err) {

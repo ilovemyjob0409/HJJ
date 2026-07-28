@@ -10,11 +10,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const { classIds, ...profileInput } = await req.json();
+  const { enrollments, ...profileInput } = await req.json();
   try {
     const updated = await updateStudent(params.id, profileInput);
-    if (Array.isArray(classIds)) {
-      await setStudentEnrollments(params.id, classIds);
+    if (Array.isArray(enrollments)) {
+      await setStudentEnrollments(params.id, enrollments);
     }
     return NextResponse.json(updated);
   } catch (err) {
