@@ -30,6 +30,7 @@ model Student {
 - 可為空（尚未登記學號的學生不受影響，既有點名流程照舊）
 - 唯一（避免兩個學生對到同一組條碼）
 - 純字串，不做格式驗證（英數混合，各校格式不一，比照 `Class.startTime` 等既有欄位「不驗證，信任輸入」的慣例）
+- **空字串必須正規化成 `null`，不能直接存 `''`**：`/admin/students` 表單留空時送出的是 `''` 不是 `undefined`，而 Prisma 只把 `undefined` 當作「維持不變／不寫入」，`''` 是一個會真的寫進 DB 的值。這個欄位是 `@unique`，如果把 `''` 直接存進去，全系統只有第一個「沒填學號」的學生存得進去，第二個（包括後續編輯任何一個舊生、沒動這個欄位）都會撞到唯一約束，錯誤地顯示「此學號已被使用」。`createStudent`/`updateStudent` 收到 `studentNumber` 時要先 `?.trim() || null` 再寫入。
 
 行政人員在 `/admin/students` 的新增/編輯表單上，新增一個「學號」文字輸入框，跟姓名、帳號等欄位並列。這格本身沒有特殊行為——用滑鼠點進去打字，或把游標放進去用掃描器掃一次卡把號碼帶入，效果一樣，都只是一般文字輸入。
 
@@ -41,16 +42,17 @@ model Student {
 2. **列出今天候選場次**（沿用 `getClassRoster`／`listAttendanceSessionsForDate` 已有的查詢邏輯，不重新發明）：
    - 班級課：該學生的 `ClassEnrollment` 中，`Class.weekday` 等於今天星期幾；加上今天核准的插班補課（`MakeupRequest` type=INSERTION, status=APPROVED, targetDate=今天, 且該生的請假單）
    - 一對一補課：今天核准的 `MakeupRequest`（type=ONE_ON_ONE, status=APPROVED, slotDate=今天）且屬於該學生
-3. **先看有沒有「今天已經簽到、還沒簽退（或已簽退但還想再更新）」的候選場次**（查每個候選場次現有的 `ClassAttendance`／`OneOnOneAttendance` 紀錄，`checkInTime` 已填代表「已簽到過」）：
-   - 有 → 這是簽退動作，**不受時間窗限制**（下課時間本來就可能離上課時間超過 60 分鐘，例如兩小時的課）。若同時有多個這樣的場次（理論上少見），取時間差最小的一個，避免任意挑選。
-   - 沒有 → 進入第 4 步，走「新簽到」的時間窗邏輯。
-4. **篩選時間窗（僅用於新簽到）**：每個候選場次都有開始時間（`Class.startTime` 或 `slotStartTime`）。只保留「現在時間」與「開始時間」相差在 60 分鐘以內（不分前後）的場次；一個都沒有 → 回傳 `NO_SESSION`。
-5. **取最接近的一個**：時間差最小的場次勝出（理論上不會同時有兩堂時間完全相同的候選，不特別處理平手）。
-6. **依現有點名紀錄決定動作**（`ClassAttendance` 或 `OneOnOneAttendance`，依場次類型，key 對應現有規則：插班用 `makeupRequestId`，本班用 `classId+studentId+date`，一對一用 `makeupRequestId`）：
-   - 尚無 `checkInTime` → upsert：`status=PRESENT`, `checkInTime=now`（"HH:mm"), `markedById`。回傳 `CHECKED_IN`。
-   - 已有 `checkInTime`（不論 `checkOutTime` 是否已填）→ 更新 `checkOutTime=now`（覆寫成最新時間，`status` 不變）。回傳 `CHECKED_OUT`。
-   - 這一步的「已有 checkInTime」候選，只會是第 3 步選出來的那個；第 4-5 步選出來的候選必定尚無 `checkInTime`（否則早在第 3 步就被選走了），所以一定會走「新簽到」分支。
-6. 回傳內容一律附上場次標題（班名或「一對一補課」）與時間，供前端顯示。
+   - **排除當天已核准請假的班級**：該學生對某班today有 `LeaveRequest`（`studentId` + `date` 相符即算，`LeaveRequest` 建立時就是 `status=APPROVED`，沒有待審狀態）的，該班級課候選直接排除，不進入後續比對。理由：請假的班級如果還被自動掃進候選，一旦在時間窗內被誤配對，會把 `ON_LEAVE`（不計堂數）誤標成 `PRESENT`（計堂數），多扣一堂課的額度。插班補課／一對一補課不受此排除影響（它們本身就是「請假後的替代場次」，跟請假的來源班級是兩回事）。
+3. **依現有點名紀錄把候選分成三層，同一時間只看最優先、非空的那一層**（查每個候選場次現有的 `ClassAttendance`／`OneOnOneAttendance` 紀錄）：
+   - **第一層（已簽到、尚未簽退）**：`checkInTime` 已填且 `checkOutTime` 未填。這是「正在進行中」的場次，簽退動作**不受時間窗限制**（下課時間本來就可能離上課時間超過 60 分鐘，例如兩小時的課）。此層有候選就直接用最接近的一個，動作是簽退，不再往下看。
+   - **第二層（尚未簽到，且在時間窗內）**：`checkInTime` 未填，且「現在時間」與場次開始時間相差在 60 分鐘以內（不分前後）。此層有候選就用最接近的一個，動作是新簽到。**這一層存在的意義：學生完成了今天第一堂課的簽到簽退後，還能正常簽到第二堂課**——如果沒有這一層、只看「有沒有已完成的場次」，會被第一堂課的舊紀錄卡住，永遠簽不進第二堂課。
+   - **第三層（已簽到也已簽退）**：`checkInTime`、`checkOutTime` 都已填。只有前兩層都沒有候選時才會落到這裡，效果是把簽退時間覆寫成最新的掃描時間（例如同一堂課下課後又多掃了一次）。
+   - 三層都沒有候選 → 回傳 `NO_SESSION`。
+   - 每一層內如果同時有多個候選（理論上少見），取時間差最小的一個，避免任意挑選。
+4. **依決定的動作寫入**（`ClassAttendance` 或 `OneOnOneAttendance`，依場次類型，key 對應現有規則：插班用 `makeupRequestId`，本班用 `classId+studentId+date`，一對一用 `makeupRequestId`）：
+   - 新簽到（第二層）→ upsert：`status=PRESENT`, `checkInTime=now`（"HH:mm"), `markedById`。回傳 `CHECKED_IN`。
+   - 簽退（第一、三層）→ 更新 `checkOutTime=now`（覆寫成最新時間，`status` 不變）。回傳 `CHECKED_OUT`。
+5. 回傳內容一律附上場次標題（班名或「一對一補課」）與時間，供前端顯示。
 
 `markedById` 一律填「目前登入的行政帳號」——雖然是學生自己掃的，但沿用現有欄位語意（誰的帳號完成了這筆紀錄）。
 
@@ -71,9 +73,10 @@ model Student {
 - 監聽輸入框的 Enter（掃描器結尾送出的按鍵），觸發送出：呼叫 `POST /api/attendance/checkin`，然後清空輸入框、重新 focus。
 - 結果顯示：畫面中央一個大區塊，依 API 回傳結果顯示：
   - `CHECKED_IN` → 綠色，「✓ {studentName} 已簽到 {time} — {sessionTitle}」
-  - `CHECKED_OUT` → 藍色，「✓ {studentName} 已簽退 {time} — {sessionTitle}」
+  - `CHECKED_OUT` → 綠色（跟簽到同色——兩者都是「成功」，只有真正的問題才用紅色；現場測試時試過藍色，看起來像是出了狀況，改回綠色），「✓ {studentName} 已簽退 {time} — {sessionTitle}」
   - `NOT_FOUND` → 紅色，「查無此學號，請洽行政人員」
   - `NO_SESSION` → 紅色，「找不到可報到的課程，請洽行政人員」
+  - API 回傳非預期格式或非 2xx（例如管理員登入過期）→ 獨立的紅色錯誤訊息，不能落到跟 `NO_SESSION` 同一句話，否則整天沒人發現櫃檯機器早就停止記錄
   - 閒置狀態（尚未掃描/顯示逾時後）→ 灰色提示「請將學生證放在掃描器前」
 - 結果顯示 4 秒後自動淡出、回到閒置狀態，準備下一位學生掃描；期間輸入框持續可接收下一次掃描（不用等淡出才能再掃）。
 - 從既有 `/admin/attendance` 頁面（`AttendanceHub` 所在頁）新增一個「櫃檯報到模式」按鈕連到這個新頁面；新頁面右上角保留一個「返回」連結回 `/admin/attendance`（不放完整導覽列，維持全螢幕的簡潔）。
