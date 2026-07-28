@@ -7,6 +7,7 @@ export interface CreateStudentInput {
   email: string;
   password?: string;
   parentPhone?: string;
+  studentNumber?: string;
 }
 
 const DEFAULT_PASSWORD = '12345678';
@@ -16,18 +17,22 @@ export interface UpdateStudentInput {
   email?: string;
   password?: string;
   parentPhone?: string;
+  studentNumber?: string;
 }
 
 const SAFE_USER_SELECT = { name: true, email: true } as const;
+const STUDENT_SELECT = { id: true, parentPhone: true, studentNumber: true, user: { select: SAFE_USER_SELECT } } as const;
 
 export async function createStudent(input: CreateStudentInput) {
   const hashed = await bcrypt.hash(input.password || DEFAULT_PASSWORD, 10);
-  const user = await prisma.user.create({
-    data: { name: input.name, email: input.email.trim().toLowerCase(), password: hashed, role: 'STUDENT' },
-  });
-  return prisma.student.create({
-    data: { userId: user.id, parentPhone: input.parentPhone },
-    select: { id: true, parentPhone: true, user: { select: SAFE_USER_SELECT } },
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: { name: input.name, email: input.email.trim().toLowerCase(), password: hashed, role: 'STUDENT' },
+    });
+    return tx.student.create({
+      data: { userId: user.id, parentPhone: input.parentPhone, studentNumber: input.studentNumber },
+      select: STUDENT_SELECT,
+    });
   });
 }
 
@@ -36,6 +41,7 @@ export async function listStudents() {
     select: {
       id: true,
       parentPhone: true,
+      studentNumber: true,
       user: { select: SAFE_USER_SELECT },
       enrollments: { select: { classId: true } },
     },
@@ -62,8 +68,8 @@ export async function updateStudent(id: string, input: UpdateStudentInput) {
     });
     return tx.student.update({
       where: { id },
-      data: { parentPhone: input.parentPhone },
-      select: { id: true, parentPhone: true, user: { select: SAFE_USER_SELECT } },
+      data: { parentPhone: input.parentPhone, studentNumber: input.studentNumber },
+      select: STUDENT_SELECT,
     });
   });
 }

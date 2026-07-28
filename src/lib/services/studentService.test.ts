@@ -52,6 +52,20 @@ describe('createStudent', () => {
       createStudent({ name: '小明', email: ' Hua@Example.com', password: 'secret123' })
     ).rejects.toThrow();
   });
+
+  it('stores and returns the student number', async () => {
+    const student = await createStudent({ name: '小華', email: 'sn-hua@example.com', password: 'secret123', studentNumber: 'S100' });
+    expect(student.studentNumber).toBe('S100');
+  });
+
+  it('rejects a second student with the same student number', async () => {
+    await createStudent({ name: '小華', email: 'sn-hua2@example.com', password: 'secret123', studentNumber: 'S101' });
+
+    await expect(
+      createStudent({ name: '小明', email: 'sn-ming2@example.com', password: 'secret123', studentNumber: 'S101' })
+    ).rejects.toThrow();
+    expect(await prisma.user.findUnique({ where: { email: 'sn-ming2@example.com' } })).toBeNull();
+  });
 });
 
 describe('listStudents', () => {
@@ -127,6 +141,14 @@ describe('updateStudent', () => {
     const other = await createStudent({ name: '小明', email: 'ming@example.com', password: 'secret123' });
 
     await expect(updateStudent(other.id, { email: ' HUA@Example.com ' })).rejects.toThrow();
+  });
+
+  it('updates the student number', async () => {
+    const student = await createStudent({ name: '小華', email: 'sn-update-hua@example.com', password: 'secret123' });
+
+    const updated = await updateStudent(student.id, { studentNumber: 'S200' });
+
+    expect(updated.studentNumber).toBe('S200');
   });
 });
 
