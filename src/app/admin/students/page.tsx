@@ -98,7 +98,8 @@ export default function StudentsPage() {
   function toggleFormClass(classId: string) {
     setFormEnrollments((prev) => {
       if (classId in prev) {
-        const { [classId]: _removed, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[classId];
         return rest;
       }
       return { ...prev, [classId]: '' };
@@ -116,7 +117,8 @@ export default function StudentsPage() {
   function toggleClass(classId: string) {
     setEditEnrollments((prev) => {
       if (classId in prev) {
-        const { [classId]: _removed, ...rest } = prev;
+        const rest = { ...prev };
+        delete rest[classId];
         return rest;
       }
       return { ...prev, [classId]: '' };
