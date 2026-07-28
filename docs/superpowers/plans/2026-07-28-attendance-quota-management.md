@@ -136,6 +136,28 @@ import {
 } from './classService';
 ```
 
+Also update the `beforeEach` block at the top of `src/lib/services/classService.test.ts` (currently lines 18-30) to also clean the four attendance tables — this file predates the attendance feature and its `beforeEach` doesn't know about them yet. Without this, a `ClassAttendance` row left over from any other test run (this file's own new tests in Task 3, or `attendanceService.test.ts`, or manual testing against the same local test DB) will make `prisma.class.deleteMany()` fail with a foreign-key violation before any test in this file even runs. Add the four deletes at the very top, before the existing ones (they must run first since these tables reference `Class`/`Student`/`User`):
+
+```ts
+beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
+  await prisma.goHallRegistration.deleteMany();
+  await prisma.goHallSession.deleteMany();
+  await prisma.substituteRequest.deleteMany();
+  await prisma.makeupRequest.deleteMany();
+  await prisma.leaveRequest.deleteMany();
+  await prisma.classEnrollment.deleteMany();
+  await prisma.class.deleteMany();
+  await prisma.teacherAvailability.deleteMany();
+  await prisma.teacher.deleteMany();
+  await prisma.student.deleteMany();
+  await prisma.user.deleteMany();
+});
+```
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/lib/services/classService.test.ts`
@@ -244,6 +266,28 @@ Update the import line at the top of the file (currently line 5) to add `enrollS
 
 ```ts
 import { createClass, enrollStudent } from './classService';
+```
+
+Also update the `beforeEach` block at the top of `src/lib/services/studentService.test.ts` (currently lines 8-20) to also clean the four attendance tables, for the same reason as `classService.test.ts` in Task 1 — this file predates the attendance feature. Add the four deletes at the very top, before the existing ones:
+
+```ts
+beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
+  await prisma.goHallRegistration.deleteMany();
+  await prisma.goHallSession.deleteMany();
+  await prisma.substituteRequest.deleteMany();
+  await prisma.makeupRequest.deleteMany();
+  await prisma.leaveRequest.deleteMany();
+  await prisma.classEnrollment.deleteMany();
+  await prisma.class.deleteMany();
+  await prisma.teacherAvailability.deleteMany();
+  await prisma.teacher.deleteMany();
+  await prisma.student.deleteMany();
+  await prisma.user.deleteMany();
+});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
