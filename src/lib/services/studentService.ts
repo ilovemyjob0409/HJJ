@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/db';
+import { getClassEnrollmentQuota } from './attendanceService';
 
 export interface CreateStudentInput {
   name: string;
@@ -30,8 +31,8 @@ export async function createStudent(input: CreateStudentInput) {
   });
 }
 
-export function listStudents() {
-  return prisma.student.findMany({
+export async function listStudents() {
+  const students = await prisma.student.findMany({
     select: {
       id: true,
       parentPhone: true,
@@ -40,6 +41,14 @@ export function listStudents() {
     },
     orderBy: { user: { name: 'asc' } },
   });
+  return Promise.all(
+    students.map(async (s) => ({
+      ...s,
+      enrollments: await Promise.all(
+        s.enrollments.map(async (e) => ({ classId: e.classId, ...(await getClassEnrollmentQuota(e.classId, s.id)) }))
+      ),
+    }))
+  );
 }
 
 export async function updateStudent(id: string, input: UpdateStudentInput) {

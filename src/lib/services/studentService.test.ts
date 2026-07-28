@@ -6,6 +6,10 @@ import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 
 beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
   await prisma.goHallRegistration.deleteMany();
   await prisma.goHallSession.deleteMany();
   await prisma.substituteRequest.deleteMany();
@@ -56,6 +60,30 @@ describe('listStudents', () => {
     const students = await listStudents();
     expect(students).toHaveLength(1);
     expect(students[0].user.name).toBe('小華');
+  });
+
+  it('includes per-enrollment session quota, with used sessions excluding leave', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'student-list-quota-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'student-list-quota-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await enrollStudent(cls.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 12 } });
+    const marker = await prisma.user.create({ data: { id: 'quota-marker-1', name: '行政', email: 'quota-marker@example.com', password: 'x', role: 'ADMIN' } });
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-04'), status: 'PRESENT', markedById: marker.id },
+    });
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11'), status: 'ON_LEAVE', markedById: marker.id },
+    });
+
+    const students = await listStudents();
+
+    const found = students.find((s) => s.id === student.id);
+    expect(found?.enrollments).toHaveLength(1);
+    expect(found?.enrollments[0].classId).toBe(cls.id);
+    expect(found?.enrollments[0].totalSessions).toBe(12);
+    expect(found?.enrollments[0].usedSessions).toBe(1);
+    expect(found?.enrollments[0].remaining).toBe(11);
   });
 });
 
