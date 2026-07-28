@@ -8,11 +8,18 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 
+interface EnrollmentQuota {
+  classId: string;
+  totalSessions: number | null;
+  usedSessions: number;
+  remaining: number | null;
+}
+
 interface StudentRow {
   id: string;
   parentPhone: string | null;
   user: { name: string; email: string };
-  enrollments: { classId: string }[];
+  enrollments: EnrollmentQuota[];
 }
 
 interface ClassOption {
@@ -28,11 +35,12 @@ export default function StudentsPage() {
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
-  const [formClassIds, setFormClassIds] = useState<string[]>([]);
+  const [formEnrollments, setFormEnrollments] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
-  const [editClassIds, setEditClassIds] = useState<string[]>([]);
+  const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
+  const [addAmount, setAddAmount] = useState<Record<string, string>>({});
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +59,13 @@ export default function StudentsPage() {
     load();
   }, []);
 
+  function enrollmentsFromMap(map: Record<string, string>) {
+    return Object.entries(map).map(([classId, val]) => ({
+      classId,
+      totalSessions: val === '' ? null : Number(val),
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -58,7 +73,7 @@ export default function StudentsPage() {
       setFormError('');
       const res = await fetch('/api/students', {
         method: 'POST',
-        body: JSON.stringify({ ...form, classIds: formClassIds }),
+        body: JSON.stringify({ ...form, enrollments: enrollmentsFromMap(formEnrollments) }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -66,7 +81,7 @@ export default function StudentsPage() {
         return;
       }
       setForm({ name: '', email: '', password: '', parentPhone: '' });
-      setFormClassIds([]);
+      setFormEnrollments({});
       setShowAddForm(false);
       showToast('已新增');
       load();
@@ -76,18 +91,31 @@ export default function StudentsPage() {
   }
 
   function toggleFormClass(classId: string) {
-    setFormClassIds((prev) => (prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]));
+    setFormEnrollments((prev) => {
+      if (classId in prev) {
+        const { [classId]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [classId]: '' };
+    });
   }
 
   function openEdit(s: StudentRow) {
     setEditing(s);
     setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '' });
-    setEditClassIds(s.enrollments.map((e) => e.classId));
+    setEditEnrollments(Object.fromEntries(s.enrollments.map((e) => [e.classId, e.totalSessions === null ? '' : String(e.totalSessions)])));
+    setAddAmount({});
     setEditError('');
   }
 
   function toggleClass(classId: string) {
-    setEditClassIds((prev) => (prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]));
+    setEditEnrollments((prev) => {
+      if (classId in prev) {
+        const { [classId]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [classId]: '' };
+    });
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -98,7 +126,7 @@ export default function StudentsPage() {
       setEditError('');
       const res = await fetch(`/api/students/${editing.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...editForm, classIds: editClassIds }),
+        body: JSON.stringify({ ...editForm, enrollments: enrollmentsFromMap(editEnrollments) }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -110,6 +138,33 @@ export default function StudentsPage() {
       load();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleAddSessions(classId: string) {
+    if (!editing) return;
+    const amount = Number(addAmount[classId]);
+    if (!amount || amount <= 0) return;
+    const res = await fetch(`/api/classes/${classId}/enrollments`, {
+      method: 'PATCH',
+      body: JSON.stringify({ studentId: editing.id, addSessions: amount }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setEditError(`錯誤：${data.error}`);
+      return;
+    }
+    setAddAmount((prev) => ({ ...prev, [classId]: '' }));
+    showToast('已加堂');
+    const studentsRes = await fetch('/api/students');
+    const updatedStudents: StudentRow[] = await studentsRes.json();
+    setStudents(updatedStudents);
+    const updatedEditing = updatedStudents.find((s) => s.id === editing.id);
+    if (updatedEditing) {
+      setEditing(updatedEditing);
+      setEditEnrollments(
+        Object.fromEntries(updatedEditing.enrollments.map((en) => [en.classId, en.totalSessions === null ? '' : String(en.totalSessions)]))
+      );
     }
   }
 
@@ -185,13 +240,27 @@ export default function StudentsPage() {
             <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
             <div>
               <p className="mb-1 text-sm font-medium text-ink">所屬班級（可複選，可留空）</p>
-              <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
-                {classes.map((c) => (
-                  <label key={c.id} className="flex items-center gap-2 text-sm text-ink">
-                    <input type="checkbox" checked={formClassIds.includes(c.id)} onChange={() => toggleFormClass(c.id)} />
-                    {c.name}（{c.subject}）
-                  </label>
-                ))}
+              <div className="flex max-h-40 flex-col gap-2 overflow-y-auto rounded-lg border border-borderStrong p-2">
+                {classes.map((c) => {
+                  const checked = c.id in formEnrollments;
+                  return (
+                    <div key={c.id} className="flex items-center gap-2">
+                      <label className="flex flex-1 items-center gap-2 text-sm text-ink">
+                        <input type="checkbox" checked={checked} onChange={() => toggleFormClass(c.id)} />
+                        {c.name}（{c.subject}）
+                      </label>
+                      {checked && (
+                        <Input
+                          type="number"
+                          placeholder="總堂數"
+                          value={formEnrollments[c.id] ?? ''}
+                          onChange={(e) => setFormEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                          className="w-24"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
             {formError && <p className="text-sm text-rejected">{formError}</p>}
@@ -201,7 +270,14 @@ export default function StudentsPage() {
       )}
 
       <Card>
-        <DataTable columns={columns} rows={filteredStudents} keyField={(s) => s.id} loading={loading} />
+        <DataTable
+          columns={columns}
+          rows={filteredStudents}
+          keyField={(s) => s.id}
+          loading={loading}
+          onRowClick={openEdit}
+          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+        />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生">
@@ -228,13 +304,53 @@ export default function StudentsPage() {
 
           <div>
             <p className="mb-1 text-sm font-medium text-ink">所屬班級</p>
-            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
-              {classes.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-sm text-ink">
-                  <input type="checkbox" checked={editClassIds.includes(c.id)} onChange={() => toggleClass(c.id)} />
-                  {c.name}（{c.subject}）
-                </label>
-              ))}
+            <div className="flex max-h-64 flex-col gap-2 overflow-y-auto rounded-lg border border-borderStrong p-2">
+              {classes.map((c) => {
+                const checked = c.id in editEnrollments;
+                const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                return (
+                  <div key={c.id} className="flex flex-col gap-1 border-b border-borderSubtle pb-2 last:border-b-0 last:pb-0">
+                    <label className="flex items-center gap-2 text-sm text-ink">
+                      <input type="checkbox" checked={checked} onChange={() => toggleClass(c.id)} />
+                      {c.name}（{c.subject}）
+                    </label>
+                    {checked && (
+                      <div className="ml-6 flex flex-wrap items-center gap-2">
+                        <Input
+                          type="number"
+                          placeholder="總堂數"
+                          value={editEnrollments[c.id] ?? ''}
+                          onChange={(e) => setEditEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                          className="w-24"
+                        />
+                        {enrollment && (
+                          <>
+                            {enrollment.totalSessions !== null && (
+                              <span className="text-xs text-inkMuted">
+                                已上 {enrollment.usedSessions}／剩餘 {enrollment.remaining}
+                              </span>
+                            )}
+                            <Input
+                              type="number"
+                              placeholder="+堂數"
+                              value={addAmount[c.id] ?? ''}
+                              onChange={(e) => setAddAmount((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                              className="w-20"
+                            />
+                            <button
+                              type="button"
+                              className="text-xs text-brandDark hover:underline"
+                              onClick={() => handleAddSessions(c.id)}
+                            >
+                              加堂
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
