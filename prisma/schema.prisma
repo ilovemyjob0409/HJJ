@@ -32,6 +32,14 @@ enum SubstituteStatus {
   ASSIGNED
 }
 
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  LEFT_EARLY
+  ON_LEAVE
+  ABSENT
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -41,6 +49,10 @@ model User {
   createdAt DateTime @default(now())
   teacher   Teacher?
   student   Student?
+  markedClassAttendances    ClassAttendance[]
+  markedOneOnOneAttendances OneOnOneAttendance[]
+  markedGoHallAttendances   GoHallAttendance[]
+  markedActivityAttendances ActivityAttendance[]
 }
 
 model Teacher {
@@ -67,6 +79,9 @@ model Student {
   leaveRequests         LeaveRequest[]
   goHallRegistrations   GoHallRegistration[]
   activityRegistrations ActivityRegistration[]
+  classAttendances    ClassAttendance[]
+  goHallAttendances   GoHallAttendance[]
+  activityAttendances ActivityAttendance[]
 }
 
 model Class {
@@ -83,14 +98,16 @@ model Class {
   leaveRequests    LeaveRequest[]
   substituteReqs   SubstituteRequest[]
   insertionTargets MakeupRequest[]     @relation("TargetClass")
+  attendances      ClassAttendance[]
 }
 
 model ClassEnrollment {
-  id        String  @id @default(cuid())
-  studentId String
-  classId   String
-  student   Student @relation(fields: [studentId], references: [id])
-  class     Class   @relation(fields: [classId], references: [id])
+  id            String  @id @default(cuid())
+  studentId     String
+  classId       String
+  student       Student @relation(fields: [studentId], references: [id])
+  class         Class   @relation(fields: [classId], references: [id])
+  totalSessions Int?
 
   @@unique([studentId, classId])
 }
@@ -135,6 +152,8 @@ model MakeupRequest {
   slotEndTime   String?
 
   createdAt DateTime @default(now())
+  classAttendance    ClassAttendance?
+  oneOnOneAttendance OneOnOneAttendance?
 }
 
 model SubstituteRequest {
@@ -161,6 +180,7 @@ model GoHallSession {
   teacher       Teacher              @relation(fields: [teacherId], references: [id])
   registrations GoHallRegistration[]
   createdAt     DateTime             @default(now())
+  attendances GoHallAttendance[]
 }
 
 model GoHallRegistration {
@@ -211,6 +231,7 @@ model Activity {
   registrations ActivityRegistration[]
   images        ActivityImage[]
   createdAt     DateTime               @default(now())
+  attendances ActivityAttendance[]
 }
 
 model ActivityRegistration {
@@ -230,4 +251,72 @@ model ActivityImage {
   activity    Activity @relation(fields: [activityId], references: [id])
   storagePath String
   createdAt   DateTime @default(now())
+}
+
+model ClassAttendance {
+  id              String            @id @default(cuid())
+  classId         String
+  class           Class             @relation(fields: [classId], references: [id])
+  studentId       String
+  student         Student           @relation(fields: [studentId], references: [id])
+  date            DateTime
+  status          AttendanceStatus
+  checkInTime     String?
+  checkOutTime    String?
+  makeupRequestId String?           @unique
+  makeupRequest   MakeupRequest?    @relation(fields: [makeupRequestId], references: [id])
+  markedById      String
+  markedBy        User              @relation(fields: [markedById], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([classId, studentId, date])
+}
+
+model OneOnOneAttendance {
+  id              String            @id @default(cuid())
+  makeupRequestId String            @unique
+  makeupRequest   MakeupRequest     @relation(fields: [makeupRequestId], references: [id])
+  status          AttendanceStatus
+  checkInTime     String?
+  checkOutTime    String?
+  markedById      String
+  markedBy        User              @relation(fields: [markedById], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model GoHallAttendance {
+  id           String            @id @default(cuid())
+  sessionId    String
+  session      GoHallSession     @relation(fields: [sessionId], references: [id])
+  studentId    String
+  student      Student           @relation(fields: [studentId], references: [id])
+  status       AttendanceStatus
+  checkInTime  String?
+  checkOutTime String?
+  markedById   String
+  markedBy     User              @relation(fields: [markedById], references: [id])
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([sessionId, studentId])
+}
+
+model ActivityAttendance {
+  id           String            @id @default(cuid())
+  activityId   String
+  activity     Activity          @relation(fields: [activityId], references: [id])
+  studentId    String
+  student      Student           @relation(fields: [studentId], references: [id])
+  date         DateTime
+  status       AttendanceStatus
+  checkInTime  String?
+  checkOutTime String?
+  markedById   String
+  markedBy     User              @relation(fields: [markedById], references: [id])
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([activityId, studentId, date])
 }
