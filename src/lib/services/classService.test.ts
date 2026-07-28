@@ -202,6 +202,21 @@ describe('addEnrollmentSessions', () => {
 
     expect(updated.totalSessions).toBe(6);
   });
+
+  it('applies both additions when two calls run concurrently, without losing either', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-add-sessions-concurrent-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-add-sessions-concurrent-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 10 }]);
+
+    await Promise.all([
+      addEnrollmentSessions(cls.id, student.id, 5),
+      addEnrollmentSessions(cls.id, student.id, 3),
+    ]);
+
+    const final = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(final.totalSessions).toBe(18);
+  });
 });
 
 describe('unenrollStudent', () => {

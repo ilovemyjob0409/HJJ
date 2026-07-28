@@ -41,6 +41,7 @@ export default function StudentsPage() {
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
   const [addAmount, setAddAmount] = useState<Record<string, string>>({});
+  const [addingSessions, setAddingSessions] = useState<Record<string, boolean>>({});
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -150,32 +151,48 @@ export default function StudentsPage() {
 
   async function handleAddSessions(classId: string) {
     if (!editing) return;
+    if (addingSessions[classId]) return;
     const targetStudentId = editing.id;
     const amount = Number(addAmount[classId]);
     if (!amount || amount <= 0) return;
-    const res = await fetch(`/api/classes/${classId}/enrollments`, {
-      method: 'PATCH',
-      body: JSON.stringify({ studentId: targetStudentId, addSessions: amount }),
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setEditError(`錯誤：${data.error}`);
-      return;
-    }
-    setAddAmount((prev) => ({ ...prev, [classId]: '' }));
-    showToast('已加堂');
-    const studentsRes = await fetch('/api/students');
-    const updatedStudents: StudentRow[] = await studentsRes.json();
-    setStudents(updatedStudents);
-    const updatedEditing = updatedStudents.find((s) => s.id === targetStudentId);
-    // Only touch the modal state if it's still showing the same student we
-    // just updated — the admin may have closed the modal or switched to a
-    // different student's modal while the PATCH/refetch were in flight.
-    if (updatedEditing && editingRef.current?.id === targetStudentId) {
-      setEditing(updatedEditing);
-      setEditEnrollments(
-        Object.fromEntries(updatedEditing.enrollments.map((en) => [en.classId, en.totalSessions === null ? '' : String(en.totalSessions)]))
-      );
+    setAddingSessions((prev) => ({ ...prev, [classId]: true }));
+    try {
+      const res = await fetch(`/api/classes/${classId}/enrollments`, {
+        method: 'PATCH',
+        body: JSON.stringify({ studentId: targetStudentId, addSessions: amount }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setEditError(`錯誤：${data.error}`);
+        return;
+      }
+      const updated = await res.json();
+      setAddAmount((prev) => ({ ...prev, [classId]: '' }));
+      showToast('已加堂');
+      // Refresh the outer table (and, below, this class's usedSessions/remaining
+      // display inside the modal — editing.enrollments only ever holds
+      // already-saved server values, never unsaved admin input, so it's safe
+      // to replace wholesale from a fresh fetch).
+      const studentsRes = await fetch('/api/students');
+      const updatedStudents: StudentRow[] = await studentsRes.json();
+      setStudents(updatedStudents);
+      // Only touch the modal state if it's still showing the same student we
+      // just updated — the admin may have closed the modal or switched to a
+      // different student's modal while the PATCH/refetch were in flight.
+      if (editingRef.current?.id === targetStudentId) {
+        const updatedEditing = updatedStudents.find((s) => s.id === targetStudentId);
+        if (updatedEditing) {
+          setEditing(updatedEditing);
+        }
+        // editEnrollments holds the admin's own in-progress input values for
+        // every class currently checked in the modal (including edits to
+        // OTHER classes, or a newly-checked-but-unsaved class, not yet saved).
+        // Wholesale-replacing it from the server would silently discard those.
+        // Merge in only this one class's freshly-saved total instead.
+        setEditEnrollments((prev) => ({ ...prev, [classId]: String(updated.totalSessions) }));
+      }
+    } finally {
+      setAddingSessions((prev) => ({ ...prev, [classId]: false }));
     }
   }
 
@@ -350,10 +367,11 @@ export default function StudentsPage() {
                             />
                             <button
                               type="button"
-                              className="text-xs text-brandDark hover:underline"
+                              className="text-xs text-brandDark hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+                              disabled={addingSessions[c.id]}
                               onClick={() => handleAddSessions(c.id)}
                             >
-                              加堂
+                              {addingSessions[c.id] ? '加堂中…' : '加堂'}
                             </button>
                           </>
                         )}

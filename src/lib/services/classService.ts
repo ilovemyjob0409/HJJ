@@ -148,12 +148,15 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
   ]);
 }
 
+// Uses a raw atomic UPDATE instead of read-then-write: two concurrent calls
+// (two admins, or a double-click) must both land, not race on a stale read
+// of totalSessions. Prisma's `{ increment }` can't be used here because the
+// column is nullable and `NULL + n` stays `NULL` in SQL — COALESCE handles
+// that in a single statement. Values are bound via Prisma's tagged-template
+// parameterization, never string-concatenated.
 export async function addEnrollmentSessions(classId: string, studentId: string, amount: number) {
-  const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
-  return prisma.classEnrollment.update({
-    where: { studentId_classId: { studentId, classId } },
-    data: { totalSessions: (enrollment.totalSessions ?? 0) + amount },
-  });
+  await prisma.$executeRaw`UPDATE "ClassEnrollment" SET "totalSessions" = COALESCE("totalSessions", 0) + ${amount} WHERE "studentId" = ${studentId} AND "classId" = ${classId}`;
+  return prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
 }
 
 export function unenrollStudent(classId: string, studentId: string) {
