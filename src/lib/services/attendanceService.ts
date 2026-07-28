@@ -382,3 +382,104 @@ export async function listAttendanceSessionsForDate(
 
   return [...classRows, ...oneOnOneRows, ...goHallRows, ...activityRows];
 }
+
+export interface MyAttendanceRow {
+  id: string;
+  type: AttendanceSessionType;
+  date: Date;
+  title: string;
+  status: AttendanceStatusValue;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+}
+
+export async function listMyAttendance(studentId: string): Promise<MyAttendanceRow[]> {
+  const [classRows, oneOnOneRows, goHallRows, activityRows] = await Promise.all([
+    prisma.classAttendance.findMany({
+      where: { studentId },
+      select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, class: { select: { name: true } } },
+    }),
+    prisma.oneOnOneAttendance.findMany({
+      where: { makeupRequest: { leaveRequest: { studentId } } },
+      select: {
+        id: true,
+        status: true,
+        checkInTime: true,
+        checkOutTime: true,
+        makeupRequest: { select: { slotDate: true, teacher: { select: { user: { select: { name: true } } } } } },
+      },
+    }),
+    prisma.goHallAttendance.findMany({
+      where: { studentId },
+      select: { id: true, status: true, checkInTime: true, checkOutTime: true, session: { select: { date: true } } },
+    }),
+    prisma.activityAttendance.findMany({
+      where: { studentId },
+      select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, activity: { select: { title: true } } },
+    }),
+  ]);
+
+  const rows: MyAttendanceRow[] = [
+    ...classRows.map((r) => ({
+      id: `class-${r.id}`,
+      type: 'CLASS' as const,
+      date: r.date,
+      title: r.class.name,
+      status: r.status as AttendanceStatusValue,
+      checkInTime: r.checkInTime,
+      checkOutTime: r.checkOutTime,
+    })),
+    ...oneOnOneRows.map((r) => ({
+      id: `one-on-one-${r.id}`,
+      type: 'ONE_ON_ONE' as const,
+      date: r.makeupRequest.slotDate as Date,
+      title: `${r.makeupRequest.teacher?.user.name ?? ''}（一對一）`,
+      status: r.status as AttendanceStatusValue,
+      checkInTime: r.checkInTime,
+      checkOutTime: r.checkOutTime,
+    })),
+    ...goHallRows.map((r) => ({
+      id: `go-hall-${r.id}`,
+      type: 'GO_HALL' as const,
+      date: r.session.date,
+      title: '弈廳',
+      status: r.status as AttendanceStatusValue,
+      checkInTime: r.checkInTime,
+      checkOutTime: r.checkOutTime,
+    })),
+    ...activityRows.map((r) => ({
+      id: `activity-${r.id}`,
+      type: 'ACTIVITY' as const,
+      date: r.date,
+      title: r.activity.title,
+      status: r.status as AttendanceStatusValue,
+      checkInTime: r.checkInTime,
+      checkOutTime: r.checkOutTime,
+    })),
+  ];
+
+  return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
+export interface AttendanceStatsResult {
+  counts: Record<AttendanceStatusValue, number>;
+}
+
+export async function getAttendanceStats(filter: {
+  studentId?: string;
+  classId?: string;
+  from: Date;
+  to: Date;
+}): Promise<AttendanceStatsResult> {
+  const rows = await prisma.classAttendance.findMany({
+    where: {
+      date: { gte: filter.from, lte: filter.to },
+      ...(filter.studentId ? { studentId: filter.studentId } : {}),
+      ...(filter.classId ? { classId: filter.classId } : {}),
+    },
+    select: { status: true },
+  });
+  const counts: Record<AttendanceStatusValue, number> = { PRESENT: 0, LATE: 0, LEFT_EARLY: 0, ON_LEAVE: 0, ABSENT: 0 };
+  for (const r of rows) counts[r.status as AttendanceStatusValue]++;
+  return { counts };
+}

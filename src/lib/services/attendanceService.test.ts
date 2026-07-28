@@ -283,3 +283,46 @@ describe('listAttendanceSessionsForDate', () => {
     expect(own.find((s) => s.type === 'CLASS' && s.id === cls.id)).toBeDefined();
   });
 });
+
+import { listMyAttendance, getAttendanceStats } from './attendanceService';
+
+describe('listMyAttendance', () => {
+  it('returns one row per attendance record across all four types, newest first, with a unique id', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-11'), 'marker-1', [{ studentId: student.id, status: 'LATE' }]);
+
+    const rows = await listMyAttendance(student.id);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].date.getTime()).toBeGreaterThan(rows[1].date.getTime());
+    expect(new Set(rows.map((r) => r.id)).size).toBe(2);
+    expect(rows[0].type).toBe('CLASS');
+    expect(rows[0].title).toBe('週二基礎班');
+  });
+});
+
+describe('getAttendanceStats', () => {
+  it('counts each status within the date range for the given class', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-11'), 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-18'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    const stats = await getAttendanceStats({ classId: cls.id, from: new Date('2026-08-01'), to: new Date('2026-08-31') });
+
+    expect(stats.counts.PRESENT).toBe(2);
+    expect(stats.counts.ABSENT).toBe(1);
+    expect(stats.counts.LATE).toBe(0);
+  });
+
+  it('excludes records outside the date range', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-09-01'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    const stats = await getAttendanceStats({ classId: cls.id, from: new Date('2026-08-01'), to: new Date('2026-08-31') });
+
+    expect(stats.counts.PRESENT).toBe(1);
+  });
+});
