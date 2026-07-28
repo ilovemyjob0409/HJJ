@@ -19,6 +19,7 @@ interface EnrollmentQuota {
 interface StudentRow {
   id: string;
   parentPhone: string | null;
+  studentNumber: string | null;
   user: { name: string; email: string };
   enrollments: EnrollmentQuota[];
 }
@@ -37,12 +38,12 @@ function StudentsContent() {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', parentPhone: '', studentNumber: '' });
   const [formEnrollments, setFormEnrollments] = useState<Record<string, string>>({});
   const [formClassQuery, setFormClassQuery] = useState('');
   const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<StudentRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '', studentNumber: '' });
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
   const [addClassQuery, setAddClassQuery] = useState('');
   const [addAmount, setAddAmount] = useState<Record<string, string>>({});
@@ -97,10 +98,12 @@ function StudentsContent() {
       });
       if (!res.ok) {
         const data = await res.json();
-        setFormError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+        setFormError(
+          data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : data.error === 'STUDENT_NUMBER_TAKEN' ? '此學號已被使用' : `錯誤：${data.error}`
+        );
         return;
       }
-      setForm({ name: '', email: '', password: '', parentPhone: '' });
+      setForm({ name: '', email: '', password: '', parentPhone: '', studentNumber: '' });
       setFormEnrollments({});
       setShowAddForm(false);
       showToast('已新增');
@@ -123,7 +126,7 @@ function StudentsContent() {
 
   function openEdit(s: StudentRow) {
     setEditing(s);
-    setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '' });
+    setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '', studentNumber: s.studentNumber ?? '' });
     setEditEnrollments(Object.fromEntries(s.enrollments.map((e) => [e.classId, e.totalSessions === null ? '' : String(e.totalSessions)])));
     setAddAmount({});
     setAddClassQuery('');
@@ -153,7 +156,9 @@ function StudentsContent() {
       });
       if (!res.ok) {
         const data = await res.json();
-        setEditError(data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : `錯誤：${data.error}`);
+        setEditError(
+          data.error === 'EMAIL_TAKEN' ? '此帳號已被使用' : data.error === 'STUDENT_NUMBER_TAKEN' ? '此學號已被使用' : `錯誤：${data.error}`
+        );
         return;
       }
       setEditing(null);
@@ -281,6 +286,7 @@ function StudentsContent() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
             <Input placeholder="家長電話" value={form.parentPhone} onChange={(e) => setForm({ ...form, parentPhone: e.target.value })} />
+            <Input placeholder="學號" value={form.studentNumber} onChange={(e) => setForm({ ...form, studentNumber: e.target.value })} />
             <div>
               <p className="mb-1 text-sm font-medium text-ink">所屬班級（可複選，可留空）</p>
               <Input
@@ -369,6 +375,11 @@ function StudentsContent() {
             placeholder="家長電話"
             value={editForm.parentPhone}
             onChange={(e) => setEditForm({ ...editForm, parentPhone: e.target.value })}
+          />
+          <Input
+            placeholder="學號"
+            value={editForm.studentNumber}
+            onChange={(e) => setEditForm({ ...editForm, studentNumber: e.target.value })}
           />
 
           <div>
