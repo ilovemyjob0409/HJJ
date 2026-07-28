@@ -5,8 +5,9 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance } from './attendanceService';
+import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, getActivityRoster, saveActivityAttendance } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
+import { createActivity, createCategory, registerForActivity } from './activityService';
 
 beforeEach(async () => {
   await prisma.classAttendance.deleteMany();
@@ -217,5 +218,33 @@ describe('getGoHallRoster / saveGoHallAttendance', () => {
     await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
     const count = await prisma.goHallAttendance.count({ where: { sessionId: session.id, studentId: student.id } });
     expect(count).toBe(1);
+  });
+});
+
+describe('getActivityRoster / saveActivityAttendance', () => {
+  it('tracks attendance per day for a multi-day activity independently', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小美', email: 'mei@example.com', password: 'x' });
+    const category = await createCategory('比賽');
+    const activity = await createActivity({
+      title: '暑期營隊',
+      description: '三天營隊',
+      categoryId: category.id,
+      startDate: new Date('2026-08-01'),
+      endDate: new Date('2026-08-03'),
+      capacity: 20,
+      teacherIds: [teacher.id],
+    });
+    await registerForActivity(activity.id, student.id);
+
+    let day1 = await getActivityRoster(activity.id, new Date('2026-08-01'));
+    expect(day1[0].status).toBeNull();
+
+    await saveActivityAttendance(activity.id, new Date('2026-08-01'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    day1 = await getActivityRoster(activity.id, new Date('2026-08-01'));
+    expect(day1[0].status).toBe('PRESENT');
+
+    const day2 = await getActivityRoster(activity.id, new Date('2026-08-02'));
+    expect(day2[0].status).toBeNull();
   });
 });
