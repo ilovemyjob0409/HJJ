@@ -98,12 +98,15 @@ export default async function StudentDashboard() {
         </ul>
       </Card>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/student/leave-request">
           <Card className="text-ink transition-shadow hover:shadow-md">請假申請與紀錄</Card>
         </Link>
         <Link href="/student/makeup-request">
           <Card className="text-ink transition-shadow hover:shadow-md">申請補課</Card>
+        </Link>
+        <Link href="/student/attendance">
+          <Card className="text-ink transition-shadow hover:shadow-md">我的出席紀錄</Card>
         </Link>
       </div>
 

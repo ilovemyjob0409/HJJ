@@ -1,0 +1,56 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Card from '@/components/ui/Card';
+import DataTable, { Column } from '@/components/ui/DataTable';
+import StatusBadge from '@/components/ui/StatusBadge';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
+
+type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY';
+
+interface MyAttendanceRow {
+  id: string;
+  type: SessionType;
+  date: string;
+  title: string;
+  status: string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+}
+
+const TYPE_LABEL: Record<SessionType, string> = {
+  CLASS: '班級',
+  ONE_ON_ONE: '一對一補課',
+  GO_HALL: '弈廳',
+  ACTIVITY: '活動',
+};
+
+export default function StudentAttendancePage() {
+  const [rows, setRows] = useState<MyAttendanceRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/attendance/me')
+      .then((res) => res.json())
+      .then(setRows)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const columns: Column<MyAttendanceRow>[] = [
+    { header: '類型', render: (r) => TYPE_LABEL[r.type] },
+    { header: '名稱', render: (r) => r.title },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
+    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
+    { header: '簽到', render: (r) => r.checkInTime ?? '-' },
+    { header: '簽退', render: (r) => r.checkOutTime ?? '-' },
+  ];
+
+  return (
+    <>
+      <h1 className="mb-4 text-xl font-bold text-ink">我的出席紀錄</h1>
+      <Card>
+        <DataTable columns={columns} rows={rows} loading={loading} keyField={(r) => r.id} />
+      </Card>
+    </>
+  );
+}
