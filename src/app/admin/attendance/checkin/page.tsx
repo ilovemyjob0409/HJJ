@@ -77,6 +77,7 @@ export default function CheckinKioskPage() {
     <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 text-center">
       <input
         ref={inputRef}
+        aria-label="學生證掃描"
         value={code}
         onChange={(e) => setCode(e.target.value)}
         onBlur={() => setTimeout(focusInput, 0)}

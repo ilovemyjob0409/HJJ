@@ -42,7 +42,7 @@ model Student {
 2. **列出今天候選場次**（沿用 `getClassRoster`／`listAttendanceSessionsForDate` 已有的查詢邏輯，不重新發明）：
    - 班級課：該學生的 `ClassEnrollment` 中，`Class.weekday` 等於今天星期幾；加上今天核准的插班補課（`MakeupRequest` type=INSERTION, status=APPROVED, targetDate=今天, 且該生的請假單）
    - 一對一補課：今天核准的 `MakeupRequest`（type=ONE_ON_ONE, status=APPROVED, slotDate=今天）且屬於該學生
-   - **排除當天已核准請假的班級**：該學生對某班today有 `LeaveRequest`（`studentId` + `date` 相符即算，`LeaveRequest` 建立時就是 `status=APPROVED`，沒有待審狀態）的，該班級課候選直接排除，不進入後續比對。理由：請假的班級如果還被自動掃進候選，一旦在時間窗內被誤配對，會把 `ON_LEAVE`（不計堂數）誤標成 `PRESENT`（計堂數），多扣一堂課的額度。插班補課／一對一補課不受此排除影響（它們本身就是「請假後的替代場次」，跟請假的來源班級是兩回事）。
+   - **排除當天已核准請假的班級**：該學生對某班today有 `LeaveRequest`（`studentId` + `date` 相符即算，`LeaveRequest` 建立時就是 `status=APPROVED`，沒有待審狀態）的，該班級課候選直接排除，不進入後續比對。理由：請假的班級如果還被自動掃進候選，一旦在時間窗內被誤配對，會把 `ON_LEAVE`（不計堂數）誤標成 `PRESENT`（計堂數），多扣一堂課的額度。插班補課的「目標班級」如果剛好也在排除清單裡，同樣排除（避免跟一筆已存在的 `ON_LEAVE` 紀錄在同一個 `classId+studentId+date` 上衝突）；一對一補課不受影響，因為它本身就是「請假後的替代場次」，沒有自己的班級可以對到排除清單。
 3. **依現有點名紀錄把候選分成三層，同一時間只看最優先、非空的那一層**（查每個候選場次現有的 `ClassAttendance`／`OneOnOneAttendance` 紀錄）：
    - **第一層（已簽到、尚未簽退）**：`checkInTime` 已填且 `checkOutTime` 未填。這是「正在進行中」的場次，簽退動作**不受時間窗限制**（下課時間本來就可能離上課時間超過 60 分鐘，例如兩小時的課）。此層有候選就直接用最接近的一個，動作是簽退，不再往下看。
    - **第二層（尚未簽到，且在時間窗內）**：`checkInTime` 未填，且「現在時間」與場次開始時間相差在 60 分鐘以內（不分前後）。此層有候選就用最接近的一個，動作是新簽到。**這一層存在的意義：學生完成了今天第一堂課的簽到簽退後，還能正常簽到第二堂課**——如果沒有這一層、只看「有沒有已完成的場次」，會被第一堂課的舊紀錄卡住，永遠簽不進第二堂課。

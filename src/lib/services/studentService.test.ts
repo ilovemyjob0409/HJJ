@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { createStudent, listStudents, updateStudent, deleteStudent } from './studentService';
 import { createTeacher } from './teacherService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
+import { p2002TargetsField } from '@/lib/prismaErrors';
 
 beforeEach(async () => {
   await prisma.classAttendance.deleteMany();
@@ -65,6 +67,21 @@ describe('createStudent', () => {
       createStudent({ name: '小明', email: 'sn-ming2@example.com', password: 'secret123', studentNumber: 'S101' })
     ).rejects.toThrow();
     expect(await prisma.user.findUnique({ where: { email: 'sn-ming2@example.com' } })).toBeNull();
+  });
+
+  it('the rejected duplicate is recognized as a studentNumber conflict, not an email conflict', async () => {
+    await createStudent({ name: '小華', email: 'sn-target-hua@example.com', password: 'secret123', studentNumber: 'S102' });
+
+    try {
+      await createStudent({ name: '小明', email: 'sn-target-ming@example.com', password: 'secret123', studentNumber: 'S102' });
+      throw new Error('expected createStudent to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+      const prismaErr = err as Prisma.PrismaClientKnownRequestError;
+      expect(prismaErr.code).toBe('P2002');
+      expect(p2002TargetsField(prismaErr, 'studentNumber')).toBe(true);
+      expect(p2002TargetsField(prismaErr, 'email')).toBe(false);
+    }
   });
 
   it('normalizes a blank student number to null so a second blank one does not collide', async () => {
