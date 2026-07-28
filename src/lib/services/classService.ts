@@ -113,18 +113,38 @@ export function enrollStudent(classId: string, studentId: string) {
   return prisma.classEnrollment.create({ data: { classId, studentId } });
 }
 
-export async function setStudentEnrollments(studentId: string, classIds: string[]) {
+export interface EnrollmentInput {
+  classId: string;
+  totalSessions: number | null;
+}
+
+export async function setStudentEnrollments(studentId: string, enrollments: EnrollmentInput[]) {
   const current = await prisma.classEnrollment.findMany({ where: { studentId }, select: { classId: true } });
   const currentIds = new Set(current.map((e) => e.classId));
-  const desiredIds = new Set(classIds);
+  const desiredIds = new Set(enrollments.map((e) => e.classId));
 
-  const toAdd = Array.from(desiredIds).filter((id) => !currentIds.has(id));
+  const toAdd = enrollments.filter((e) => !currentIds.has(e.classId));
   const toRemove = Array.from(currentIds).filter((id) => !desiredIds.has(id));
+  const toUpdate = enrollments.filter((e) => currentIds.has(e.classId));
 
   await prisma.$transaction([
     ...(toRemove.length > 0 ? [prisma.classEnrollment.deleteMany({ where: { studentId, classId: { in: toRemove } } })] : []),
-    ...toAdd.map((classId) => prisma.classEnrollment.create({ data: { studentId, classId } })),
+    ...toAdd.map((e) => prisma.classEnrollment.create({ data: { studentId, classId: e.classId, totalSessions: e.totalSessions } })),
+    ...toUpdate.map((e) =>
+      prisma.classEnrollment.update({
+        where: { studentId_classId: { studentId, classId: e.classId } },
+        data: { totalSessions: e.totalSessions },
+      })
+    ),
   ]);
+}
+
+export async function addEnrollmentSessions(classId: string, studentId: string, amount: number) {
+  const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
+  return prisma.classEnrollment.update({
+    where: { studentId_classId: { studentId, classId } },
+    data: { totalSessions: (enrollment.totalSessions ?? 0) + amount },
+  });
 }
 
 export function unenrollStudent(classId: string, studentId: string) {

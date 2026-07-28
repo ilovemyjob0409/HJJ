@@ -10,12 +10,17 @@ import {
   enrollStudent,
   updateClass,
   setStudentEnrollments,
+  addEnrollmentSessions,
   unenrollStudent,
   listStudentEnrolledClasses,
   deleteClass,
 } from './classService';
 
 beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
   await prisma.goHallRegistration.deleteMany();
   await prisma.goHallSession.deleteMany();
   await prisma.substituteRequest.deleteMany();
@@ -107,16 +112,77 @@ describe('setStudentEnrollments', () => {
     const classB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
     const classC = await createClass({ name: '數學C班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
 
-    await setStudentEnrollments(student.id, [classA.id, classB.id]);
+    await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: null }, { classId: classB.id, totalSessions: null }]);
     const originalEnrollmentA = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: classA.id } });
 
-    await setStudentEnrollments(student.id, [classA.id, classC.id]);
+    await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: null }, { classId: classC.id, totalSessions: null }]);
 
     const finalEnrollments = await prisma.classEnrollment.findMany({ where: { studentId: student.id } });
     expect(finalEnrollments.map((e) => e.classId).sort()).toEqual([classA.id, classC.id].sort());
 
     const stillA = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: classA.id } });
     expect(stillA.id).toBe(originalEnrollmentA.id);
+  });
+
+  it('sets totalSessions on a newly created enrollment', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-enroll-quota-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-enroll-quota-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(enrollment.totalSessions).toBe(12);
+  });
+
+  it('updates totalSessions in place on an enrollment that stays checked, without touching its id', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-enroll-quota-update-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-enroll-quota-update-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+    const original = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 18 }]);
+
+    const updated = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(updated.id).toBe(original.id);
+    expect(updated.totalSessions).toBe(18);
+  });
+
+  it('clears totalSessions to null when the resent value is null', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-enroll-quota-clear-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-enroll-quota-clear-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: null }]);
+
+    const updated = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(updated.totalSessions).toBeNull();
+  });
+});
+
+describe('addEnrollmentSessions', () => {
+  it('adds to an existing totalSessions value', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-add-sessions-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-add-sessions-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    const updated = await addEnrollmentSessions(cls.id, student.id, 6);
+
+    expect(updated.totalSessions).toBe(18);
+  });
+
+  it('treats a null totalSessions as 0 before adding', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-add-sessions-null-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-add-sessions-null-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: null }]);
+
+    const updated = await addEnrollmentSessions(cls.id, student.id, 6);
+
+    expect(updated.totalSessions).toBe(6);
   });
 });
 
