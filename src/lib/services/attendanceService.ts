@@ -494,3 +494,173 @@ export async function getAttendanceStats(filter: {
   for (const r of rows) counts[r.status as AttendanceStatusValue]++;
   return { counts };
 }
+
+export interface CheckInResult {
+  result: 'NOT_FOUND' | 'NO_SESSION' | 'CHECKED_IN' | 'CHECKED_OUT';
+  studentName?: string;
+  sessionTitle?: string;
+  time?: string;
+}
+
+const CHECKIN_WINDOW_MINUTES = 60;
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+interface CheckInCandidate {
+  diffMinutes: number;
+  title: string;
+  apply: () => Promise<'CHECKED_IN' | 'CHECKED_OUT'>;
+}
+
+async function applyClassAttendance(input: {
+  classId: string;
+  studentId: string;
+  date: Date;
+  timeStr: string;
+  markedById: string;
+  makeupRequestId?: string;
+}): Promise<'CHECKED_IN' | 'CHECKED_OUT'> {
+  const where = input.makeupRequestId
+    ? { makeupRequestId: input.makeupRequestId }
+    : { classId_studentId_date: { classId: input.classId, studentId: input.studentId, date: input.date } };
+  const existing = await prisma.classAttendance.findUnique({ where });
+  if (!existing || !existing.checkInTime) {
+    await prisma.classAttendance.upsert({
+      where,
+      create: {
+        classId: input.classId,
+        studentId: input.studentId,
+        date: input.date,
+        status: 'PRESENT',
+        checkInTime: input.timeStr,
+        makeupRequestId: input.makeupRequestId,
+        markedById: input.markedById,
+      },
+      update: { status: 'PRESENT', checkInTime: input.timeStr, markedById: input.markedById },
+    });
+    return 'CHECKED_IN';
+  }
+  await prisma.classAttendance.update({ where, data: { checkOutTime: input.timeStr, markedById: input.markedById } });
+  return 'CHECKED_OUT';
+}
+
+async function applyOneOnOneAttendance(input: {
+  makeupRequestId: string;
+  timeStr: string;
+  markedById: string;
+}): Promise<'CHECKED_IN' | 'CHECKED_OUT'> {
+  const where = { makeupRequestId: input.makeupRequestId };
+  const existing = await prisma.oneOnOneAttendance.findUnique({ where });
+  if (!existing || !existing.checkInTime) {
+    await prisma.oneOnOneAttendance.upsert({
+      where,
+      create: { makeupRequestId: input.makeupRequestId, status: 'PRESENT', checkInTime: input.timeStr, markedById: input.markedById },
+      update: { status: 'PRESENT', checkInTime: input.timeStr, markedById: input.markedById },
+    });
+    return 'CHECKED_IN';
+  }
+  await prisma.oneOnOneAttendance.update({ where, data: { checkOutTime: input.timeStr, markedById: input.markedById } });
+  return 'CHECKED_OUT';
+}
+
+export async function checkInByStudentNumber(
+  code: string,
+  dateStr: string,
+  timeStr: string,
+  markedById: string
+): Promise<CheckInResult> {
+  const student = await prisma.student.findUnique({
+    where: { studentNumber: code },
+    select: { id: true, user: { select: { name: true } } },
+  });
+  if (!student) return { result: 'NOT_FOUND' };
+
+  const date = new Date(dateStr);
+  const weekday = date.getDay();
+  const nowMinutes = toMinutes(timeStr);
+
+  const [enrollments, insertions, oneOnOnes] = await Promise.all([
+    prisma.classEnrollment.findMany({
+      where: { studentId: student.id, class: { weekday } },
+      select: { class: { select: { id: true, name: true, startTime: true } } },
+    }),
+    prisma.makeupRequest.findMany({
+      where: { type: 'INSERTION', status: 'APPROVED', targetDate: date, leaveRequest: { studentId: student.id } },
+      select: { id: true, targetClass: { select: { id: true, name: true, startTime: true } } },
+    }),
+    prisma.makeupRequest.findMany({
+      where: { type: 'ONE_ON_ONE', status: 'APPROVED', slotDate: date, leaveRequest: { studentId: student.id } },
+      select: { id: true, slotStartTime: true },
+    }),
+  ]);
+
+  const candidates: CheckInCandidate[] = [];
+
+  for (const e of enrollments) {
+    const cls = e.class;
+    candidates.push({
+      diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
+      title: cls.name,
+      apply: () => applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById }),
+    });
+  }
+
+  for (const ins of insertions) {
+    if (!ins.targetClass) continue;
+    const cls = ins.targetClass;
+    candidates.push({
+      diffMinutes: Math.abs(nowMinutes - toMinutes(cls.startTime)),
+      title: cls.name,
+      apply: () =>
+        applyClassAttendance({ classId: cls.id, studentId: student.id, date, timeStr, markedById, makeupRequestId: ins.id }),
+    });
+  }
+
+  for (const o of oneOnOnes) {
+    candidates.push({
+      diffMinutes: Math.abs(nowMinutes - toMinutes(o.slotStartTime!)),
+      title: '一對一補課',
+      apply: () => applyOneOnOneAttendance({ makeupRequestId: o.id, timeStr, markedById }),
+    });
+  }
+
+  const withinWindow = candidates.filter((c) => c.diffMinutes <= CHECKIN_WINDOW_MINUTES);
+  if (withinWindow.length === 0) {
+    const existingClass = await prisma.classAttendance.findFirst({
+      where: { studentId: student.id, date, checkInTime: { not: null } },
+      select: { classId: true, makeupRequestId: true, class: { select: { name: true } } },
+    });
+    if (existingClass) {
+      const action = await applyClassAttendance({
+        classId: existingClass.classId,
+        studentId: student.id,
+        date,
+        timeStr,
+        markedById,
+        makeupRequestId: existingClass.makeupRequestId ?? undefined,
+      });
+      return { result: action, studentName: student.user.name, sessionTitle: existingClass.class.name, time: timeStr };
+    }
+    const existingOneOnOne = await prisma.oneOnOneAttendance.findFirst({
+      where: { makeupRequest: { leaveRequest: { studentId: student.id }, slotDate: date }, checkInTime: { not: null } },
+      select: { makeupRequestId: true },
+    });
+    if (existingOneOnOne) {
+      const action = await applyOneOnOneAttendance({
+        makeupRequestId: existingOneOnOne.makeupRequestId,
+        timeStr,
+        markedById,
+      });
+      return { result: action, studentName: student.user.name, sessionTitle: '一對一補課', time: timeStr };
+    }
+    return { result: 'NO_SESSION' };
+  }
+  withinWindow.sort((a, b) => a.diffMinutes - b.diffMinutes);
+  const match = withinWindow[0];
+
+  const action = await match.apply();
+  return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
+}
