@@ -4,8 +4,8 @@ import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
-import { createInsertionMakeupRequest, decideMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota } from './attendanceService';
+import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
+import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance } from './attendanceService';
 
 beforeEach(async () => {
   await prisma.classAttendance.deleteMany();
@@ -150,5 +150,48 @@ describe('getClassEnrollmentQuota', () => {
     expect(quota.totalSessions).toBe(12);
     expect(quota.usedSessions).toBe(2);
     expect(quota.remaining).toBe(10);
+  });
+});
+
+describe('getOneOnOneAttendance / saveOneOnOneAttendance', () => {
+  async function setupOneOnOne() {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    await prisma.teacherAvailability.create({ data: { teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '18:00' } });
+    const { student, cls } = await setupClassWithStudent();
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date('2026-08-04'), reason: '請假' });
+    const makeup = await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-08-11'),
+      slotStartTime: '15:00',
+      slotEndTime: '16:00',
+    });
+    return { student, makeup };
+  }
+
+  it('returns null status before anything is saved', async () => {
+    const { student, makeup } = await setupOneOnOne();
+
+    const entry = await getOneOnOneAttendance(makeup.id);
+
+    expect(entry.studentId).toBe(student.id);
+    expect(entry.status).toBeNull();
+  });
+
+  it('creates then updates in place on a second save', async () => {
+    const { makeup } = await setupOneOnOne();
+
+    await saveOneOnOneAttendance(makeup.id, 'marker-1', { status: 'PRESENT' });
+    let entry = await getOneOnOneAttendance(makeup.id);
+    expect(entry.status).toBe('PRESENT');
+
+    await saveOneOnOneAttendance(makeup.id, 'marker-1', { status: 'LATE', checkInTime: '15:05' });
+    entry = await getOneOnOneAttendance(makeup.id);
+    expect(entry.status).toBe('LATE');
+    expect(entry.checkInTime).toBe('15:05');
+
+    const count = await prisma.oneOnOneAttendance.count({ where: { makeupRequestId: makeup.id } });
+    expect(count).toBe(1);
   });
 });

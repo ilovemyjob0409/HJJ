@@ -122,3 +122,55 @@ export async function getClassEnrollmentQuota(classId: string, studentId: string
     remaining: totalSessions === null ? null : totalSessions - usedSessions,
   };
 }
+
+export interface OneOnOneRosterEntry {
+  makeupRequestId: string;
+  studentId: string;
+  studentName: string;
+  status: AttendanceStatusValue | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+}
+
+export async function getOneOnOneAttendance(makeupRequestId: string): Promise<OneOnOneRosterEntry> {
+  const makeupRequest = await prisma.makeupRequest.findUniqueOrThrow({
+    where: { id: makeupRequestId },
+    select: {
+      id: true,
+      leaveRequest: { select: { studentId: true, student: { select: NAME_SELECT } } },
+      oneOnOneAttendance: true,
+    },
+  });
+  const record = makeupRequest.oneOnOneAttendance;
+  return {
+    makeupRequestId: makeupRequest.id,
+    studentId: makeupRequest.leaveRequest.studentId,
+    studentName: makeupRequest.leaveRequest.student.user.name,
+    status: (record?.status as AttendanceStatusValue) ?? null,
+    checkInTime: record?.checkInTime ?? null,
+    checkOutTime: record?.checkOutTime ?? null,
+  };
+}
+
+export async function saveOneOnOneAttendance(
+  makeupRequestId: string,
+  markedById: string,
+  input: { status: AttendanceStatusValue; checkInTime?: string; checkOutTime?: string }
+): Promise<void> {
+  await prisma.oneOnOneAttendance.upsert({
+    where: { makeupRequestId },
+    create: {
+      makeupRequestId,
+      status: input.status,
+      checkInTime: input.checkInTime,
+      checkOutTime: input.checkOutTime,
+      markedById,
+    },
+    update: {
+      status: input.status,
+      checkInTime: input.checkInTime,
+      checkOutTime: input.checkOutTime,
+      markedById,
+    },
+  });
+}
