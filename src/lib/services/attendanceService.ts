@@ -400,7 +400,7 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, class: { select: { name: true } } },
     }),
     prisma.oneOnOneAttendance.findMany({
-      where: { makeupRequest: { leaveRequest: { studentId } } },
+      where: { makeupRequest: { type: 'ONE_ON_ONE', leaveRequest: { studentId } } },
       select: {
         id: true,
         status: true,
