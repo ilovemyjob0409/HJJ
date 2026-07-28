@@ -21,6 +21,9 @@ interface EnrollmentRow {
   id: string;
   studentId: string;
   student: { user: { name: string } };
+  totalSessions: number | null;
+  usedSessions: number;
+  remaining: number | null;
 }
 
 interface ClassRow {
@@ -226,7 +229,14 @@ export default function ClassesPage() {
       )}
 
       <Card>
-        <DataTable columns={columns} rows={filteredClasses} keyField={(c) => c.id} loading={loading} />
+        <DataTable
+          columns={columns}
+          rows={filteredClasses}
+          keyField={(c) => c.id}
+          loading={loading}
+          onRowClick={openEdit}
+          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+        />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯班級">
@@ -267,7 +277,14 @@ export default function ClassesPage() {
               <ul className="flex flex-col gap-1">
                 {editing.enrollments.map((en) => (
                   <li key={en.id} className="flex items-center justify-between text-sm text-ink">
-                    {en.student.user.name}
+                    <span>
+                      {en.student.user.name}
+                      {en.totalSessions !== null && (
+                        <span className="ml-2 text-xs text-inkMuted">
+                          （總堂數 {en.totalSessions}／已上 {en.usedSessions}／剩餘 {en.remaining}）
+                        </span>
+                      )}
+                    </span>
                     <button type="button" className="text-rejected hover:underline" onClick={() => removeStudent(en.studentId)}>
                       移除
                     </button>
