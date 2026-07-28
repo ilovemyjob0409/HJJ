@@ -1,4 +1,14 @@
-export type KnownStatus = 'APPROVED' | 'PENDING_ADMIN' | 'PENDING_ASSIGNMENT' | 'REJECTED' | 'ASSIGNED';
+export type KnownStatus =
+  | 'APPROVED'
+  | 'PENDING_ADMIN'
+  | 'PENDING_ASSIGNMENT'
+  | 'REJECTED'
+  | 'ASSIGNED'
+  | 'PRESENT'
+  | 'LATE'
+  | 'LEFT_EARLY'
+  | 'ON_LEAVE'
+  | 'ABSENT';
 
 interface StatusConfig {
   label: string;
@@ -12,6 +22,11 @@ const STATUS_CONFIG: Record<KnownStatus, StatusConfig> = {
   PENDING_ASSIGNMENT: { label: '待確認', bg: 'bg-pendingBg', text: 'text-pending' },
   REJECTED: { label: '已拒絕', bg: 'bg-rejectedBg', text: 'text-rejected' },
   ASSIGNED: { label: '已指派', bg: 'bg-assignedBg', text: 'text-assigned' },
+  PRESENT: { label: '出席', bg: 'bg-approvedBg', text: 'text-approved' },
+  LATE: { label: '遲到', bg: 'bg-pendingBg', text: 'text-pending' },
+  LEFT_EARLY: { label: '早退', bg: 'bg-pendingBg', text: 'text-pending' },
+  ON_LEAVE: { label: '請假', bg: 'bg-assignedBg', text: 'text-assigned' },
+  ABSENT: { label: '缺席未請假', bg: 'bg-rejectedBg', text: 'text-rejected' },
 };
 
 export function getStatusBadgeConfig(status: string): StatusConfig {
