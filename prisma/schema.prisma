@@ -75,6 +75,7 @@ model Student {
   userId                String                 @unique
   user                  User                   @relation(fields: [userId], references: [id])
   parentPhone           String?
+  studentNumber         String?                @unique
   enrollments           ClassEnrollment[]
   leaveRequests         LeaveRequest[]
   goHallRegistrations   GoHallRegistration[]
