@@ -27,6 +27,7 @@ interface ClassRow {
   startTime: string;
   endTime: string;
   teacher: { user: { name: string } };
+  quota: { totalSessions: number | null; usedSessions: number; remaining: number | null };
 }
 
 interface LeaveRow {
@@ -65,6 +66,7 @@ export default async function StudentDashboard() {
     { header: '程度', render: (c) => c.level },
     { header: '上課時間', render: (c) => `每週${WEEKDAYS[c.weekday]} ${c.startTime}-${c.endTime}` },
     { header: '授課老師', render: (c) => c.teacher.user.name },
+    { header: '剩餘堂數', render: (c) => (c.quota.remaining !== null ? c.quota.remaining : '-') },
   ];
 
   const leaveColumns: Column<LeaveRow>[] = [
