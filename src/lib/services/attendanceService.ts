@@ -55,18 +55,21 @@ export async function getClassRoster(classId: string, date: Date): Promise<Class
     };
   });
 
-  const insertionRows: ClassRosterEntry[] = insertions.map((ins) => {
-    const record = existingByMakeupRequestId.get(ins.id);
-    return {
-      studentId: ins.leaveRequest.studentId,
-      studentName: ins.leaveRequest.student.user.name,
-      makeupRequestId: ins.id,
-      onLeave: false,
-      status: (record?.status as AttendanceStatusValue) ?? null,
-      checkInTime: record?.checkInTime ?? null,
-      checkOutTime: record?.checkOutTime ?? null,
-    };
-  });
+  const enrolledStudentIds = new Set(enrollments.map((e) => e.studentId));
+  const insertionRows: ClassRosterEntry[] = insertions
+    .filter((ins) => !enrolledStudentIds.has(ins.leaveRequest.studentId))
+    .map((ins) => {
+      const record = existingByMakeupRequestId.get(ins.id);
+      return {
+        studentId: ins.leaveRequest.studentId,
+        studentName: ins.leaveRequest.student.user.name,
+        makeupRequestId: ins.id,
+        onLeave: false,
+        status: (record?.status as AttendanceStatusValue) ?? null,
+        checkInTime: record?.checkInTime ?? null,
+        checkOutTime: record?.checkOutTime ?? null,
+      };
+    });
 
   return [...enrolledRows, ...insertionRows].sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }
@@ -337,14 +340,22 @@ export async function listAttendanceSessionsForDate(
   ]);
 
   const classRows: AttendanceSessionSummary[] = await Promise.all(
-    classes.map(async (c) => ({
-      type: 'CLASS' as const,
-      id: c.id,
-      title: c.name,
-      timeLabel: `${c.startTime}-${c.endTime}`,
-      markedCount: await prisma.classAttendance.count({ where: { classId: c.id, date } }),
-      totalCount: c._count.enrollments,
-    }))
+    classes.map(async (c) => {
+      const [markedCount, insertionCount] = await Promise.all([
+        prisma.classAttendance.count({ where: { classId: c.id, date } }),
+        prisma.makeupRequest.count({
+          where: { type: 'INSERTION', status: 'APPROVED', targetClassId: c.id, targetDate: date },
+        }),
+      ]);
+      return {
+        type: 'CLASS' as const,
+        id: c.id,
+        title: c.name,
+        timeLabel: `${c.startTime}-${c.endTime}`,
+        markedCount,
+        totalCount: c._count.enrollments + insertionCount,
+      };
+    })
   );
 
   const oneOnOneRows: AttendanceSessionSummary[] = await Promise.all(

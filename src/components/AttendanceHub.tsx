@@ -142,7 +142,11 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
               ...(opening.type === 'CLASS' && r.key !== r.studentId ? { makeupRequestId: r.key } : {}),
             })),
           };
-    await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      showToast('儲存失敗，請稍後再試');
+      return;
+    }
     showToast('點名已儲存');
     setOpening(null);
     setRosterRows(null);
