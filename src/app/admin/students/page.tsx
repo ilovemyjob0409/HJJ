@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { ReactNode, Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -30,6 +30,36 @@ interface ClassOption {
   subject: string;
 }
 
+function HintButton({
+  label,
+  active,
+  onToggle,
+  children,
+}: {
+  label: string;
+  active: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative flex shrink-0 items-center">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onToggle}
+        className="flex h-5 w-5 items-center justify-center rounded-full border border-borderStrong text-xs text-inkMuted hover:bg-stripe"
+      >
+        ?
+      </button>
+      {active && (
+        <div className="animate-fade-in absolute right-0 top-full z-20 mt-2 w-56 rounded-lg border border-borderStrong bg-card p-3 text-left text-xs text-inkMuted shadow-md">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StudentsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -48,6 +78,7 @@ function StudentsContent() {
   const [addClassQuery, setAddClassQuery] = useState('');
   const [addAmount, setAddAmount] = useState<Record<string, string>>({});
   const [addingSessions, setAddingSessions] = useState<Record<string, boolean>>({});
+  const [openHint, setOpenHint] = useState<{ classId: string; field: 'total' | 'add' } | null>(null);
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -404,13 +435,23 @@ function StudentsContent() {
                   {
                     header: '總堂數',
                     render: (c) => (
-                      <Input
-                        type="number"
-                        placeholder="留空＝不計"
-                        value={editEnrollments[c.id] ?? ''}
-                        onChange={(e) => setEditEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                        className="w-24"
-                      />
+                      <div className="flex items-center justify-center gap-1">
+                        <Input
+                          type="number"
+                          value={editEnrollments[c.id] ?? ''}
+                          onChange={(e) => setEditEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                          className="w-24"
+                        />
+                        <HintButton
+                          label="總堂數說明"
+                          active={openHint?.classId === c.id && openHint.field === 'total'}
+                          onToggle={() =>
+                            setOpenHint((prev) => (prev?.classId === c.id && prev.field === 'total' ? null : { classId: c.id, field: 'total' }))
+                          }
+                        >
+                          留空表示不追蹤堂數——「已上／剩餘」會顯示「未追蹤」，點名也不會扣堂。填數字才會開始計算已上與剩餘堂數。
+                        </HintButton>
+                      </div>
                     ),
                   },
                   {
@@ -438,7 +479,6 @@ function StudentsContent() {
                         <div className="flex items-center justify-center gap-1">
                           <Input
                             type="number"
-                            placeholder="+堂數"
                             value={addAmount[c.id] ?? ''}
                             onChange={(e) => setAddAmount((prev) => ({ ...prev, [c.id]: e.target.value }))}
                             className="w-16"
@@ -451,6 +491,15 @@ function StudentsContent() {
                           >
                             {addingSessions[c.id] ? '處理中' : '加堂'}
                           </button>
+                          <HintButton
+                            label="加堂說明"
+                            active={openHint?.classId === c.id && openHint.field === 'add'}
+                            onToggle={() =>
+                              setOpenHint((prev) => (prev?.classId === c.id && prev.field === 'add' ? null : { classId: c.id, field: 'add' }))
+                            }
+                          >
+                            輸入要加購的堂數，按下「加堂」後立即加到目前的總堂數並存檔，不需要再按下面的「儲存」。
+                          </HintButton>
                         </div>
                       );
                     },
