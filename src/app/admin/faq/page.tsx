@@ -28,6 +28,10 @@ export default function AdminFaqPage() {
   async function load() {
     try {
       const res = await fetch('/api/faq');
+      if (!res.ok) {
+        showToast('載入失敗，請稍後再試');
+        return;
+      }
       setItems(await res.json());
     } finally {
       setLoading(false);
@@ -36,6 +40,7 @@ export default function AdminFaqPage() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -98,7 +103,14 @@ export default function AdminFaqPage() {
   }
 
   const columns: Column<FaqItemRow>[] = [
-    { header: '問題', render: (item) => item.question },
+    {
+      header: '問題',
+      render: (item) => (
+        <span className="block max-w-[28rem] truncate text-left" title={item.question}>
+          {item.question}
+        </span>
+      ),
+    },
     {
       header: '排序',
       render: (item) => {

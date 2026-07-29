@@ -1,7 +1,11 @@
 import { prisma } from '@/lib/db';
 
 export function listFaqItems() {
-  return prisma.faqItem.findMany({ orderBy: { sortOrder: 'asc' } });
+  // createdAt is a tiebreaker for the (rare, since createFaqItem's max+1 read
+  // and write aren't transactional) case of two rows sharing a sortOrder —
+  // without it, Postgres doesn't guarantee those rows compare the same way
+  // between the admin list and the student page's independent query.
+  return prisma.faqItem.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
 }
 
 export async function createFaqItem(input: { question: string; answer: string }) {

@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { listFaqItems } from '@/lib/services/faqService';
 import Card from '@/components/ui/Card';
 
 // Without this, Next.js prerenders this page once at build time and
@@ -6,7 +6,7 @@ import Card from '@/components/ui/Card';
 export const dynamic = 'force-dynamic';
 
 export default async function StudentFaqPage() {
-  const items = await prisma.faqItem.findMany({ orderBy: { sortOrder: 'asc' } });
+  const items = await listFaqItems();
 
   return (
     <>
