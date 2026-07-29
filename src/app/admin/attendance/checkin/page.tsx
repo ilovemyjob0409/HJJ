@@ -47,7 +47,7 @@ function resultSubtitle(r: CheckInResponse): string {
 
 function CheckIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-14 w-14">
       <path d="M20 6 9 17l-5-5" />
     </svg>
   );
@@ -55,7 +55,7 @@ function CheckIcon() {
 
 function XIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-14 w-14">
       <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
@@ -63,7 +63,7 @@ function XIcon() {
 
 function ScanIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-14 w-14">
       <rect x="3" y="6" width="18" height="12" rx="2" />
       <path d="M7 6v12M11 6v12" />
     </svg>
@@ -188,54 +188,54 @@ export default function CheckinKioskPage() {
 
       <div
         key={screen.kind}
-        className="animate-fade-in flex w-full max-w-md flex-col items-center rounded-2xl border border-borderSubtle bg-card p-10 text-center shadow-md"
+        className="animate-fade-in flex w-full max-w-3xl flex-col items-center rounded-3xl border border-borderSubtle bg-card p-16 text-center shadow-md"
       >
-        <div className="mb-4 text-xs font-extrabold tracking-widest text-brand">MUP</div>
+        <div className="mb-6 text-xl font-extrabold tracking-widest text-brand">MUP</div>
 
         {screen.kind === 'idle' && (
           <>
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-brandInk">
+            <div className="mb-8 flex h-28 w-28 items-center justify-center rounded-full bg-brand text-brandInk">
               <ScanIcon />
             </div>
-            <p className="text-xl font-semibold text-ink">請將學生證放在掃描器前</p>
-            <p className="mt-1 text-sm text-inkMuted">掃描後會自動判斷今天的課程</p>
+            <p className="text-5xl font-semibold text-ink">請將學生證放在掃描器前</p>
+            <p className="mt-4 text-2xl text-inkMuted">掃描後會自動判斷今天的課程</p>
           </>
         )}
 
         {screen.kind === 'result' && (
           <>
             <div
-              className={`mb-4 flex h-14 w-14 items-center justify-center rounded-full ${
+              className={`mb-8 flex h-28 w-28 items-center justify-center rounded-full ${
                 isOkResult ? 'bg-approvedBg text-approved' : 'bg-rejectedBg text-rejected'
               }`}
             >
               {isOkResult ? <CheckIcon /> : <XIcon />}
             </div>
-            <p className={`text-xl font-semibold ${isOkResult ? 'text-approved' : 'text-rejected'}`}>{resultTitle(screen.response)}</p>
-            <p className="mt-1 text-sm text-inkMuted">{resultSubtitle(screen.response)}</p>
+            <p className={`text-5xl font-semibold ${isOkResult ? 'text-approved' : 'text-rejected'}`}>{resultTitle(screen.response)}</p>
+            <p className="mt-4 text-2xl text-inkMuted">{resultSubtitle(screen.response)}</p>
           </>
         )}
 
         {screen.kind === 'picker' && (
           <>
-            <p className="text-lg font-bold text-ink">{screen.studentName}，請選一堂課</p>
-            <p className="mb-4 mt-1 text-xs text-inkMuted">15 秒內未選擇將自動返回待機畫面</p>
-            <div className="flex w-full flex-col gap-2">
+            <p className="text-4xl font-bold text-ink">{screen.studentName}，請選一堂課</p>
+            <p className="mb-8 mt-3 text-xl text-inkMuted">15 秒內未選擇將自動返回待機畫面</p>
+            <div className="flex w-full flex-col gap-4">
               {screen.candidates.map((c) => (
                 <button
                   key={c.key}
                   type="button"
                   disabled={resolvingKey !== null}
                   onClick={() => resolveCandidate(screen.code, c.key)}
-                  className="flex items-center justify-between rounded-xl border border-borderSubtle bg-background px-4 py-3 text-left transition-colors hover:bg-stripe disabled:opacity-50"
+                  className="flex items-center justify-between rounded-2xl border border-borderSubtle bg-background px-8 py-6 text-left transition-colors hover:bg-stripe disabled:opacity-50"
                 >
                   <span>
-                    <span className="block text-sm font-bold text-ink">{c.title}</span>
-                    <span className="block text-xs text-inkMuted">{c.timeLabel}</span>
-                    {c.teacherName && <span className="block text-xs text-inkMuted">{c.teacherName}</span>}
+                    <span className="block text-3xl font-bold text-ink">{c.title}</span>
+                    <span className="block text-xl text-inkMuted">{c.timeLabel}</span>
+                    {c.teacherName && <span className="block text-xl text-inkMuted">{c.teacherName}</span>}
                   </span>
                   <span
-                    className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold ${
+                    className={`shrink-0 rounded-full px-5 py-2 text-lg font-bold ${
                       c.pendingAction === 'CHECK_IN' ? 'bg-pendingBg text-pending' : 'bg-approvedBg text-approved'
                     }`}
                   >
