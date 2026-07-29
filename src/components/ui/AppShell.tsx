@@ -20,6 +20,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/admin/attendance', label: '點名' },
     { href: '/admin/go-hall', label: '弈廳' },
     { href: '/admin/activities', label: '活動專區' },
+    { href: '/admin/faq', label: '常見問題' },
   ],
   TEACHER: [
     { href: '/teacher', label: '首頁', exact: true },
@@ -35,6 +36,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/student/go-hall', label: '弈廳' },
     { href: '/student/attendance', label: '我的出席紀錄' },
     { href: '/student/activities', label: '活動專區' },
+    { href: '/student/faq', label: '常見問題' },
   ],
 };
 

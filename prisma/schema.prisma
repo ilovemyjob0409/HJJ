@@ -321,3 +321,12 @@ model ActivityAttendance {
 
   @@unique([activityId, studentId, date])
 }
+
+model FaqItem {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  sortOrder Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
