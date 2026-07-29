@@ -446,6 +446,11 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     expect(result).toEqual({ result: 'NOT_FOUND' });
   });
 
+  it('resolveCheckIn also returns NOT_FOUND when no student has that number', async () => {
+    const result = await resolveCheckIn('unknown-code', '2026-08-04', '19:00', 'marker-1', 'class:whatever');
+    expect(result).toEqual({ result: 'NOT_FOUND' });
+  });
+
   it('checks in to the only class today even hours before it starts', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen1@example.com', password: 'x', subjects: '數學' });
     const student = await setupStudentWithNumber('S001', 'checkin-ming1@example.com');

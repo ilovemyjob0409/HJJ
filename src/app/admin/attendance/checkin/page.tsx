@@ -139,6 +139,11 @@ export default function CheckinKioskPage() {
 
   async function resolveCandidate(pickerCode: string, key: string) {
     if (resolvingKey) return;
+    // Once the user has picked a candidate, the picker's 15s abandonment
+    // timeout must not fire mid-request — that would discard a response
+    // that already wrote a real check-in/out, leaving staff unsure whether
+    // the tap took effect.
+    clearTimer();
     setResolvingKey(key);
     const requestId = ++requestIdRef.current;
     try {
@@ -158,7 +163,7 @@ export default function CheckinKioskPage() {
     } catch {
       if (requestId === requestIdRef.current) showResult({ result: 'ERROR' });
     } finally {
-      setResolvingKey(null);
+      if (requestId === requestIdRef.current) setResolvingKey(null);
     }
   }
 
