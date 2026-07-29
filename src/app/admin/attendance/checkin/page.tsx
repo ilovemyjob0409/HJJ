@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { todayDateInput } from '@/components/AttendanceHub';
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
 
 type CheckInResultKind = 'NOT_FOUND' | 'NO_SESSION' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CHOOSE_SESSION' | 'ERROR';
 
@@ -72,9 +74,11 @@ function ScanIcon() {
 
 export default function CheckinKioskPage() {
   const [code, setCode] = useState('');
+  const [manualCode, setManualCode] = useState('');
   const [screen, setScreen] = useState<ScreenState>({ kind: 'idle' });
   const [resolvingKey, setResolvingKey] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const manualFormRef = useRef<HTMLFormElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Bumped whenever a new scan/resolve starts or the picker times out, so a
   // slow request that finishes after being superseded can't clobber the
@@ -137,6 +141,14 @@ export default function CheckinKioskPage() {
     }
   }
 
+  async function handleManualSubmit(e: FormEvent) {
+    e.preventDefault();
+    const value = manualCode;
+    setManualCode('');
+    await submitCode(value);
+    focusInput();
+  }
+
   async function resolveCandidate(pickerCode: string, key: string) {
     if (resolvingKey) return;
     // Once the user has picked a candidate, the picker's 15s abandonment
@@ -176,7 +188,15 @@ export default function CheckinKioskPage() {
         aria-label="學生證掃描"
         value={code}
         onChange={(e) => setCode(e.target.value)}
-        onBlur={() => setTimeout(focusInput, 0)}
+        onBlur={() => {
+          // Don't steal focus back if it deliberately moved to the manual
+          // entry form below — only reclaim it for stray blurs (e.g. the
+          // page itself losing/regaining window focus).
+          setTimeout(() => {
+            if (manualFormRef.current?.contains(document.activeElement)) return;
+            focusInput();
+          }, 0);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
@@ -247,6 +267,36 @@ export default function CheckinKioskPage() {
           </>
         )}
       </div>
+
+      <form
+        ref={manualFormRef}
+        onSubmit={handleManualSubmit}
+        onBlur={() => {
+          // Whenever focus leaves the manual form entirely (not just moving
+          // between its own fields), hand focus back to the hidden scanner
+          // input so a physical barcode scan still works right away.
+          setTimeout(() => {
+            if (manualFormRef.current?.contains(document.activeElement)) return;
+            focusInput();
+          }, 0);
+        }}
+        className="mt-6 flex w-full max-w-3xl items-center gap-3 text-inkMuted"
+      >
+        <label htmlFor="manual-student-number" className="shrink-0 text-base">
+          條碼掃描有問題？手動輸入學號：
+        </label>
+        <Input
+          id="manual-student-number"
+          type="text"
+          value={manualCode}
+          onChange={(e) => setManualCode(e.target.value)}
+          placeholder="學號"
+          className="flex-1"
+        />
+        <Button type="submit" variant="secondary">
+          簽到
+        </Button>
+      </form>
     </div>
   );
 }
