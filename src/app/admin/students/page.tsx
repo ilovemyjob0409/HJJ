@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, Suspense, useEffect, useRef, useState } from 'react';
+import { ReactNode, Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -28,6 +28,24 @@ interface ClassOption {
   id: string;
   name: string;
   subject: string;
+}
+
+function LowQuotaIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="inline h-3.5 w-3.5 shrink-0"
+    >
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <path d="M12 9v4M12 17h.01" />
+    </svg>
+  );
 }
 
 function HintButton({
@@ -76,17 +94,10 @@ function StudentsContent() {
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '', studentNumber: '' });
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
   const [addClassQuery, setAddClassQuery] = useState('');
-  const [addAmount, setAddAmount] = useState<Record<string, string>>({});
-  const [addingSessions, setAddingSessions] = useState<Record<string, boolean>>({});
-  const [openHint, setOpenHint] = useState<{ classId: string; field: 'total' | 'add' } | null>(null);
+  const [openHintClassId, setOpenHintClassId] = useState<string | null>(null);
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const editingRef = useRef<StudentRow | null>(null);
-
-  useEffect(() => {
-    editingRef.current = editing;
-  }, [editing]);
 
   async function load() {
     try {
@@ -159,7 +170,6 @@ function StudentsContent() {
     setEditing(s);
     setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '', studentNumber: s.studentNumber ?? '' });
     setEditEnrollments(Object.fromEntries(s.enrollments.map((e) => [e.classId, e.totalSessions === null ? '' : String(e.totalSessions)])));
-    setAddAmount({});
     setAddClassQuery('');
     setEditError('');
   }
@@ -197,53 +207,6 @@ function StudentsContent() {
       load();
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleAddSessions(classId: string) {
-    if (!editing) return;
-    if (addingSessions[classId]) return;
-    const targetStudentId = editing.id;
-    const amount = Number(addAmount[classId]);
-    if (!amount || amount <= 0) return;
-    setAddingSessions((prev) => ({ ...prev, [classId]: true }));
-    try {
-      const res = await fetch(`/api/classes/${classId}/enrollments`, {
-        method: 'PATCH',
-        body: JSON.stringify({ studentId: targetStudentId, addSessions: amount }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setEditError(`錯誤：${data.error}`);
-        return;
-      }
-      const updated = await res.json();
-      setAddAmount((prev) => ({ ...prev, [classId]: '' }));
-      showToast('已加堂');
-      // Refresh the outer table (and, below, this class's usedSessions/remaining
-      // display inside the modal — editing.enrollments only ever holds
-      // already-saved server values, never unsaved admin input, so it's safe
-      // to replace wholesale from a fresh fetch).
-      const studentsRes = await fetch('/api/students');
-      const updatedStudents: StudentRow[] = await studentsRes.json();
-      setStudents(updatedStudents);
-      // Only touch the modal state if it's still showing the same student we
-      // just updated — the admin may have closed the modal or switched to a
-      // different student's modal while the PATCH/refetch were in flight.
-      if (editingRef.current?.id === targetStudentId) {
-        const updatedEditing = updatedStudents.find((s) => s.id === targetStudentId);
-        if (updatedEditing) {
-          setEditing(updatedEditing);
-        }
-        // editEnrollments holds the admin's own in-progress input values for
-        // every class currently checked in the modal (including edits to
-        // OTHER classes, or a newly-checked-but-unsaved class, not yet saved).
-        // Wholesale-replacing it from the server would silently discard those.
-        // Merge in only this one class's freshly-saved total instead.
-        setEditEnrollments((prev) => ({ ...prev, [classId]: String(updated.totalSessions) }));
-      }
-    } finally {
-      setAddingSessions((prev) => ({ ...prev, [classId]: false }));
     }
   }
 
@@ -444,10 +407,8 @@ function StudentsContent() {
                         />
                         <HintButton
                           label="總堂數說明"
-                          active={openHint?.classId === c.id && openHint.field === 'total'}
-                          onToggle={() =>
-                            setOpenHint((prev) => (prev?.classId === c.id && prev.field === 'total' ? null : { classId: c.id, field: 'total' }))
-                          }
+                          active={openHintClassId === c.id}
+                          onToggle={() => setOpenHintClassId((prev) => (prev === c.id ? null : c.id))}
                         >
                           留空表示不追蹤堂數——「已上／剩餘」會顯示「未追蹤」，點名也不會扣堂。填數字才會開始計算已上與剩餘堂數。
                         </HintButton>
@@ -461,46 +422,12 @@ function StudentsContent() {
                       if (!enrollment || enrollment.totalSessions === null) {
                         return <span className="text-xs text-inkMuted">未追蹤</span>;
                       }
+                      const low = enrollment.remaining !== null && enrollment.remaining <= 3;
                       return (
-                        <span className="text-xs text-inkMuted">
+                        <span className={`flex items-center justify-center gap-1 text-xs ${low ? 'font-semibold text-pending' : 'text-inkMuted'}`}>
+                          {low && <LowQuotaIcon />}
                           已上 {enrollment.usedSessions}／剩餘 {enrollment.remaining}
                         </span>
-                      );
-                    },
-                  },
-                  {
-                    header: '加堂',
-                    render: (c) => {
-                      const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
-                      if (!enrollment) {
-                        return <span className="text-xs text-inkMuted">先儲存</span>;
-                      }
-                      return (
-                        <div className="flex items-center justify-center gap-1">
-                          <Input
-                            type="number"
-                            value={addAmount[c.id] ?? ''}
-                            onChange={(e) => setAddAmount((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                            className="w-16"
-                          />
-                          <button
-                            type="button"
-                            className="text-xs text-brandDark hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
-                            disabled={addingSessions[c.id]}
-                            onClick={() => handleAddSessions(c.id)}
-                          >
-                            {addingSessions[c.id] ? '處理中' : '加堂'}
-                          </button>
-                          <HintButton
-                            label="加堂說明"
-                            active={openHint?.classId === c.id && openHint.field === 'add'}
-                            onToggle={() =>
-                              setOpenHint((prev) => (prev?.classId === c.id && prev.field === 'add' ? null : { classId: c.id, field: 'add' }))
-                            }
-                          >
-                            輸入要加購的堂數，按下「加堂」後立即加到目前的總堂數並存檔，不需要再按下面的「儲存」。
-                          </HintButton>
-                        </div>
                       );
                     },
                   },
