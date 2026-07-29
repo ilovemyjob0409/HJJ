@@ -76,6 +76,10 @@ export default function CheckinKioskPage() {
   const [resolvingKey, setResolvingKey] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped whenever a new scan/resolve starts or the picker times out, so a
+  // slow request that finishes after being superseded can't clobber the
+  // screen with a stale student's result.
+  const requestIdRef = useRef(0);
 
   function focusInput() {
     inputRef.current?.focus();
@@ -105,45 +109,54 @@ export default function CheckinKioskPage() {
     setCode('');
     clearTimer();
     setResolvingKey(null);
+    const requestId = ++requestIdRef.current;
     try {
       const res = await fetch('/api/attendance/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: trimmed, date: todayDateInput(), time: nowTimeInput() }),
       });
+      if (requestId !== requestIdRef.current) return;
       if (!res.ok) {
         showResult({ result: 'ERROR' });
         return;
       }
       const data: CheckInResponse = await res.json();
-      if (data.result === 'CHOOSE_SESSION' && data.candidates) {
+      if (requestId !== requestIdRef.current) return;
+      if (data.result === 'CHOOSE_SESSION' && data.candidates && data.candidates.length > 0) {
         setScreen({ kind: 'picker', code: trimmed, studentName: data.studentName, candidates: data.candidates });
-        timerRef.current = setTimeout(() => setScreen({ kind: 'idle' }), 15000);
+        timerRef.current = setTimeout(() => {
+          requestIdRef.current += 1;
+          setScreen({ kind: 'idle' });
+        }, 15000);
       } else {
         showResult(data);
       }
     } catch {
-      showResult({ result: 'ERROR' });
+      if (requestId === requestIdRef.current) showResult({ result: 'ERROR' });
     }
   }
 
   async function resolveCandidate(pickerCode: string, key: string) {
     if (resolvingKey) return;
     setResolvingKey(key);
+    const requestId = ++requestIdRef.current;
     try {
       const res = await fetch('/api/attendance/checkin/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: pickerCode, date: todayDateInput(), time: nowTimeInput(), key }),
       });
+      if (requestId !== requestIdRef.current) return;
       if (!res.ok) {
         showResult({ result: 'ERROR' });
         return;
       }
       const data: CheckInResponse = await res.json();
+      if (requestId !== requestIdRef.current) return;
       showResult(data);
     } catch {
-      showResult({ result: 'ERROR' });
+      if (requestId === requestIdRef.current) showResult({ result: 'ERROR' });
     } finally {
       setResolvingKey(null);
     }
