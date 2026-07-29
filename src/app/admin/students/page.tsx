@@ -243,6 +243,7 @@ function StudentsContent() {
 
   const columns: Column<StudentRow>[] = [
     { header: '姓名', render: (s) => s.user.name },
+    { header: '學號', render: (s) => s.studentNumber ?? '-' },
     { header: '帳號', render: (s) => s.user.email },
     { header: '家長電話', render: (s) => s.parentPhone ?? '-' },
     { header: '班級數', render: (s) => s.enrollments.length },
