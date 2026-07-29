@@ -36,6 +36,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/student/go-hall', label: '弈廳' },
     { href: '/student/attendance', label: '我的出席紀錄' },
     { href: '/student/activities', label: '活動專區' },
+    { href: '/student/faq', label: '常見問題' },
   ],
 };
 
