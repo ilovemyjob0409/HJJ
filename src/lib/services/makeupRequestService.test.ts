@@ -69,7 +69,7 @@ describe('createOneOnOneMakeupRequest', () => {
       leaveRequestId: leave.id,
       studentId: student.id,
       teacherId: teacher.id,
-      slotDate: new Date(2026, 6, 15), // a Wednesday
+      slotDate: new Date('2026-07-15'), // a Wednesday
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });
@@ -86,7 +86,7 @@ describe('createOneOnOneMakeupRequest', () => {
         leaveRequestId: leave.id,
         studentId: student.id,
         teacherId: teacher.id,
-        slotDate: new Date(2026, 6, 15),
+        slotDate: new Date('2026-07-15'),
         slotStartTime: '19:00',
         slotEndTime: '20:00',
       })
@@ -100,7 +100,7 @@ describe('createOneOnOneMakeupRequest', () => {
       leaveRequestId: leave.id,
       studentId: student.id,
       teacherId: teacher.id,
-      slotDate: new Date(2026, 6, 15),
+      slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });
@@ -115,7 +115,7 @@ describe('createOneOnOneMakeupRequest', () => {
         leaveRequestId: otherLeave.id,
         studentId: otherStudent.id,
         teacherId: teacher.id,
-        slotDate: new Date(2026, 6, 15),
+        slotDate: new Date('2026-07-15'),
         slotStartTime: '16:30',
         slotEndTime: '17:30',
       })
@@ -129,7 +129,7 @@ describe('createOneOnOneMakeupRequest', () => {
       leaveRequestId: leave.id,
       studentId: student.id,
       teacherId: teacher.id,
-      slotDate: new Date(2026, 6, 15),
+      slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });
@@ -142,7 +142,7 @@ describe('createOneOnOneMakeupRequest', () => {
         leaveRequestId: secondLeave.id,
         studentId: student.id,
         teacherId: teacher.id,
-        slotDate: new Date(2026, 6, 29),
+        slotDate: new Date('2026-07-29'),
         slotStartTime: '17:00',
         slotEndTime: '18:00',
       })
@@ -162,7 +162,7 @@ describe('createOneOnOneMakeupRequest', () => {
         leaveRequestId: thirdLeave.id,
         studentId: student.id,
         teacherId: teacher.id,
-        slotDate: new Date(2026, 6, 15),
+        slotDate: new Date('2026-07-15'),
         slotStartTime: '16:00',
         slotEndTime: '17:00',
       })
@@ -180,7 +180,7 @@ describe('createOneOnOneMakeupRequest', () => {
 
     const slotInput = {
       teacherId: teacher.id,
-      slotDate: new Date(2026, 6, 15),
+      slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     };
@@ -214,7 +214,7 @@ describe('createOneOnOneMakeupRequest', () => {
         leaveRequestId: leave.id,
         studentId: student.id,
         teacherId: teacher.id,
-        slotDate: new Date(2026, 6, 15),
+        slotDate: new Date('2026-07-15'),
         slotStartTime: '16:00',
         slotEndTime: '17:00',
       }),
@@ -222,7 +222,7 @@ describe('createOneOnOneMakeupRequest', () => {
         leaveRequestId: secondLeave.id,
         studentId: student.id,
         teacherId: teacher.id,
-        slotDate: new Date(2026, 6, 29),
+        slotDate: new Date('2026-07-29'),
         slotStartTime: '17:00',
         slotEndTime: '18:00',
       }),
@@ -255,7 +255,7 @@ describe('getMakeupQuotaStatus', () => {
       leaveRequestId: leave.id,
       studentId: student.id,
       teacherId: teacher.id,
-      slotDate: new Date(2026, 6, 15),
+      slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });
@@ -281,7 +281,7 @@ describe('getMakeupQuotaStatus', () => {
       leaveRequestId: leave.id,
       studentId: student.id,
       teacherId: teacher.id,
-      slotDate: new Date(2026, 6, 15),
+      slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });
@@ -315,7 +315,7 @@ describe('getMakeupQuotaStatus', () => {
       leaveRequestId: classBLeave.id,
       studentId: student.id,
       teacherId: teacher.id,
-      slotDate: new Date(2026, 6, 15),
+      slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });

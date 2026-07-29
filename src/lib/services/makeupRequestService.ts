@@ -111,7 +111,10 @@ function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
 
     // Derived from slotDate rather than trusted from the caller, so a
     // mismatched weekday/date pair can't be used to slip past the check.
-    const weekday = input.slotDate.getDay();
+    // slotDate is UTC midnight (parsed from a date-only string), so read
+    // the weekday in UTC too — local getDay() would depend on the
+    // server's timezone.
+    const weekday = input.slotDate.getUTCDay();
     const availabilities = await listTeacherAvailability(input.teacherId, tx);
     const withinAvailability = isWithinAvailability(
       { weekday, startTime: input.slotStartTime, endTime: input.slotEndTime },
