@@ -340,7 +340,7 @@ export async function listAttendanceSessionsForDate(
   date: Date,
   teacherId: string | null
 ): Promise<AttendanceSessionSummary[]> {
-  const weekday = date.getDay();
+  const weekday = date.getUTCDay();
 
   const [classes, oneOnOnes, goHallSessions, activities] = await Promise.all([
     prisma.class.findMany({
@@ -611,7 +611,7 @@ async function getTodayCandidates(
   timeStr: string,
   markedById: string
 ): Promise<CheckInCandidate[]> {
-  const weekday = date.getDay();
+  const weekday = date.getUTCDay();
 
   const [enrollments, insertions, oneOnOnes, leaveRequests] = await Promise.all([
     prisma.classEnrollment.findMany({
