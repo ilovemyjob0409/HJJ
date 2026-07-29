@@ -90,6 +90,10 @@ export default function AdminFaqPage() {
 
   async function handleMove(id: string, direction: 'up' | 'down') {
     const res = await fetch(`/api/faq/${id}/reorder`, { method: 'POST', body: JSON.stringify({ direction }) });
+    if (!res.ok) {
+      showToast('排序失敗，請稍後再試');
+      return;
+    }
     setItems(await res.json());
   }
 
