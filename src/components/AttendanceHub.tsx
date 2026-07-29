@@ -6,7 +6,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
-import AttendanceRosterEditor, { RosterRow, SavedRecord } from '@/components/AttendanceRosterEditor';
+import AttendanceRosterEditor, { RosterRow, SavedRecord, ClearedRecord } from '@/components/AttendanceRosterEditor';
 
 type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY';
 
@@ -144,27 +144,52 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
     }
   }
 
-  async function handleSaveRoster(records: SavedRecord[]) {
+  async function handleSaveRoster(records: SavedRecord[], clears: ClearedRecord[]) {
     if (!opening) return;
     const path = apiPathFor(opening.type, opening.id);
-    const body =
-      opening.type === 'ONE_ON_ONE'
-        ? records[0]
-        : {
-            date,
-            records: records.map((r) => ({
-              studentId: r.studentId,
-              status: r.status,
-              checkInTime: r.checkInTime,
-              checkOutTime: r.checkOutTime,
-              ...(opening.type === 'CLASS' && r.key !== r.studentId ? { makeupRequestId: r.key } : {}),
-            })),
-          };
-    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!res.ok) {
-      showToast('儲存失敗，請稍後再試');
-      return;
+
+    if (records.length > 0) {
+      const body =
+        opening.type === 'ONE_ON_ONE'
+          ? records[0]
+          : {
+              date,
+              records: records.map((r) => ({
+                studentId: r.studentId,
+                status: r.status,
+                checkInTime: r.checkInTime,
+                checkOutTime: r.checkOutTime,
+                ...(opening.type === 'CLASS' && r.key !== r.studentId ? { makeupRequestId: r.key } : {}),
+              })),
+            };
+      const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        showToast('儲存失敗，請稍後再試');
+        return;
+      }
     }
+
+    if (clears.length > 0) {
+      const body =
+        opening.type === 'ONE_ON_ONE'
+          ? {}
+          : opening.type === 'CLASS'
+            ? {
+                date,
+                clear: clears.map((c) =>
+                  c.key !== c.studentId ? { studentId: c.studentId, makeupRequestId: c.key } : { studentId: c.studentId }
+                ),
+              }
+            : opening.type === 'GO_HALL'
+              ? { clear: clears.map((c) => c.studentId) }
+              : { date, clear: clears.map((c) => c.studentId) };
+      const res = await fetch(path, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        showToast('儲存失敗，請稍後再試');
+        return;
+      }
+    }
+
     showToast('點名已儲存');
     setOpening(null);
     setRosterRows(null);

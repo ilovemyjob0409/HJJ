@@ -31,13 +31,18 @@ export interface SavedRecord {
   studentId: string;
   key: string;
   status: AttendanceStatusValue;
-  checkInTime?: string;
-  checkOutTime?: string;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+}
+
+export interface ClearedRecord {
+  studentId: string;
+  key: string;
 }
 
 interface Props {
   rows: RosterRow[];
-  onSave: (records: SavedRecord[]) => Promise<void>;
+  onSave: (records: SavedRecord[], clears: ClearedRecord[]) => Promise<void>;
 }
 
 export default function AttendanceRosterEditor({ rows, onSave }: Props) {
@@ -63,23 +68,27 @@ export default function AttendanceRosterEditor({ rows, onSave }: Props) {
   }
 
   async function handleSave() {
-    // Students still left at UNMARKED are skipped entirely — same as never
-    // having a record at all — so opening a roster and saving without
-    // touching anything writes nothing, instead of defaulting everyone to
-    // PRESENT.
+    // Students left at UNMARKED who never had a saved record are skipped
+    // entirely — so opening a roster and saving without touching anything
+    // writes nothing, instead of defaulting everyone to PRESENT. Students
+    // switched back to UNMARKED who DID have a saved record (e.g. undoing a
+    // kiosk check-in) need their existing record deleted, not just skipped.
     const records = rows
       .filter((r) => edits[r.key].status !== 'UNMARKED')
       .map((r) => ({
         studentId: r.studentId,
         key: r.key,
         status: edits[r.key].status as AttendanceStatusValue,
-        checkInTime: edits[r.key].checkInTime || undefined,
-        checkOutTime: edits[r.key].checkOutTime || undefined,
+        checkInTime: edits[r.key].checkInTime || null,
+        checkOutTime: edits[r.key].checkOutTime || null,
       }));
-    if (records.length === 0) return;
+    const clears = rows
+      .filter((r) => edits[r.key].status === 'UNMARKED' && r.status !== null)
+      .map((r) => ({ studentId: r.studentId, key: r.key }));
+    if (records.length === 0 && clears.length === 0) return;
     setSaving(true);
     try {
-      await onSave(records);
+      await onSave(records, clears);
     } finally {
       setSaving(false);
     }

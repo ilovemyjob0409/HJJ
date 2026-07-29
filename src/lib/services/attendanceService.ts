@@ -7,8 +7,8 @@ const NAME_SELECT = { user: { select: { name: true } } } as const;
 export interface SaveAttendanceRecordInput {
   studentId: string;
   status: AttendanceStatusValue;
-  checkInTime?: string;
-  checkOutTime?: string;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
   makeupRequestId?: string;
 }
 
@@ -107,6 +107,21 @@ export async function saveClassAttendance(
   );
 }
 
+export interface ClearClassAttendanceKey {
+  studentId: string;
+  makeupRequestId?: string;
+}
+
+export async function clearClassAttendance(classId: string, date: Date, keys: ClearClassAttendanceKey[]): Promise<void> {
+  await prisma.$transaction(
+    keys.map((k) =>
+      prisma.classAttendance.deleteMany({
+        where: k.makeupRequestId ? { makeupRequestId: k.makeupRequestId } : { classId, studentId: k.studentId, date },
+      })
+    )
+  );
+}
+
 export interface ClassAttendanceQuota {
   totalSessions: number | null;
   usedSessions: number;
@@ -178,6 +193,10 @@ export async function saveOneOnOneAttendance(
   });
 }
 
+export async function clearOneOnOneAttendance(makeupRequestId: string): Promise<void> {
+  await prisma.oneOnOneAttendance.deleteMany({ where: { makeupRequestId } });
+}
+
 export interface GoHallRosterEntry {
   studentId: string;
   studentName: string;
@@ -235,6 +254,10 @@ export async function saveGoHallAttendance(
       })
     )
   );
+}
+
+export async function clearGoHallAttendance(sessionId: string, studentIds: string[]): Promise<void> {
+  await prisma.goHallAttendance.deleteMany({ where: { sessionId, studentId: { in: studentIds } } });
 }
 
 export interface ActivityRosterEntry {
@@ -296,6 +319,10 @@ export async function saveActivityAttendance(
       })
     )
   );
+}
+
+export async function clearActivityAttendance(activityId: string, date: Date, studentIds: string[]): Promise<void> {
+  await prisma.activityAttendance.deleteMany({ where: { activityId, date, studentId: { in: studentIds } } });
 }
 
 export type AttendanceSessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY';

@@ -5,7 +5,7 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, getActivityRoster, saveActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber } from './attendanceService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 
@@ -126,6 +126,59 @@ describe('saveClassAttendance', () => {
     const homeRoster = await getClassRoster(homeClass.id, date);
     expect(homeRoster[0].status).toBeNull();
   });
+
+  it('clears an existing checkInTime when saved as explicit null', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    const date = new Date('2026-08-04');
+
+    await saveClassAttendance(cls.id, date, 'marker-1', [{ studentId: student.id, status: 'PRESENT', checkInTime: '14:05' }]);
+    let roster = await getClassRoster(cls.id, date);
+    expect(roster[0].checkInTime).toBe('14:05');
+
+    await saveClassAttendance(cls.id, date, 'marker-1', [{ studentId: student.id, status: 'PRESENT', checkInTime: null }]);
+    roster = await getClassRoster(cls.id, date);
+    expect(roster[0].checkInTime).toBeNull();
+  });
+});
+
+describe('clearClassAttendance', () => {
+  it('deletes an enrolled student record so the roster shows no status again', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    const date = new Date('2026-08-04');
+    await saveClassAttendance(cls.id, date, 'marker-1', [{ studentId: student.id, status: 'PRESENT', checkInTime: '14:05' }]);
+
+    await clearClassAttendance(cls.id, date, [{ studentId: student.id }]);
+
+    const roster = await getClassRoster(cls.id, date);
+    expect(roster[0].status).toBeNull();
+    expect(roster[0].checkInTime).toBeNull();
+    const count = await prisma.classAttendance.count({ where: { classId: cls.id, studentId: student.id, date } });
+    expect(count).toBe(0);
+  });
+
+  it('deletes an insertion-makeup record by makeupRequestId without touching the home roster', async () => {
+    const { teacher, student: homeStudent, cls: homeClass } = await setupClassWithStudent();
+    const targetClass = await createClass({ name: '週二進階班', subject: '圍棋', level: '進階', teacherId: teacher.id, weekday: 2, startTime: '16:00', endTime: '18:00' });
+    const date = new Date('2026-08-04');
+    const leave = await createLeaveRequest({ studentId: homeStudent.id, classId: homeClass.id, date, reason: '調課' });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: date });
+    await decideMakeupRequest(makeup.id, 'APPROVED');
+    await saveClassAttendance(targetClass.id, date, 'marker-1', [{ studentId: homeStudent.id, status: 'PRESENT', makeupRequestId: makeup.id }]);
+
+    await clearClassAttendance(targetClass.id, date, [{ studentId: homeStudent.id, makeupRequestId: makeup.id }]);
+
+    const roster = await getClassRoster(targetClass.id, date);
+    expect(roster[0].status).toBeNull();
+    const count = await prisma.classAttendance.count({ where: { makeupRequestId: makeup.id } });
+    expect(count).toBe(0);
+  });
+
+  it('is a no-op when there is nothing to clear', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    const date = new Date('2026-08-04');
+
+    await expect(clearClassAttendance(cls.id, date, [{ studentId: student.id }])).resolves.not.toThrow();
+  });
 });
 
 describe('getClassEnrollmentQuota', () => {
@@ -196,6 +249,19 @@ describe('getOneOnOneAttendance / saveOneOnOneAttendance', () => {
     const count = await prisma.oneOnOneAttendance.count({ where: { makeupRequestId: makeup.id } });
     expect(count).toBe(1);
   });
+
+  it('clearOneOnOneAttendance deletes the record so status reverts to null', async () => {
+    const { makeup } = await setupOneOnOne();
+    await saveOneOnOneAttendance(makeup.id, 'marker-1', { status: 'PRESENT', checkInTime: '15:05' });
+
+    await clearOneOnOneAttendance(makeup.id);
+
+    const entry = await getOneOnOneAttendance(makeup.id);
+    expect(entry.status).toBeNull();
+    expect(entry.checkInTime).toBeNull();
+    const count = await prisma.oneOnOneAttendance.count({ where: { makeupRequestId: makeup.id } });
+    expect(count).toBe(0);
+  });
 });
 
 describe('getGoHallRoster / saveGoHallAttendance', () => {
@@ -218,6 +284,22 @@ describe('getGoHallRoster / saveGoHallAttendance', () => {
     await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
     const count = await prisma.goHallAttendance.count({ where: { sessionId: session.id, studentId: student.id } });
     expect(count).toBe(1);
+  });
+
+  it('clearGoHallAttendance deletes the record so status reverts to null', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen2@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小華', email: 'hua2@example.com', password: 'x' });
+    await createSessions({ dates: [new Date('2026-08-01')], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    await clearGoHallAttendance(session.id, [student.id]);
+
+    const roster = await getGoHallRoster(session.id);
+    expect(roster[0].status).toBeNull();
+    const count = await prisma.goHallAttendance.count({ where: { sessionId: session.id, studentId: student.id } });
+    expect(count).toBe(0);
   });
 });
 
@@ -246,6 +328,31 @@ describe('getActivityRoster / saveActivityAttendance', () => {
 
     const day2 = await getActivityRoster(activity.id, new Date('2026-08-02'));
     expect(day2[0].status).toBeNull();
+  });
+
+  it('clearActivityAttendance deletes only that day\'s record', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen3@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小美', email: 'mei3@example.com', password: 'x' });
+    const category = await createCategory('比賽');
+    const activity = await createActivity({
+      title: '暑期營隊',
+      description: '三天營隊',
+      categoryId: category.id,
+      startDate: new Date('2026-08-01'),
+      endDate: new Date('2026-08-03'),
+      capacity: 20,
+      teacherIds: [teacher.id],
+    });
+    await registerForActivity(activity.id, student.id);
+    await saveActivityAttendance(activity.id, new Date('2026-08-01'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveActivityAttendance(activity.id, new Date('2026-08-02'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    await clearActivityAttendance(activity.id, new Date('2026-08-01'), [student.id]);
+
+    const day1 = await getActivityRoster(activity.id, new Date('2026-08-01'));
+    expect(day1[0].status).toBeNull();
+    const day2 = await getActivityRoster(activity.id, new Date('2026-08-02'));
+    expect(day2[0].status).toBe('PRESENT');
   });
 });
 

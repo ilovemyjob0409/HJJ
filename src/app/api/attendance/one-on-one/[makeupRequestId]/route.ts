@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { getOneOnOneAttendance, saveOneOnOneAttendance } from '@/lib/services/attendanceService';
+import { getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance } from '@/lib/services/attendanceService';
 
 export async function GET(_req: NextRequest, { params }: { params: { makeupRequestId: string } }) {
   const session = await getServerSession(authOptions);
@@ -39,5 +39,22 @@ export async function POST(req: NextRequest, { params }: { params: { makeupReque
     checkInTime: body.checkInTime,
     checkOutTime: body.checkOutTime,
   });
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: { makeupRequestId: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (session.user.role === 'TEACHER') {
+    const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
+    const makeupRequest = await prisma.makeupRequest.findUniqueOrThrow({
+      where: { id: params.makeupRequestId },
+      select: { teacherId: true },
+    });
+    if (makeupRequest.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  } else if (session.user.role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  await clearOneOnOneAttendance(params.makeupRequestId);
   return NextResponse.json({ success: true });
 }
