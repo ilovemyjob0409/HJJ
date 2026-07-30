@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { todayDateInput } from '@/components/AttendanceHub';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -183,6 +184,16 @@ export default function CheckinKioskPage() {
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center p-4">
+      <Link
+        href="/admin/attendance"
+        className="mb-4 flex items-center gap-1 self-start text-base text-inkMuted transition-colors hover:text-ink"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+        返回點名頁面
+      </Link>
+
       <input
         ref={inputRef}
         aria-label="學生證掃描"
