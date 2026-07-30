@@ -653,9 +653,10 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     expect(record).toBeNull();
   });
 
-  it('flags low quota after a check-in drops remaining sessions to the threshold', async () => {
+  it('flags low quota after a check-in drops remaining sessions to the threshold, when the student is LINE-bound', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota1@example.com', password: 'x', subjects: '數學' });
     const student = await setupStudentWithNumber('S011', 'checkin-lowquota-student1@example.com');
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent011' } });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
     await enrollStudent(cls.id, student.id);
     await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 4 } });
@@ -733,5 +734,18 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     const result = await checkInByStudentNumber('S014', '2026-08-04', '19:00', 'marker-1');
 
     expect(result).toEqual({ result: 'CHECKED_IN', studentName: '小明', sessionTitle: '數學A班', time: '19:00' });
+  });
+
+  it('does not burn the low-quota flag for a student who is not yet LINE-bound', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota-unbound@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S015', 'checkin-lowquota-unbound-student@example.com');
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 4 } });
+
+    await checkInByStudentNumber('S015', '2026-08-04', '19:00', 'marker-1');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: cls.id } } });
+    expect(enrollment.lowQuotaNotifiedAt).toBeNull();
   });
 });

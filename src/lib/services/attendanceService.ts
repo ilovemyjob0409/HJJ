@@ -708,22 +708,20 @@ function toCandidateOption(c: CheckInCandidate): CheckInCandidateOption {
   };
 }
 
-async function maybeNotifyLowQuota(studentId: string, classId: string): Promise<void> {
-  const enrollment = await prisma.classEnrollment.findUnique({ where: { studentId_classId: { studentId, classId } } });
+async function maybeNotifyLowQuota(
+  student: { id: string; lineUserId: string | null; user: { name: string } },
+  classId: string
+): Promise<void> {
+  if (!student.lineUserId) return;
+
+  const enrollment = await prisma.classEnrollment.findUnique({ where: { studentId_classId: { studentId: student.id, classId } } });
   if (!enrollment || enrollment.lowQuotaNotifiedAt !== null) return;
 
-  const { remaining } = await getClassEnrollmentQuota(classId, studentId);
+  const { remaining } = await getClassEnrollmentQuota(classId, student.id);
   if (remaining === null || remaining > 3) return;
 
   await prisma.classEnrollment.update({ where: { id: enrollment.id }, data: { lowQuotaNotifiedAt: new Date() } });
-
-  const student = await prisma.student.findUnique({
-    where: { id: studentId },
-    select: { lineUserId: true, user: { select: { name: true } } },
-  });
-  if (student?.lineUserId) {
-    await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`);
-  }
+  await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`);
 }
 
 async function notifyAttendanceResult(
@@ -732,12 +730,16 @@ async function notifyAttendanceResult(
   action: 'CHECKED_IN' | 'CHECKED_OUT',
   timeStr: string
 ): Promise<void> {
-  if (student.lineUserId) {
-    const verb = action === 'CHECKED_IN' ? '簽到' : '簽退';
-    await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 已於 ${timeStr} 完成${verb}（${match.title}）`);
-  }
-  if (action === 'CHECKED_IN' && match.classId) {
-    await maybeNotifyLowQuota(student.id, match.classId);
+  try {
+    if (student.lineUserId) {
+      const verb = action === 'CHECKED_IN' ? '簽到' : '簽退';
+      await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 已於 ${timeStr} 完成${verb}（${match.title}）`);
+    }
+    if (action === 'CHECKED_IN' && match.classId) {
+      await maybeNotifyLowQuota(student, match.classId);
+    }
+  } catch (err) {
+    console.error('notifyAttendanceResult failed', err);
   }
 }
 
