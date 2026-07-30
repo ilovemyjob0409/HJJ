@@ -11,15 +11,8 @@ import {
 } from './lineService';
 
 beforeEach(async () => {
-  // Clean up test data - only delete students since that's all we create
-  const testUser = await prisma.user.findUnique({ where: { email: 'line-test@example.com' } });
-  if (testUser) {
-    const student = await prisma.student.findUnique({ where: { userId: testUser.id } });
-    if (student) {
-      await prisma.student.delete({ where: { id: student.id } });
-    }
-    await prisma.user.delete({ where: { id: testUser.id } });
-  }
+  await prisma.student.deleteMany();
+  await prisma.user.deleteMany();
 });
 
 async function createTestStudent(overrides: { lineUserId?: string | null; lineBindCode?: string | null } = {}) {
