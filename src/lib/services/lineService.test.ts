@@ -68,6 +68,16 @@ describe('generateBindCode', () => {
     const updated = await prisma.student.findUniqueOrThrow({ where: { id: student.id } });
     expect(updated.lineBindCode).toBe(code);
   });
+
+  it('throws when LINE_OA_BASIC_ID is unset', async () => {
+    delete process.env.LINE_OA_BASIC_ID;
+    const student = await createTestStudent();
+
+    await expect(generateBindCode(student.id)).rejects.toThrow('LINE_OA_BASIC_ID_NOT_CONFIGURED');
+
+    const updated = await prisma.student.findUniqueOrThrow({ where: { id: student.id } });
+    expect(updated.lineBindCode).toBeNull();
+  });
 });
 
 describe('unbindStudent', () => {
@@ -99,6 +109,11 @@ describe('verifyWebhookSignature', () => {
 
     expect(verifyWebhookSignature('{"events":[]}', 'not-a-real-signature')).toBe(false);
   });
+
+  it('rejects when LINE_CHANNEL_SECRET is unset', () => {
+    delete process.env.LINE_CHANNEL_SECRET;
+    expect(verifyWebhookSignature('{"events":[]}', 'anything')).toBe(false);
+  });
 });
 
 describe('handleIncomingMessage', () => {
@@ -125,6 +140,20 @@ describe('handleIncomingMessage', () => {
     const { replyText } = await handleIncomingMessage('Uparent123', 'NOMATCH1');
 
     expect(replyText).toContain('綁定碼無效');
+  });
+
+  it('replies with a clear error and leaves the second student unbound when the LINE account is already bound to another student', async () => {
+    const firstUser = await prisma.user.create({
+      data: { name: '第一個學生', email: 'line-test-first@example.com', password: 'x', role: 'STUDENT' },
+    });
+    await prisma.student.create({ data: { userId: firstUser.id, lineUserId: 'UalreadyBound' } });
+    const secondStudent = await createTestStudent({ lineBindCode: 'SECOND01' });
+
+    const { replyText } = await handleIncomingMessage('UalreadyBound', 'SECOND01');
+
+    expect(replyText).toContain('已綁定其他學生');
+    const updatedSecond = await prisma.student.findUniqueOrThrow({ where: { id: secondStudent.id } });
+    expect(updatedSecond.lineUserId).toBeNull();
   });
 });
 

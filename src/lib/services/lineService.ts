@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
 const BIND_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -14,9 +15,12 @@ function randomBindCode(): string {
 }
 
 export async function generateBindCode(studentId: string): Promise<{ code: string; addFriendUrl: string }> {
+  const basicId = process.env.LINE_OA_BASIC_ID;
+  if (!basicId) {
+    throw new Error('LINE_OA_BASIC_ID_NOT_CONFIGURED');
+  }
   const code = randomBindCode();
   await prisma.student.update({ where: { id: studentId }, data: { lineBindCode: code } });
-  const basicId = process.env.LINE_OA_BASIC_ID ?? '';
   const addFriendUrl = `https://line.me/R/oaMessage/${basicId}/?${encodeURIComponent(code)}`;
   return { code, addFriendUrl };
 }
@@ -26,7 +30,8 @@ export async function unbindStudent(studentId: string): Promise<void> {
 }
 
 export function verifyWebhookSignature(rawBody: string, signature: string): boolean {
-  const secret = process.env.LINE_CHANNEL_SECRET ?? '';
+  const secret = process.env.LINE_CHANNEL_SECRET;
+  if (!secret) return false;
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
   const expectedBuf = Buffer.from(expected);
   const signatureBuf = Buffer.from(signature);
@@ -43,7 +48,14 @@ export async function handleIncomingMessage(lineUserId: string, text: string): P
   if (!student) {
     return { replyText: '綁定碼無效，請洽行政人員重新產生' };
   }
-  await prisma.student.update({ where: { id: student.id }, data: { lineUserId, lineBindCode: null } });
+  try {
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId, lineBindCode: null } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return { replyText: '此 LINE 帳號已綁定其他學生，請洽行政人員' };
+    }
+    throw err;
+  }
   return { replyText: `綁定成功，之後會通知您 ${student.user.name} 的點名與補課申請結果` };
 }
 
