@@ -178,6 +178,34 @@ describe('setStudentEnrollments', () => {
     const updated = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
     expect(updated.totalSessions).toBeNull();
   });
+
+  it('leaves lowQuotaNotifiedAt untouched when totalSessions is resubmitted unchanged', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-enroll-notify-unchanged-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-enroll-notify-unchanged-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+    const notifiedAt = new Date(2026, 6, 20);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { lowQuotaNotifiedAt: notifiedAt } });
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    const updated = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(updated.lowQuotaNotifiedAt).toEqual(notifiedAt);
+  });
+
+  it('resets lowQuotaNotifiedAt to null when totalSessions actually changes', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-enroll-notify-changed-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-enroll-notify-changed-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+    const notifiedAt = new Date(2026, 6, 20);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { lowQuotaNotifiedAt: notifiedAt } });
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 18 }]);
+
+    const updated = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(updated.lowQuotaNotifiedAt).toBeNull();
+  });
 });
 
 describe('addEnrollmentSessions', () => {
