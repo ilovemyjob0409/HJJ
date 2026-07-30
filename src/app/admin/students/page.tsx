@@ -104,6 +104,11 @@ function StudentsContent() {
   const [lineBindInfo, setLineBindInfo] = useState<{ code: string; addFriendUrl: string } | null>(null);
   const [lineBinding, setLineBinding] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const editingIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    editingIdRef.current = editing?.id ?? null;
+  }, [editing]);
 
   useEffect(() => {
     if (lineBindInfo && qrCanvasRef.current) {
@@ -185,6 +190,7 @@ function StudentsContent() {
     setAddClassQuery('');
     setEditError('');
     setLineBindInfo(null);
+    setLineBinding(false);
   }
 
   function toggleClass(classId: string) {
@@ -240,18 +246,22 @@ function StudentsContent() {
 
   async function refreshEditingFromServer() {
     if (!editing) return;
+    const targetId = editing.id;
     const res = await fetch('/api/students');
     const fresh: StudentRow[] = await res.json();
+    if (editingIdRef.current !== targetId) return;
     setStudents(fresh);
-    const match = fresh.find((s) => s.id === editing.id);
+    const match = fresh.find((s) => s.id === targetId);
     if (match) setEditing(match);
   }
 
   async function handleGenerateLineBindCode() {
     if (!editing) return;
+    const targetId = editing.id;
     setLineBinding(true);
     try {
-      const res = await fetch(`/api/students/${editing.id}/line-bind-code`, { method: 'POST' });
+      const res = await fetch(`/api/students/${targetId}/line-bind-code`, { method: 'POST' });
+      if (editingIdRef.current !== targetId) return;
       if (!res.ok) {
         showToast('產生綁定碼失敗');
         return;
@@ -566,7 +576,12 @@ function StudentsContent() {
                   )}
                 </div>
               )}
-              <Link href="/admin/line-setup" target="_blank" className="mt-2 inline-block text-xs text-brandDark hover:underline">
+              <Link
+                href="/admin/line-setup"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-xs text-brandDark hover:underline"
+              >
                 查看設定教學
               </Link>
             </div>
