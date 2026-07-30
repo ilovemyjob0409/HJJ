@@ -142,7 +142,7 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
     ...toUpdate.map((e) =>
       prisma.classEnrollment.update({
         where: { studentId_classId: { studentId, classId: e.classId } },
-        data: { totalSessions: e.totalSessions },
+        data: { totalSessions: e.totalSessions, lowQuotaNotifiedAt: null },
       })
     ),
   ]);
