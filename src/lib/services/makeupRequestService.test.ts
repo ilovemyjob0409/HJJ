@@ -5,7 +5,6 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { setTeacherAvailability } from './availabilityService';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
 import {
   createInsertionMakeupRequest,
   createOneOnOneMakeupRequest,
@@ -51,8 +50,9 @@ describe('formatMakeupSlot', () => {
       slotStartTime: null,
       slotEndTime: null,
     });
-    expect(formatDateWithWeekday(targetDate)).toContain('（三）');
-    expect(text).toBe(`${formatDateWithWeekday(targetDate)}數學B班 19:00-21:00`);
+    // Pinned to the zh-TW literal (not just re-derived via formatDateWithWeekday)
+    // so a regression to an unspecified/default locale is actually caught.
+    expect(text).toBe('2026/7/22（三）數學B班 19:00-21:00');
   });
 
   it('formats a ONE_ON_ONE slot with no space between the weekday and 一對一補課', () => {
@@ -65,8 +65,7 @@ describe('formatMakeupSlot', () => {
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });
-    expect(formatDateWithWeekday(slotDate)).toContain('（三）');
-    expect(text).toBe(`${formatDateWithWeekday(slotDate)}一對一補課 16:00-17:00`);
+    expect(text).toBe('2026/7/22（三）一對一補課 16:00-17:00');
   });
 
   it('returns an empty string when neither branch has the fields it needs', () => {

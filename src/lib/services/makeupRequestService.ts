@@ -187,10 +187,10 @@ export function formatMakeupSlot(m: {
   slotEndTime: string | null;
 }): string {
   if (m.type === 'INSERTION' && m.targetDate && m.targetClass) {
-    return `${formatDateWithWeekday(m.targetDate)}${m.targetClass.name} ${m.targetClass.startTime}-${m.targetClass.endTime}`;
+    return `${formatDateWithWeekday(m.targetDate, 'zh-TW')}${m.targetClass.name} ${m.targetClass.startTime}-${m.targetClass.endTime}`;
   }
   if (m.slotDate && m.slotStartTime && m.slotEndTime) {
-    return `${formatDateWithWeekday(m.slotDate)}一對一補課 ${m.slotStartTime}-${m.slotEndTime}`;
+    return `${formatDateWithWeekday(m.slotDate, 'zh-TW')}一對一補課 ${m.slotStartTime}-${m.slotEndTime}`;
   }
   return '';
 }
