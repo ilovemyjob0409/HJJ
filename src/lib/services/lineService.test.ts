@@ -61,6 +61,7 @@ describe('generateBindCode', () => {
 
   it('overwrites a previous unused bind code', async () => {
     const student = await createTestStudent({ lineBindCode: 'OLDCODE1' });
+    process.env.LINE_OA_BASIC_ID = '@testoa';
 
     const { code } = await generateBindCode(student.id);
 
@@ -140,6 +141,12 @@ describe('handleIncomingMessage', () => {
     const { replyText } = await handleIncomingMessage('Uparent123', 'NOMATCH1');
 
     expect(replyText).toContain('綁定碼無效');
+  });
+
+  it('silently ignores a message that is not shaped like a bind code', async () => {
+    const { replyText } = await handleIncomingMessage('Uparent123', '謝謝');
+
+    expect(replyText).toBe('');
   });
 
   it('replies with a clear error and leaves the second student unbound when the LINE account is already bound to another student', async () => {

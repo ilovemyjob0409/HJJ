@@ -24,7 +24,9 @@ export async function POST(req: NextRequest) {
     }
     try {
       const { replyText } = await handleIncomingMessage(event.source.userId, event.message.text ?? '');
-      await replyLineMessage(event.replyToken, replyText);
+      if (replyText) {
+        await replyLineMessage(event.replyToken, replyText);
+      }
     } catch (err) {
       console.error('Failed to handle LINE webhook event', err);
     }

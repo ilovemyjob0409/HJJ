@@ -39,8 +39,16 @@ export function verifyWebhookSignature(rawBody: string, signature: string): bool
   return crypto.timingSafeEqual(expectedBuf, signatureBuf);
 }
 
+const BIND_CODE_FORMAT = /^[A-Z0-9]{8}$/;
+
 export async function handleIncomingMessage(lineUserId: string, text: string): Promise<{ replyText: string }> {
   const code = text.trim();
+  if (!BIND_CODE_FORMAT.test(code)) {
+    // Not a bind-code attempt (e.g. an already-bound parent replying "謝謝" to
+    // a notification) — the spec calls for silently ignoring this, not
+    // answering with "your bind code is invalid" on every ordinary message.
+    return { replyText: '' };
+  }
   const student = await prisma.student.findUnique({
     where: { lineBindCode: code },
     select: { id: true, user: { select: { name: true } } },
