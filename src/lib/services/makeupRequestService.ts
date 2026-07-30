@@ -4,6 +4,8 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { getQuarterRange } from '@/lib/quarter';
 import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
 import { listTeacherAvailability } from './availabilityService';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { pushLineMessage } from './lineService';
 
 export const TOTAL_QUARTER_LIMIT = 2;
 export const ONE_ON_ONE_QUARTER_LIMIT = 1;
@@ -176,8 +178,43 @@ export function listPendingMakeupRequests() {
   });
 }
 
-export function decideMakeupRequest(id: string, decision: 'APPROVED' | 'REJECTED') {
-  return prisma.makeupRequest.update({ where: { id }, data: { status: decision } });
+function formatMakeupSlot(m: {
+  type: 'INSERTION' | 'ONE_ON_ONE';
+  targetDate: Date | null;
+  targetClass: { name: string; startTime: string; endTime: string } | null;
+  slotDate: Date | null;
+  slotStartTime: string | null;
+  slotEndTime: string | null;
+}): string {
+  if (m.type === 'INSERTION' && m.targetDate && m.targetClass) {
+    return `${formatDateWithWeekday(m.targetDate)} ${m.targetClass.name} ${m.targetClass.startTime}-${m.targetClass.endTime}`;
+  }
+  if (m.slotDate && m.slotStartTime && m.slotEndTime) {
+    return `${formatDateWithWeekday(m.slotDate)} 一對一補課 ${m.slotStartTime}-${m.slotEndTime}`;
+  }
+  return '';
+}
+
+export async function decideMakeupRequest(id: string, decision: 'APPROVED' | 'REJECTED') {
+  const updated = await prisma.makeupRequest.update({
+    where: { id },
+    data: { status: decision },
+    include: {
+      leaveRequest: { select: { student: { select: { id: true, lineUserId: true, user: { select: { name: true } } } } } },
+      targetClass: { select: { name: true, startTime: true, endTime: true } },
+    },
+  });
+
+  const student = updated.leaveRequest.student;
+  if (student.lineUserId) {
+    const text =
+      decision === 'APPROVED'
+        ? `【MUP】${student.user.name}的補課申請已核准：${formatMakeupSlot(updated)}`
+        : `【MUP】${student.user.name}的補課申請未通過，請洽行政人員`;
+    await pushLineMessage(student.lineUserId, text);
+  }
+
+  return updated;
 }
 
 // For the teacher dashboard: which students inserted into a class this

@@ -337,6 +337,25 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
     const pendingAfter = await listPendingMakeupRequests();
     expect(pendingAfter.map((m) => m.id)).not.toContain(makeup.id);
   });
+
+  it('does not throw when the student has no LINE binding', async () => {
+    const { classB, leave } = await setup();
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+
+    const decided = await decideMakeupRequest(makeup.id, 'APPROVED');
+
+    expect(decided.status).toBe('APPROVED');
+  });
+
+  it('does not throw when the student has a LINE binding but no access token is configured', async () => {
+    const { student, classB, leave } = await setup();
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent123' } });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+
+    const decided = await decideMakeupRequest(makeup.id, 'REJECTED');
+
+    expect(decided.status).toBe('REJECTED');
+  });
 });
 
 describe('listInsertionsForTeacherClasses', () => {
