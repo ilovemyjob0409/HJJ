@@ -26,15 +26,7 @@ async function makeActivity() {
   });
 }
 
-beforeEach(async () => {
-  await prisma.activityImage.deleteMany();
-  await prisma.activityRegistration.deleteMany();
-  await prisma.activityTeacher.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.activityCategory.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
+beforeEach(() => {
   vi.clearAllMocks();
 });
 

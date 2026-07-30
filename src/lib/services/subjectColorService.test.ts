@@ -1,10 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { prisma } from '@/lib/db';
+import { describe, it, expect } from 'vitest';
 import { listSubjectColors, setSubjectColor } from './subjectColorService';
-
-beforeEach(async () => {
-  await prisma.subjectColor.deleteMany();
-});
 
 describe('setSubjectColor', () => {
   it('creates a color entry for a new subject', async () => {

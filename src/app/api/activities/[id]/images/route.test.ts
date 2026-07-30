@@ -31,15 +31,7 @@ function filePost(id: string, type = 'image/jpeg', bytes = 100) {
   return new Request(`http://x/api/activities/${id}/images`, { method: 'POST', body: form });
 }
 
-beforeEach(async () => {
-  await prisma.activityImage.deleteMany();
-  await prisma.activityRegistration.deleteMany();
-  await prisma.activityTeacher.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.activityCategory.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
+beforeEach(() => {
   sessionMock.mockReset();
 });
 

@@ -1,21 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { prisma } from '@/lib/db';
+import { describe, it, expect } from 'vitest';
 import { createTeacher } from './teacherService';
 import { setTeacherAvailability, listTeacherAvailability } from './availabilityService';
-
-beforeEach(async () => {
-  await prisma.goHallRegistration.deleteMany();
-  await prisma.goHallSession.deleteMany();
-  await prisma.substituteRequest.deleteMany();
-  await prisma.makeupRequest.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.classEnrollment.deleteMany();
-  await prisma.class.deleteMany();
-  await prisma.teacherAvailability.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-});
 
 describe('setTeacherAvailability', () => {
   it('replaces all windows for a teacher', async () => {
