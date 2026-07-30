@@ -205,13 +205,17 @@ export async function decideMakeupRequest(id: string, decision: 'APPROVED' | 'RE
     },
   });
 
-  const student = updated.leaveRequest.student;
-  if (student.lineUserId) {
-    const text =
-      decision === 'APPROVED'
-        ? `【MUP】${student.user.name}的補課申請已核准：${formatMakeupSlot(updated)}`
-        : `【MUP】${student.user.name}的補課申請未通過，請洽行政人員`;
-    await pushLineMessage(student.lineUserId, text);
+  try {
+    const student = updated.leaveRequest.student;
+    if (student.lineUserId) {
+      const text =
+        decision === 'APPROVED'
+          ? `【MUP】${student.user.name}的補課申請已核准：${formatMakeupSlot(updated)}`
+          : `【MUP】${student.user.name}的補課申請未通過，請洽行政人員`;
+      await pushLineMessage(student.lineUserId, text);
+    }
+  } catch (err) {
+    console.error('decideMakeupRequest LINE notification failed', err);
   }
 
   return updated;

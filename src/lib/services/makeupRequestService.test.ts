@@ -15,9 +15,24 @@ import {
   formatMakeupSlot,
 } from './makeupRequestService';
 
+// Full FK-safe defensive sweep (matches the convention already used in
+// attendanceService.test.ts / lineService.test.ts): with fileParallelism
+// disabled, Vitest still schedules test files in a data-dependent order, so
+// this file's beforeEach must be resilient to another file's leftover
+// ClassAttendance/OneOnOneAttendance/etc. rows still referencing a
+// Class/MakeupRequest this beforeEach is about to delete.
 beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
   await prisma.goHallRegistration.deleteMany();
   await prisma.goHallSession.deleteMany();
+  await prisma.activityRegistration.deleteMany();
+  await prisma.activityImage.deleteMany();
+  await prisma.activityTeacher.deleteMany();
+  await prisma.activity.deleteMany();
+  await prisma.activityCategory.deleteMany();
   await prisma.substituteRequest.deleteMany();
   await prisma.makeupRequest.deleteMany();
   await prisma.leaveRequest.deleteMany();
