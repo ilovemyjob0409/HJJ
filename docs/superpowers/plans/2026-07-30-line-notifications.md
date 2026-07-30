@@ -1225,7 +1225,7 @@ git commit -m "feat: add /admin/line-setup tutorial page"
 
 ## Production Deployment Note
 
-This plan's schema changes must be applied to the production database manually via Supabase's SQL Editor after the branch is merged and pushed (same process as the earlier `FaqItem` migration — production DB credentials are not accessible to automated tooling):
+**This SQL must be run BEFORE this branch is merged/deployed — not after.** `Student.lineUserId`/`lineBindCode` are selected by `checkInByStudentNumber` / `resolveCheckIn` (the kiosk check-in flow) and `listStudents` (`/admin/students`) — both existing, daily-used code paths, not new pages. If the new application code deploys before these columns exist, both the kiosk and the admin student list will start 500ing with "column does not exist" and stay broken until the SQL below is applied. Apply it manually via Supabase's SQL Editor first (same process as the earlier `FaqItem` migration — production DB credentials are not accessible to automated tooling), then merge and deploy this branch:
 
 ```sql
 ALTER TABLE "Student" ADD COLUMN "lineUserId" TEXT;
@@ -1235,4 +1235,4 @@ CREATE UNIQUE INDEX "Student_lineBindCode_key" ON "Student"("lineBindCode");
 ALTER TABLE "ClassEnrollment" ADD COLUMN "lowQuotaNotifiedAt" TIMESTAMP(3);
 ```
 
-The three `LINE_*` environment variables also need to be added to the Vercel project (Settings → Environment Variables) once the user has completed the one-time Messaging API setup described on `/admin/line-setup`. Until those env vars are set, every push/reply call safely no-ops (see Task 1) — the rest of the feature (binding UI, webhook signature rejection, etc.) is fully functional and testable without real LINE credentials.
+The three `LINE_*` environment variables also need to be added to the Vercel project (Settings → Environment Variables) once the user has completed the one-time Messaging API setup described on `/admin/line-setup`. Until those env vars are set: `pushLineMessage`/`replyLineMessage` safely no-op (see Task 1); `verifyWebhookSignature` safely rejects every webhook request rather than accepting forged ones (see the final-review fix to Task 1 — it fails closed when `LINE_CHANNEL_SECRET` is unset); and `generateBindCode` throws a clear, named error instead of producing a broken QR code when `LINE_OA_BASIC_ID` is unset. The admin binding UI, database writes, and non-LINE parts of the feature remain testable without real LINE credentials — only the actual push/reply/webhook network calls require them.
