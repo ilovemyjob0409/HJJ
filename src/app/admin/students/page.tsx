@@ -262,7 +262,10 @@ function StudentsContent() {
     try {
       const res = await fetch(`/api/students/${targetId}/line-bind-code`, { method: 'POST' });
       if (!res.ok) {
-        if (editingIdRef.current === targetId) showToast('產生綁定碼失敗');
+        const data = await res.json().catch(() => ({}));
+        if (editingIdRef.current === targetId) {
+          showToast(data.error === 'LINE_OA_BASIC_ID_NOT_CONFIGURED' ? '尚未設定 LINE_OA_BASIC_ID，請洽系統管理員' : '產生綁定碼失敗');
+        }
         return;
       }
       const data = await res.json();
