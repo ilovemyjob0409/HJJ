@@ -128,7 +128,8 @@ export interface EnrollmentInput {
 }
 
 export async function setStudentEnrollments(studentId: string, enrollments: EnrollmentInput[]) {
-  const current = await prisma.classEnrollment.findMany({ where: { studentId }, select: { classId: true } });
+  const current = await prisma.classEnrollment.findMany({ where: { studentId }, select: { classId: true, totalSessions: true } });
+  const currentByClassId = new Map(current.map((e) => [e.classId, e.totalSessions]));
   const currentIds = new Set(current.map((e) => e.classId));
   const desiredIds = new Set(enrollments.map((e) => e.classId));
 
@@ -142,7 +143,16 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
     ...toUpdate.map((e) =>
       prisma.classEnrollment.update({
         where: { studentId_classId: { studentId, classId: e.classId } },
-        data: { totalSessions: e.totalSessions },
+        data: {
+          totalSessions: e.totalSessions,
+          // Only clear the "already notified" flag when totalSessions actually
+          // changed (a real top-up). The admin edit form resubmits every
+          // enrolled class's totalSessions verbatim on every save (even when
+          // editing an unrelated field like phone number), so resetting this
+          // unconditionally would let a parent who already got the low-quota
+          // LINE warning get a spurious duplicate one on the next check-in.
+          ...(e.totalSessions !== currentByClassId.get(e.classId) ? { lowQuotaNotifiedAt: null } : {}),
+        },
       })
     ),
   ]);

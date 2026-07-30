@@ -652,4 +652,100 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     });
     expect(record).toBeNull();
   });
+
+  it('flags low quota after a check-in drops remaining sessions to the threshold, when the student is LINE-bound', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota1@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S011', 'checkin-lowquota-student1@example.com');
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent011' } });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 4 } });
+
+    await checkInByStudentNumber('S011', '2026-08-04', '19:00', 'marker-1');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: cls.id } } });
+    expect(enrollment.lowQuotaNotifiedAt).not.toBeNull();
+  });
+
+  it('does not re-flag low quota once already flagged this cycle', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota1b@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S011B', 'checkin-lowquota-student1b@example.com');
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    // Simulate an earlier cycle that already notified — the guard must leave
+    // this timestamp untouched, not bump it to a new "now()" on this check-in.
+    const alreadyNotifiedAt = new Date('2026-07-20T00:00:00.000Z');
+    await prisma.classEnrollment.update({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+      data: { totalSessions: 4, lowQuotaNotifiedAt: alreadyNotifiedAt },
+    });
+
+    await checkInByStudentNumber('S011B', '2026-08-04', '19:00', 'marker-1');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: cls.id } } });
+    expect(enrollment.lowQuotaNotifiedAt).toEqual(alreadyNotifiedAt);
+  });
+
+  it('does not flag low quota while remaining sessions stay above the threshold', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota2@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S012', 'checkin-lowquota-student2@example.com');
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 10 } });
+
+    await checkInByStudentNumber('S012', '2026-08-04', '19:00', 'marker-1');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: cls.id } } });
+    expect(enrollment.lowQuotaNotifiedAt).toBeNull();
+  });
+
+  it('does not flag low quota for a one-on-one makeup check-in', async () => {
+    const availabilityTeacher = await createTeacher({ name: '林老師', email: 'checkin-lowquota3-avail@example.com', password: 'x', subjects: '圍棋' });
+    await prisma.teacherAvailability.create({ data: { teacherId: availabilityTeacher.id, weekday: 2, startTime: '14:00', endTime: '18:00' } });
+    const homeTeacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota3-home@example.com', password: 'x', subjects: '圍棋' });
+    const student = await setupStudentWithNumber('S013', 'checkin-lowquota-student3@example.com');
+    const homeClass = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: homeTeacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(homeClass.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: homeClass.id } }, data: { totalSessions: 1 } });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: homeClass.id, date: new Date('2026-08-04'), reason: '請假' });
+    const makeup = await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: availabilityTeacher.id,
+      slotDate: new Date('2026-08-04'),
+      slotStartTime: '15:00',
+      slotEndTime: '16:00',
+    });
+    await decideMakeupRequest(makeup.id, 'APPROVED');
+
+    await checkInByStudentNumber('S013', '2026-08-04', '15:00', 'marker-1');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: homeClass.id } } });
+    expect(enrollment.lowQuotaNotifiedAt).toBeNull();
+  });
+
+  it('does not throw when the student has a LINE binding but no access token is configured', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-linebound@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S014', 'checkin-linebound-student@example.com');
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent999' } });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+
+    const result = await checkInByStudentNumber('S014', '2026-08-04', '19:00', 'marker-1');
+
+    expect(result).toEqual({ result: 'CHECKED_IN', studentName: '小明', sessionTitle: '數學A班', time: '19:00' });
+  });
+
+  it('does not burn the low-quota flag for a student who is not yet LINE-bound', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota-unbound@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S015', 'checkin-lowquota-unbound-student@example.com');
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 4 } });
+
+    await checkInByStudentNumber('S015', '2026-08-04', '19:00', 'marker-1');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: cls.id } } });
+    expect(enrollment.lowQuotaNotifiedAt).toBeNull();
+  });
 });

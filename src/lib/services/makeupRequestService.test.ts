@@ -12,11 +12,27 @@ import {
   decideMakeupRequest,
   listInsertionsForTeacherClasses,
   getMakeupQuotaStatus,
+  formatMakeupSlot,
 } from './makeupRequestService';
 
+// Full FK-safe defensive sweep (matches the convention already used in
+// attendanceService.test.ts / lineService.test.ts): with fileParallelism
+// disabled, Vitest still schedules test files in a data-dependent order, so
+// this file's beforeEach must be resilient to another file's leftover
+// ClassAttendance/OneOnOneAttendance/etc. rows still referencing a
+// Class/MakeupRequest this beforeEach is about to delete.
 beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
   await prisma.goHallRegistration.deleteMany();
   await prisma.goHallSession.deleteMany();
+  await prisma.activityRegistration.deleteMany();
+  await prisma.activityImage.deleteMany();
+  await prisma.activityTeacher.deleteMany();
+  await prisma.activity.deleteMany();
+  await prisma.activityCategory.deleteMany();
   await prisma.substituteRequest.deleteMany();
   await prisma.makeupRequest.deleteMany();
   await prisma.leaveRequest.deleteMany();
@@ -37,6 +53,48 @@ async function setup() {
   const leave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '感冒' });
   return { teacher, student, classA, classB, leave };
 }
+
+describe('formatMakeupSlot', () => {
+  it('formats an INSERTION slot with no space between the weekday and class name', () => {
+    const targetDate = new Date('2026-07-22'); // a Wednesday
+    const text = formatMakeupSlot({
+      type: 'INSERTION',
+      targetDate,
+      targetClass: { name: '數學B班', startTime: '19:00', endTime: '21:00' },
+      slotDate: null,
+      slotStartTime: null,
+      slotEndTime: null,
+    });
+    // Pinned to the zh-TW literal (not just re-derived via formatDateWithWeekday)
+    // so a regression to an unspecified/default locale is actually caught.
+    expect(text).toBe('2026/7/22（三）數學B班 19:00-21:00');
+  });
+
+  it('formats a ONE_ON_ONE slot with no space between the weekday and 一對一補課', () => {
+    const slotDate = new Date('2026-07-22'); // a Wednesday
+    const text = formatMakeupSlot({
+      type: 'ONE_ON_ONE',
+      targetDate: null,
+      targetClass: null,
+      slotDate,
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+    expect(text).toBe('2026/7/22（三）一對一補課 16:00-17:00');
+  });
+
+  it('returns an empty string when neither branch has the fields it needs', () => {
+    const text = formatMakeupSlot({
+      type: 'INSERTION',
+      targetDate: new Date('2026-07-22'),
+      targetClass: null,
+      slotDate: null,
+      slotStartTime: null,
+      slotEndTime: null,
+    });
+    expect(text).toBe('');
+  });
+});
 
 describe('createInsertionMakeupRequest', () => {
   it('creates a PENDING_ADMIN insertion request', async () => {
@@ -336,6 +394,25 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
 
     const pendingAfter = await listPendingMakeupRequests();
     expect(pendingAfter.map((m) => m.id)).not.toContain(makeup.id);
+  });
+
+  it('does not throw when the student has no LINE binding', async () => {
+    const { classB, leave } = await setup();
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+
+    const decided = await decideMakeupRequest(makeup.id, 'APPROVED');
+
+    expect(decided.status).toBe('APPROVED');
+  });
+
+  it('does not throw when the student has a LINE binding but no access token is configured', async () => {
+    const { student, classB, leave } = await setup();
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent123' } });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+
+    const decided = await decideMakeupRequest(makeup.id, 'REJECTED');
+
+    expect(decided.status).toBe('REJECTED');
   });
 });
 

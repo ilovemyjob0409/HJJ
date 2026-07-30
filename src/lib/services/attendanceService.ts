@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { pushLineMessage } from './lineService';
 
 export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT';
 
@@ -551,6 +552,7 @@ interface CheckInCandidate {
   startMinutes: number;
   checkInTime: string | null;
   checkOutTime: string | null;
+  classId?: string;
   apply: () => Promise<'CHECKED_IN' | 'CHECKED_OUT'>;
 }
 
@@ -655,6 +657,7 @@ async function getTodayCandidates(
       startMinutes: toMinutes(cls.startTime),
       checkInTime: existing?.checkInTime ?? null,
       checkOutTime: existing?.checkOutTime ?? null,
+      classId: cls.id,
       apply: () => applyClassAttendance({ classId: cls.id, studentId, date, timeStr, markedById }),
     });
   }
@@ -672,6 +675,7 @@ async function getTodayCandidates(
       startMinutes: toMinutes(cls.startTime),
       checkInTime: existing?.checkInTime ?? null,
       checkOutTime: existing?.checkOutTime ?? null,
+      classId: cls.id,
       apply: () =>
         applyClassAttendance({ classId: cls.id, studentId, date, timeStr, markedById, makeupRequestId: ins.id }),
     });
@@ -704,6 +708,41 @@ function toCandidateOption(c: CheckInCandidate): CheckInCandidateOption {
   };
 }
 
+async function maybeNotifyLowQuota(
+  student: { id: string; lineUserId: string | null; user: { name: string } },
+  classId: string
+): Promise<void> {
+  if (!student.lineUserId) return;
+
+  const enrollment = await prisma.classEnrollment.findUnique({ where: { studentId_classId: { studentId: student.id, classId } } });
+  if (!enrollment || enrollment.lowQuotaNotifiedAt !== null) return;
+
+  const { remaining } = await getClassEnrollmentQuota(classId, student.id);
+  if (remaining === null || remaining > 3) return;
+
+  await prisma.classEnrollment.update({ where: { id: enrollment.id }, data: { lowQuotaNotifiedAt: new Date() } });
+  await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`);
+}
+
+async function notifyAttendanceResult(
+  student: { id: string; lineUserId: string | null; user: { name: string } },
+  match: CheckInCandidate,
+  action: 'CHECKED_IN' | 'CHECKED_OUT',
+  timeStr: string
+): Promise<void> {
+  try {
+    if (student.lineUserId) {
+      const verb = action === 'CHECKED_IN' ? '簽到' : '簽退';
+      await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 已於 ${timeStr} 完成${verb}（${match.title}）`);
+    }
+    if (action === 'CHECKED_IN' && match.classId) {
+      await maybeNotifyLowQuota(student, match.classId);
+    }
+  } catch (err) {
+    console.error('notifyAttendanceResult failed', err);
+  }
+}
+
 export async function checkInByStudentNumber(
   code: string,
   dateStr: string,
@@ -712,7 +751,7 @@ export async function checkInByStudentNumber(
 ): Promise<CheckInResult> {
   const student = await prisma.student.findUnique({
     where: { studentNumber: code },
-    select: { id: true, user: { select: { name: true } } },
+    select: { id: true, lineUserId: true, user: { select: { name: true } } },
   });
   if (!student) return { result: 'NOT_FOUND' };
 
@@ -725,6 +764,7 @@ export async function checkInByStudentNumber(
   if (incomplete.length === 1) {
     const match = incomplete[0];
     const action = await match.apply();
+    await notifyAttendanceResult(student, match, action, timeStr);
     return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
   }
 
@@ -745,7 +785,7 @@ export async function resolveCheckIn(
 ): Promise<CheckInResult> {
   const student = await prisma.student.findUnique({
     where: { studentNumber: code },
-    select: { id: true, user: { select: { name: true } } },
+    select: { id: true, lineUserId: true, user: { select: { name: true } } },
   });
   if (!student) return { result: 'NOT_FOUND' };
 
@@ -756,5 +796,6 @@ export async function resolveCheckIn(
   if (!match) return { result: 'NO_SESSION' };
 
   const action = await match.apply();
+  await notifyAttendanceResult(student, match, action, timeStr);
   return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
 }

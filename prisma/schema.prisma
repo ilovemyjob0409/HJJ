@@ -76,6 +76,8 @@ model Student {
   user                  User                   @relation(fields: [userId], references: [id])
   parentPhone           String?
   studentNumber         String?                @unique
+  lineUserId            String?                @unique
+  lineBindCode          String?                @unique
   enrollments           ClassEnrollment[]
   leaveRequests         LeaveRequest[]
   goHallRegistrations   GoHallRegistration[]
@@ -103,12 +105,13 @@ model Class {
 }
 
 model ClassEnrollment {
-  id            String  @id @default(cuid())
-  studentId     String
-  classId       String
-  student       Student @relation(fields: [studentId], references: [id])
-  class         Class   @relation(fields: [classId], references: [id])
-  totalSessions Int?
+  id                 String    @id @default(cuid())
+  studentId          String
+  classId            String
+  student            Student   @relation(fields: [studentId], references: [id])
+  class              Class     @relation(fields: [classId], references: [id])
+  totalSessions      Int?
+  lowQuotaNotifiedAt DateTime?
 
   @@unique([studentId, classId])
 }
