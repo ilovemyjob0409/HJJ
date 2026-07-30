@@ -261,14 +261,15 @@ function StudentsContent() {
     setLineBinding(true);
     try {
       const res = await fetch(`/api/students/${targetId}/line-bind-code`, { method: 'POST' });
-      if (editingIdRef.current !== targetId) return;
       if (!res.ok) {
-        showToast('產生綁定碼失敗');
+        if (editingIdRef.current === targetId) showToast('產生綁定碼失敗');
         return;
       }
-      setLineBindInfo(await res.json());
+      const data = await res.json();
+      if (editingIdRef.current !== targetId) return;
+      setLineBindInfo(data);
     } finally {
-      setLineBinding(false);
+      if (editingIdRef.current === targetId) setLineBinding(false);
     }
   }
 
