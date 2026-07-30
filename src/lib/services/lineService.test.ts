@@ -10,7 +10,31 @@ import {
   replyLineMessage,
 } from './lineService';
 
+// This suite has no final/afterAll cleanup anywhere, so whichever file runs
+// last in this file leaves its rows sitting in the shared test database.
+// A narrow "just my own tables" sweep isn't safe against that — it must
+// clear every table another file's leftover Teacher/Class/etc. could still
+// reference, in FK-safe order, matching the defensive full-sweep convention
+// every other service test file in this suite already follows.
 beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
+  await prisma.goHallRegistration.deleteMany();
+  await prisma.goHallSession.deleteMany();
+  await prisma.activityRegistration.deleteMany();
+  await prisma.activityImage.deleteMany();
+  await prisma.activityTeacher.deleteMany();
+  await prisma.activity.deleteMany();
+  await prisma.activityCategory.deleteMany();
+  await prisma.substituteRequest.deleteMany();
+  await prisma.makeupRequest.deleteMany();
+  await prisma.leaveRequest.deleteMany();
+  await prisma.teacherAvailability.deleteMany();
+  await prisma.classEnrollment.deleteMany();
+  await prisma.class.deleteMany();
+  await prisma.teacher.deleteMany();
   await prisma.student.deleteMany();
   await prisma.user.deleteMany();
 });
