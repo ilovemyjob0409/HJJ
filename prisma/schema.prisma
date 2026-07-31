@@ -112,8 +112,19 @@ model ClassEnrollment {
   class              Class     @relation(fields: [classId], references: [id])
   totalSessions      Int?
   lowQuotaNotifiedAt DateTime?
+  periods            EnrollmentPeriod[]
 
   @@unique([studentId, classId])
+}
+
+// 每次報課一筆（「一期」）。剩餘堂數仍以 ClassEnrollment.totalSessions
+// 計算；期紀錄負責一對一補課額度的重置點與報課歷史。
+model EnrollmentPeriod {
+  id           String          @id @default(cuid())
+  enrollmentId String
+  enrollment   ClassEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  sessions     Int
+  createdAt    DateTime        @default(now())
 }
 
 model TeacherAvailability {
@@ -329,6 +340,14 @@ model FaqItem {
   id        String   @id @default(cuid())
   question  String
   answer    String
+  sortOrder Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MakeupNoticeItem {
+  id        String   @id @default(cuid())
+  content   String
   sortOrder Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
