@@ -54,8 +54,7 @@ export default function AdminPointsPage() {
   const [busy, setBusy] = useState(false);
 
   const [reasons, setReasons] = useState<ReasonRow[]>([]);
-  const [awardAmount, setAwardAmount] = useState('1');
-  const [awardReasonId, setAwardReasonId] = useState('');
+  const [awardRows, setAwardRows] = useState<{ amount: string; reasonId: string }[]>([{ amount: '1', reasonId: '' }]);
   const [redeemPoints, setRedeemPoints] = useState('');
   const [redeemDescription, setRedeemDescription] = useState('');
   const [draws, setDraws] = useState('');
@@ -119,14 +118,34 @@ export default function AdminPointsPage() {
     }
   }
 
+  function updateAwardRow(index: number, patch: Partial<{ amount: string; reasonId: string }>) {
+    setAwardRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
   async function handleAward(e: React.FormEvent) {
     e.preventDefault();
-    const ok = await post(
-      '/api/points/award',
-      { studentIds: [selectedId], amount: Number(awardAmount), reasonId: awardReasonId },
-      `已加 ${Number(awardAmount)} 點`
-    );
-    if (ok) setAwardAmount('1');
+    if (!selectedId) return;
+    setBusy(true);
+    try {
+      for (const row of awardRows) {
+        const res = await fetch('/api/points/award', {
+          method: 'POST',
+          body: JSON.stringify({ studentIds: [selectedId], amount: Number(row.amount), reasonId: row.reasonId }),
+        });
+        if (!res.ok) {
+          const resData = await res.json();
+          showToast(resData.error === 'INVALID_AMOUNT' ? '點數需為 1–10 的整數' : `操作失敗：${resData.error}`);
+          loadPoints(selectedId);
+          return;
+        }
+      }
+      const totalAwarded = awardRows.reduce((sum, row) => sum + Number(row.amount), 0);
+      showToast(`已加 ${totalAwarded} 點（${awardRows.length} 筆）`);
+      setAwardRows([{ amount: '1', reasonId: '' }]);
+      loadPoints(selectedId);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleRedeem(e: React.FormEvent) {
@@ -227,25 +246,49 @@ export default function AdminPointsPage() {
             <Card>
               <h2 className="mb-2 font-bold text-ink">加分</h2>
               <form onSubmit={handleAward} className="flex flex-col gap-2">
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={awardAmount}
-                    onChange={(e) => setAwardAmount(e.target.value)}
-                    className="w-24"
-                    required
-                  />
-                  <Select value={awardReasonId} onChange={(e) => setAwardReasonId(e.target.value)} required className="flex-1">
-                    <option value="">選擇理由</option>
-                    {reasons.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
+                {awardRows.map((row, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={row.amount}
+                      onChange={(e) => updateAwardRow(index, { amount: e.target.value })}
+                      className="w-24"
+                      required
+                    />
+                    <Select
+                      value={row.reasonId}
+                      onChange={(e) => updateAwardRow(index, { reasonId: e.target.value })}
+                      required
+                      className="flex-1"
+                    >
+                      <option value="">選擇理由</option>
+                      {reasons.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </Select>
+                    {awardRows.length > 1 && (
+                      <button
+                        type="button"
+                        aria-label="移除此列"
+                        onClick={() => setAwardRows((prev) => prev.filter((_, i) => i !== index))}
+                        className="text-inkMuted hover:text-rejected"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setAwardRows((prev) => [...prev, { amount: '1', reasonId: '' }])}
+                  className="self-start text-sm text-brandDark hover:underline"
+                >
+                  ＋ 新增一列
+                </button>
                 {reasons.length === 0 && <p className="text-xs text-inkMuted">請先在下方「加分理由維護」建立理由選項。</p>}
                 <Button type="submit" loading={busy} disabled={reasons.length === 0}>
                   加分
