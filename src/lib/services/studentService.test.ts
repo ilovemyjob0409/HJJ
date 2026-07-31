@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { createStudent, listStudents, updateStudent, deleteStudent } from './studentService';
@@ -6,24 +6,6 @@ import { createTeacher } from './teacherService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { p2002TargetsField } from '@/lib/prismaErrors';
-
-beforeEach(async () => {
-  await prisma.classAttendance.deleteMany();
-  await prisma.oneOnOneAttendance.deleteMany();
-  await prisma.goHallAttendance.deleteMany();
-  await prisma.activityAttendance.deleteMany();
-  await prisma.goHallRegistration.deleteMany();
-  await prisma.goHallSession.deleteMany();
-  await prisma.substituteRequest.deleteMany();
-  await prisma.makeupRequest.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.classEnrollment.deleteMany();
-  await prisma.class.deleteMany();
-  await prisma.teacherAvailability.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-});
 
 describe('createStudent', () => {
   it('creates a User with role STUDENT and a linked Student record', async () => {

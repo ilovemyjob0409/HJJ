@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
@@ -14,36 +14,6 @@ import {
   getMakeupQuotaStatus,
   formatMakeupSlot,
 } from './makeupRequestService';
-
-// Full FK-safe defensive sweep (matches the convention already used in
-// attendanceService.test.ts / lineService.test.ts): with fileParallelism
-// disabled, Vitest still schedules test files in a data-dependent order, so
-// this file's beforeEach must be resilient to another file's leftover
-// ClassAttendance/OneOnOneAttendance/etc. rows still referencing a
-// Class/MakeupRequest this beforeEach is about to delete.
-// (EnrollmentPeriod rows go away with classEnrollment via onDelete: Cascade.)
-beforeEach(async () => {
-  await prisma.classAttendance.deleteMany();
-  await prisma.oneOnOneAttendance.deleteMany();
-  await prisma.goHallAttendance.deleteMany();
-  await prisma.activityAttendance.deleteMany();
-  await prisma.goHallRegistration.deleteMany();
-  await prisma.goHallSession.deleteMany();
-  await prisma.activityRegistration.deleteMany();
-  await prisma.activityImage.deleteMany();
-  await prisma.activityTeacher.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.activityCategory.deleteMany();
-  await prisma.substituteRequest.deleteMany();
-  await prisma.makeupRequest.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.teacherAvailability.deleteMany();
-  await prisma.classEnrollment.deleteMany();
-  await prisma.class.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-});
 
 // 報名帶堂數 → setStudentEnrollments 會建立第一期，之後的一對一額度
 // 都從這期起算（一期 1 次）。

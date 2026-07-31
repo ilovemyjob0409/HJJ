@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { prisma } from '@/lib/db';
+import { describe, it, expect } from 'vitest';
 import { createTeacher } from './teacherService';
 import { createClass } from './classService';
 import {
@@ -8,20 +7,6 @@ import {
   assignSubstituteTeacher,
   listAssignedSubstituteRequestsForTeacher,
 } from './substituteRequestService';
-
-beforeEach(async () => {
-  await prisma.goHallRegistration.deleteMany();
-  await prisma.goHallSession.deleteMany();
-  await prisma.substituteRequest.deleteMany();
-  await prisma.makeupRequest.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.teacherAvailability.deleteMany();
-  await prisma.classEnrollment.deleteMany();
-  await prisma.class.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-});
 
 describe('createSubstituteRequest / listPendingSubstituteRequests', () => {
   it('creates a request with status PENDING_ASSIGNMENT and lists it', async () => {

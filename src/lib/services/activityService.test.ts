@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
@@ -25,29 +25,6 @@ import {
   createCategory,
   deleteCategory,
 } from './activityService';
-
-beforeEach(async () => {
-  await prisma.classAttendance.deleteMany();
-  await prisma.oneOnOneAttendance.deleteMany();
-  await prisma.goHallAttendance.deleteMany();
-  await prisma.activityAttendance.deleteMany();
-  await prisma.activityImage.deleteMany();
-  await prisma.activityRegistration.deleteMany();
-  await prisma.activityTeacher.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.activityCategory.deleteMany();
-  await prisma.goHallRegistration.deleteMany();
-  await prisma.goHallSession.deleteMany();
-  await prisma.substituteRequest.deleteMany();
-  await prisma.makeupRequest.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.teacherAvailability.deleteMany();
-  await prisma.classEnrollment.deleteMany();
-  await prisma.class.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-});
 
 describe('createActivity / listAllActivities', () => {
   it('creates an activity and lists activities soonest-startDate-first with registration count, category, and teachers', async () => {
@@ -428,19 +405,4 @@ describe('coverUrl on list/detail queries', () => {
     const [all] = await listAllActivities();
     expect(all.coverUrl).toBeNull();
   });
-});
-
-// Other service test files' beforeEach blocks predate the Activity /
-// ActivityRegistration tables and don't clean them up before deleting
-// Student, so a registration row left behind by this file's last test
-// (e.g. the concurrency test, which intentionally leaves exactly one) would
-// break every test file that runs after this one with a foreign key
-// violation on student.deleteMany(). Clean up after ourselves so this file
-// leaves no residue for other files, regardless of run order.
-afterAll(async () => {
-  await prisma.activityImage.deleteMany();
-  await prisma.activityRegistration.deleteMany();
-  await prisma.activityTeacher.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.activityCategory.deleteMany();
 });

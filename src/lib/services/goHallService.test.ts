@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
@@ -14,20 +14,6 @@ import {
   listRegistrationsForStudent,
   getSessionDetail,
 } from './goHallService';
-
-beforeEach(async () => {
-  await prisma.goHallRegistration.deleteMany();
-  await prisma.goHallSession.deleteMany();
-  await prisma.substituteRequest.deleteMany();
-  await prisma.makeupRequest.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.teacherAvailability.deleteMany();
-  await prisma.classEnrollment.deleteMany();
-  await prisma.class.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-});
 
 describe('createSessions / listAllSessions', () => {
   it('creates one session per date and lists them soonest-first with a registration count', async () => {

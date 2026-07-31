@@ -10,27 +10,6 @@ import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 
 beforeEach(async () => {
-  await prisma.classAttendance.deleteMany();
-  await prisma.oneOnOneAttendance.deleteMany();
-  await prisma.goHallAttendance.deleteMany();
-  await prisma.activityAttendance.deleteMany();
-  await prisma.goHallRegistration.deleteMany();
-  await prisma.goHallSession.deleteMany();
-  await prisma.activityRegistration.deleteMany();
-  await prisma.activityImage.deleteMany();
-  await prisma.activityTeacher.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.activityCategory.deleteMany();
-  await prisma.substituteRequest.deleteMany();
-  await prisma.makeupRequest.deleteMany();
-  await prisma.leaveRequest.deleteMany();
-  await prisma.teacherAvailability.deleteMany();
-  await prisma.classEnrollment.deleteMany();
-  await prisma.class.deleteMany();
-  await prisma.teacher.deleteMany();
-  await prisma.student.deleteMany();
-  await prisma.user.deleteMany();
-
   // Create marker user for attendance marking
   await prisma.user.create({
     data: {

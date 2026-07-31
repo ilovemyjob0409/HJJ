@@ -1,10 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { listFaqItems, createFaqItem, updateFaqItem, deleteFaqItem, moveFaqItem } from './faqService';
-
-beforeEach(async () => {
-  await prisma.faqItem.deleteMany();
-});
 
 describe('listFaqItems', () => {
   it('returns items ordered by sortOrder ascending', async () => {

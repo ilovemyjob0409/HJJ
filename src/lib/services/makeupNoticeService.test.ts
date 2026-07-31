@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import {
   listMakeupNoticeItems,
@@ -7,10 +7,6 @@ import {
   deleteMakeupNoticeItem,
   moveMakeupNoticeItem,
 } from './makeupNoticeService';
-
-beforeEach(async () => {
-  await prisma.makeupNoticeItem.deleteMany();
-});
 
 describe('listMakeupNoticeItems', () => {
   it('returns items ordered by sortOrder ascending', async () => {
