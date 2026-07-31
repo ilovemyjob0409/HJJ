@@ -41,7 +41,8 @@ export function listPointHistory(studentId: string) {
   });
 }
 
-export async function awardPoints(input: { teacherId: string; studentIds: string[]; amount: number; reasonId: string }) {
+// 加分：老師（帶 teacherId）或行政（teacherId: null）都可執行。
+export async function awardPoints(input: { teacherId: string | null; studentIds: string[]; amount: number; reasonId: string }) {
   if (!Number.isInteger(input.amount) || input.amount < 1 || input.amount > AWARD_MAX) throw new Error('INVALID_AMOUNT');
   if (input.studentIds.length === 0) throw new Error('NO_STUDENTS');
   const reason = await prisma.pointReason.findUnique({ where: { id: input.reasonId } });

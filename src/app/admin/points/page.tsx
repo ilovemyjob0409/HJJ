@@ -13,7 +13,7 @@ import PointReasonsManager from './PointReasonsManager';
 const DRAW_COST = 20; // 與 pointService.DRAW_COST 一致（顯示用）
 
 const KIND_LABELS: Record<string, string> = {
-  TEACHER_AWARD: '老師給點',
+  TEACHER_AWARD: '加分',
   LOTTERY_COST: '抽獎',
   LOTTERY_WIN: '抽獎獲得',
   REDEMPTION: '兌換',
@@ -24,6 +24,11 @@ interface StudentRow {
   id: string;
   studentNumber: string | null;
   user: { name: string };
+}
+
+interface ReasonRow {
+  id: string;
+  label: string;
 }
 
 interface HistoryRow {
@@ -48,6 +53,9 @@ export default function AdminPointsPage() {
   const [data, setData] = useState<PointsData | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const [reasons, setReasons] = useState<ReasonRow[]>([]);
+  const [awardAmount, setAwardAmount] = useState('1');
+  const [awardReasonId, setAwardReasonId] = useState('');
   const [redeemPoints, setRedeemPoints] = useState('');
   const [redeemDescription, setRedeemDescription] = useState('');
   const [draws, setDraws] = useState('');
@@ -58,7 +66,12 @@ export default function AdminPointsPage() {
 
   useEffect(() => {
     fetch('/api/students').then((r) => (r.ok ? r.json() : [])).then(setStudents);
+    loadReasons();
   }, []);
+
+  function loadReasons() {
+    fetch('/api/point-reasons').then((r) => (r.ok ? r.json() : [])).then(setReasons);
+  }
 
   async function loadPoints(studentId: string) {
     const res = await fetch(`/api/points?studentId=${studentId}`);
@@ -104,6 +117,16 @@ export default function AdminPointsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleAward(e: React.FormEvent) {
+    e.preventDefault();
+    const ok = await post(
+      '/api/points/award',
+      { studentIds: [selectedId], amount: Number(awardAmount), reasonId: awardReasonId },
+      `已加 ${Number(awardAmount)} 點`
+    );
+    if (ok) setAwardAmount('1');
   }
 
   async function handleRedeem(e: React.FormEvent) {
@@ -158,7 +181,7 @@ export default function AdminPointsPage() {
         </span>
       ),
     },
-    { header: '給點老師', render: (r) => r.teacher?.user.name ?? '-' },
+    { header: '加分老師', render: (r) => r.teacher?.user.name ?? '-' },
   ];
 
   return (
@@ -200,7 +223,36 @@ export default function AdminPointsPage() {
 
       {selectedStudent && data && (
         <>
-          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card>
+              <h2 className="mb-2 font-bold text-ink">加分</h2>
+              <form onSubmit={handleAward} className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={awardAmount}
+                    onChange={(e) => setAwardAmount(e.target.value)}
+                    className="w-24"
+                    required
+                  />
+                  <Select value={awardReasonId} onChange={(e) => setAwardReasonId(e.target.value)} required className="flex-1">
+                    <option value="">選擇理由</option>
+                    {reasons.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                {reasons.length === 0 && <p className="text-xs text-inkMuted">請先在下方「加分理由維護」建立理由選項。</p>}
+                <Button type="submit" loading={busy} disabled={reasons.length === 0}>
+                  加分
+                </Button>
+              </form>
+            </Card>
+
             <Card>
               <h2 className="mb-2 font-bold text-ink">兌換</h2>
               <form onSubmit={handleRedeem} className="flex flex-col gap-2">

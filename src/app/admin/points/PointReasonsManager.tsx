@@ -85,7 +85,7 @@ export default function PointReasonsManager() {
 
   async function handleDelete() {
     if (!editing) return;
-    if (!confirm(`確定要刪除理由「${editing.label}」嗎？不影響已給點的歷史紀錄。`)) return;
+    if (!confirm(`確定要刪除理由「${editing.label}」嗎？不影響已加分的歷史紀錄。`)) return;
     await fetch(`/api/point-reasons/${editing.id}`, { method: 'DELETE' });
     setEditing(null);
     showToast('已刪除');

@@ -11,7 +11,7 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 export const dynamic = 'force-dynamic';
 
 const KIND_LABELS: Record<string, string> = {
-  TEACHER_AWARD: '老師給點',
+  TEACHER_AWARD: '加分',
   LOTTERY_COST: '抽獎',
   LOTTERY_WIN: '抽獎獲得',
   REDEMPTION: '兌換',
@@ -57,7 +57,7 @@ export default async function StudentPointsPage() {
         </span>
       ),
     },
-    { header: '給點老師', render: (r) => r.teacher?.user.name ?? '-' },
+    { header: '加分老師', render: (r) => r.teacher?.user.name ?? '-' },
   ];
 
   return (
