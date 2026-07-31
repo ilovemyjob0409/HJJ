@@ -40,6 +40,19 @@ enum AttendanceStatus {
   ABSENT
 }
 
+enum PointBucket {
+  REGULAR
+  REDEEM_ONLY
+}
+
+enum PointKind {
+  TEACHER_AWARD
+  LOTTERY_COST
+  LOTTERY_WIN
+  REDEMPTION
+  ADMIN_ADJUST
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -68,6 +81,7 @@ model Teacher {
   substituteRequestsAssigned SubstituteRequest[]   @relation("SubstituteTeacher")
   goHallSessions             GoHallSession[]
   activityTeachers           ActivityTeacher[]
+  pointTransactions          PointTransaction[]
 }
 
 model Student {
@@ -83,6 +97,7 @@ model Student {
   goHallRegistrations   GoHallRegistration[]
   activityRegistrations ActivityRegistration[]
   classAttendances    ClassAttendance[]
+  pointTransactions   PointTransaction[]
   goHallAttendances   GoHallAttendance[]
   activityAttendances ActivityAttendance[]
 }
@@ -351,4 +366,36 @@ model MakeupNoticeItem {
   sortOrder Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// 點數流水：餘額＝各桶 amount 加總。reason 為文字快照，
+// 理由選項／獎品之後改名刪除不影響歷史。
+model PointTransaction {
+  id        String      @id @default(cuid())
+  studentId String
+  student   Student     @relation(fields: [studentId], references: [id])
+  bucket    PointBucket
+  amount    Int
+  kind      PointKind
+  reason    String
+  teacherId String?
+  teacher   Teacher?    @relation(fields: [teacherId], references: [id])
+  createdAt DateTime    @default(now())
+}
+
+model PointReason {
+  id        String   @id @default(cuid())
+  label     String
+  sortOrder Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RewardItem {
+  id         String   @id @default(cuid())
+  name       String
+  pointsCost Int
+  sortOrder  Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
