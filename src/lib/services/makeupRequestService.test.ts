@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createClass, enrollStudent } from './classService';
+import { createClass, enrollStudent, setStudentEnrollments, addEnrollmentSessions } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { setTeacherAvailability } from './availabilityService';
 import {
@@ -21,6 +21,7 @@ import {
 // this file's beforeEach must be resilient to another file's leftover
 // ClassAttendance/OneOnOneAttendance/etc. rows still referencing a
 // Class/MakeupRequest this beforeEach is about to delete.
+// (EnrollmentPeriod rows go away with classEnrollment via onDelete: Cascade.)
 beforeEach(async () => {
   await prisma.classAttendance.deleteMany();
   await prisma.oneOnOneAttendance.deleteMany();
@@ -44,12 +45,14 @@ beforeEach(async () => {
   await prisma.user.deleteMany();
 });
 
+// 報名帶堂數 → setStudentEnrollments 會建立第一期，之後的一對一額度
+// 都從這期起算（一期 1 次）。
 async function setup() {
-  const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '數學' });
+  const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
   const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-  const classA = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
-  const classB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
-  await enrollStudent(classA.id, student.id);
+  const classA = await createClass({ name: '圍棋A班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+  const classB = await createClass({ name: '圍棋B班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+  await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: 12 }]);
   const leave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '感冒' });
   return { teacher, student, classA, classB, leave };
 }
@@ -104,17 +107,16 @@ describe('createInsertionMakeupRequest', () => {
     expect(makeup.status).toBe('PENDING_ADMIN');
   });
 
-  it('throws QUOTA_EXCEEDED when the student already has 2 requests this quarter', async () => {
+  it('allows a third insertion in the same period (insertions are unlimited)', async () => {
     const { student, classA, classB, leave } = await setup();
     await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
     const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
     await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
-
     const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 30), reason: '事假' });
 
-    await expect(
-      createInsertionMakeupRequest({ leaveRequestId: thirdLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 1) })
-    ).rejects.toThrow('QUOTA_EXCEEDED');
+    const third = await createInsertionMakeupRequest({ leaveRequestId: thirdLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 1) });
+
+    expect(third.status).toBe('PENDING_ADMIN');
   });
 });
 
@@ -133,6 +135,25 @@ describe('createOneOnOneMakeupRequest', () => {
     });
     expect(makeup.type).toBe('ONE_ON_ONE');
     expect(makeup.status).toBe('PENDING_ADMIN');
+  });
+
+  it('throws NOT_AVAILABLE for a non-Go class', async () => {
+    const { teacher, student } = await setup();
+    const mathClass = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(mathClass.id, student.id);
+    const mathLeave = await createLeaveRequest({ studentId: student.id, classId: mathClass.id, date: new Date(2026, 6, 21), reason: '事假' });
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    await expect(
+      createOneOnOneMakeupRequest({
+        leaveRequestId: mathLeave.id,
+        studentId: student.id,
+        teacherId: teacher.id,
+        slotDate: new Date('2026-07-15'),
+        slotStartTime: '16:00',
+        slotEndTime: '17:00',
+      })
+    ).rejects.toThrow('NOT_AVAILABLE');
   });
 
   it('throws OUTSIDE_AVAILABILITY when slot is not within any window', async () => {
@@ -164,7 +185,7 @@ describe('createOneOnOneMakeupRequest', () => {
     });
 
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    const classA = await prisma.class.findFirstOrThrow();
+    const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
     await enrollStudent(classA.id, otherStudent.id);
     const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '事假' });
 
@@ -180,7 +201,7 @@ describe('createOneOnOneMakeupRequest', () => {
     ).rejects.toThrow('SLOT_CONFLICT');
   });
 
-  it('throws QUOTA_EXCEEDED when student already has a pending/approved one-on-one request this quarter', async () => {
+  it('throws QUOTA_EXCEEDED when the student already used the one-on-one makeup this period', async () => {
     const { teacher, student, leave } = await setup();
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
     await createOneOnOneMakeupRequest({
@@ -192,7 +213,7 @@ describe('createOneOnOneMakeupRequest', () => {
       slotEndTime: '17:00',
     });
 
-    const classA = await prisma.class.findFirstOrThrow();
+    const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
     const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
 
     await expect(
@@ -207,24 +228,51 @@ describe('createOneOnOneMakeupRequest', () => {
     ).rejects.toThrow('QUOTA_EXCEEDED');
   });
 
-  it('throws QUOTA_EXCEEDED when the total quarterly quota (2) is already used by insertions alone', async () => {
+  it('still allows a one-on-one after two insertions (insertions do not consume the quota)', async () => {
     const { teacher, student, classA, classB, leave } = await setup();
     await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
     const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
     await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
     const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 30), reason: '事假' });
+    const makeup = await createOneOnOneMakeupRequest({
+      leaveRequestId: thirdLeave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-07-15'),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
 
-    await expect(
-      createOneOnOneMakeupRequest({
-        leaveRequestId: thirdLeave.id,
-        studentId: student.id,
-        teacherId: teacher.id,
-        slotDate: new Date('2026-07-15'),
-        slotStartTime: '16:00',
-        slotEndTime: '17:00',
-      })
-    ).rejects.toThrow('QUOTA_EXCEEDED');
+    expect(makeup.status).toBe('PENDING_ADMIN');
+  });
+
+  it('allows a new one-on-one after a new enrollment period is added', async () => {
+    const { teacher, student, classA, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-07-15'),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+
+    await addEnrollmentSessions(classA.id, student.id, 10); // 新的一期
+
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    const makeup = await createOneOnOneMakeupRequest({
+      leaveRequestId: secondLeave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-07-29'),
+      slotStartTime: '17:00',
+      slotEndTime: '18:00',
+    });
+
+    expect(makeup.status).toBe('PENDING_ADMIN');
   });
 
   it('allows only one of two concurrent requests for the same teacher/slot to succeed', async () => {
@@ -232,7 +280,7 @@ describe('createOneOnOneMakeupRequest', () => {
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    const classA = await prisma.class.findFirstOrThrow();
+    const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
     await enrollStudent(classA.id, otherStudent.id);
     const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '事假' });
 
@@ -260,11 +308,11 @@ describe('createOneOnOneMakeupRequest', () => {
     expect(created).toBe(1);
   });
 
-  it('allows only one of two concurrent requests to succeed under the per-quarter quota', async () => {
+  it('allows only one of two concurrent requests to succeed under the per-period quota', async () => {
     const { teacher, student, leave } = await setup();
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
-    const classA = await prisma.class.findFirstOrThrow();
+    const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
     const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
 
     const results = await Promise.allSettled([
@@ -300,13 +348,23 @@ describe('createOneOnOneMakeupRequest', () => {
 });
 
 describe('getMakeupQuotaStatus', () => {
-  it('returns full quota when nothing has been used this quarter', async () => {
+  it('returns full quota for a Go class with a fresh period', async () => {
     const { student, classA } = await setup();
     const quota = await getMakeupQuotaStatus(student.id, classA.id);
-    expect(quota).toEqual({ insertionRemaining: 2, oneOnOneRemaining: 1 });
+    expect(quota).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 1 });
   });
 
-  it('reduces both remaining counts after a one-on-one request', async () => {
+  it('marks one-on-one unavailable for a non-Go class', async () => {
+    const { teacher, student } = await setup();
+    const mathClass = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(mathClass.id, student.id);
+
+    const quota = await getMakeupQuotaStatus(student.id, mathClass.id);
+
+    expect(quota).toEqual({ oneOnOneAvailable: false, oneOnOneRemaining: 0 });
+  });
+
+  it('reduces remaining to zero after a one-on-one request this period', async () => {
     const { teacher, student, classA, leave } = await setup();
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
     await createOneOnOneMakeupRequest({
@@ -319,17 +377,15 @@ describe('getMakeupQuotaStatus', () => {
     });
 
     const quota = await getMakeupQuotaStatus(student.id, classA.id);
-    expect(quota).toEqual({ insertionRemaining: 1, oneOnOneRemaining: 0 });
+    expect(quota).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 0 });
   });
 
-  it('reduces insertion remaining to zero and keeps one-on-one at zero after two insertions', async () => {
+  it('keeps remaining untouched by insertions', async () => {
     const { student, classA, classB, leave } = await setup();
     await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
-    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
-    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
 
     const quota = await getMakeupQuotaStatus(student.id, classA.id);
-    expect(quota).toEqual({ insertionRemaining: 0, oneOnOneRemaining: 0 });
+    expect(quota).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 1 });
   });
 
   it('releases quota back after a one-on-one request is rejected', async () => {
@@ -347,37 +403,63 @@ describe('getMakeupQuotaStatus', () => {
     await decideMakeupRequest(makeup.id, 'REJECTED');
 
     const quota = await getMakeupQuotaStatus(student.id, classA.id);
-    expect(quota).toEqual({ insertionRemaining: 2, oneOnOneRemaining: 1 });
+    expect(quota).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 1 });
   });
 
-  it('tracks quota independently per class', async () => {
-    const { teacher, student, classA, classB, leave } = await setup();
-    await enrollStudent(classB.id, student.id);
-
-    // Use up classA's total quota (2) with two insertions.
-    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
-    const secondLeaveA = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
-    await createInsertionMakeupRequest({ leaveRequestId: secondLeaveA.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
-
-    const classAQuota = await getMakeupQuotaStatus(student.id, classA.id);
-    expect(classAQuota).toEqual({ insertionRemaining: 0, oneOnOneRemaining: 0 });
-
-    // classB is a different class for the same student — must be unaffected.
-    const classBQuota = await getMakeupQuotaStatus(student.id, classB.id);
-    expect(classBQuota).toEqual({ insertionRemaining: 2, oneOnOneRemaining: 1 });
-
-    // A makeup request against classB's own leave must succeed even though classA is exhausted.
-    const classBLeave = await createLeaveRequest({ studentId: student.id, classId: classB.id, date: new Date(2026, 6, 28), reason: '事假' });
+  it('resets remaining when a new period is added', async () => {
+    const { teacher, student, classA, leave } = await setup();
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
-    const makeup = await createOneOnOneMakeupRequest({
-      leaveRequestId: classBLeave.id,
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
       studentId: student.id,
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
       slotEndTime: '17:00',
     });
-    expect(makeup.status).toBe('PENDING_ADMIN');
+
+    await addEnrollmentSessions(classA.id, student.id, 10);
+
+    const quota = await getMakeupQuotaStatus(student.id, classA.id);
+    expect(quota).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 1 });
+  });
+
+  it('counts all history when the enrollment has no period on record', async () => {
+    const { teacher, student, classB } = await setup();
+    await enrollStudent(classB.id, student.id); // 無堂數 → 無期紀錄
+    const leaveB = await createLeaveRequest({ studentId: student.id, classId: classB.id, date: new Date(2026, 6, 28), reason: '事假' });
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leaveB.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-07-15'),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+
+    const quota = await getMakeupQuotaStatus(student.id, classB.id);
+    expect(quota).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 0 });
+  });
+
+  it('tracks quota independently per class', async () => {
+    const { teacher, student, classA, classB, leave } = await setup();
+    await setStudentEnrollments(student.id, [
+      { classId: classA.id, totalSessions: 12 },
+      { classId: classB.id, totalSessions: 12 },
+    ]);
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-07-15'),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+
+    expect(await getMakeupQuotaStatus(student.id, classA.id)).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 0 });
+    expect(await getMakeupQuotaStatus(student.id, classB.id)).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 1 });
   });
 });
 
@@ -432,7 +514,7 @@ describe('listInsertionsForTeacherClasses', () => {
     const results = await listInsertionsForTeacherClasses(teacher.id);
 
     expect(results).toHaveLength(1);
-    expect(results[0].targetClass?.name).toBe('數學B班');
+    expect(results[0].targetClass?.name).toBe('圍棋B班');
     expect(results[0].leaveRequest.student.user.name).toBe('小明');
   });
 });

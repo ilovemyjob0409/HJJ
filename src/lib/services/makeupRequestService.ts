@@ -1,56 +1,57 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { getQuarterRange } from '@/lib/quarter';
 import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
 import { listTeacherAvailability } from './availabilityService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { pushLineMessage } from './lineService';
 
-export const TOTAL_QUARTER_LIMIT = 2;
-export const ONE_ON_ONE_QUARTER_LIMIT = 1;
+export const GO_SUBJECT = '圍棋';
+export const ONE_ON_ONE_PERIOD_LIMIT = 1;
 
 export interface MakeupQuotaStatus {
-  insertionRemaining: number;
+  oneOnOneAvailable: boolean;
   oneOnOneRemaining: number;
 }
 
 type ClientType = typeof prisma | Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$use' | '$extends'>;
 
+// The one-on-one window starts at this enrollment's newest period (each
+// 報課 = one EnrollmentPeriod). No period on record — pre-backfill data or
+// an enrollment created without sessions — falls back to all-time, the
+// conservative reading; after the launch backfill every enrollment has at
+// least one period.
+async function getOneOnOnePeriodStart(client: ClientType, studentId: string, classId: string) {
+  const latest = await client.enrollmentPeriod.findFirst({
+    where: { enrollment: { studentId, classId } },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  return latest?.createdAt ?? null;
+}
+
 // Shared by getMakeupQuotaStatus (read-only snapshot for display) and the
-// write-path quota checks in createOneOnOneMakeupRequestTx /
-// createInsertionMakeupRequestTx (which pass their `tx` client so the count
-// is read inside the same serializable transaction as the check-then-act).
-async function getQuotaCounts(client: ClientType, studentId: string, classId: string, start: Date, end: Date) {
-  const [totalUsed, oneOnOneUsed] = await Promise.all([
-    client.makeupRequest.count({
-      where: {
-        type: { in: ['INSERTION', 'ONE_ON_ONE'] },
-        status: { in: ['PENDING_ADMIN', 'APPROVED'] },
-        leaveRequest: { studentId, classId },
-        createdAt: { gte: start, lte: end },
-      },
-    }),
-    client.makeupRequest.count({
-      where: {
-        type: 'ONE_ON_ONE',
-        status: { in: ['PENDING_ADMIN', 'APPROVED'] },
-        leaveRequest: { studentId, classId },
-        createdAt: { gte: start, lte: end },
-      },
-    }),
-  ]);
-  return { totalUsed, oneOnOneUsed };
+// write-path quota check in createOneOnOneMakeupRequestTx (which passes its
+// `tx` client so the count is read inside the same serializable transaction
+// as the check-then-act). Rejected requests don't count.
+async function countOneOnOneUsed(client: ClientType, studentId: string, classId: string, since: Date | null) {
+  return client.makeupRequest.count({
+    where: {
+      type: 'ONE_ON_ONE',
+      status: { in: ['PENDING_ADMIN', 'APPROVED'] },
+      leaveRequest: { studentId, classId },
+      ...(since ? { createdAt: { gte: since } } : {}),
+    },
+  });
 }
 
 export async function getMakeupQuotaStatus(studentId: string, classId: string): Promise<MakeupQuotaStatus> {
-  const { start, end } = getQuarterRange(new Date());
-  const { totalUsed, oneOnOneUsed } = await getQuotaCounts(prisma, studentId, classId, start, end);
+  const cls = await prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { subject: true } });
+  if (cls.subject !== GO_SUBJECT) return { oneOnOneAvailable: false, oneOnOneRemaining: 0 };
 
-  const totalRemaining = Math.max(0, TOTAL_QUARTER_LIMIT - totalUsed);
-  const oneOnOneRemaining = Math.min(Math.max(0, ONE_ON_ONE_QUARTER_LIMIT - oneOnOneUsed), totalRemaining);
-
-  return { insertionRemaining: totalRemaining, oneOnOneRemaining };
+  const since = await getOneOnOnePeriodStart(prisma, studentId, classId);
+  const used = await countOneOnOneUsed(prisma, studentId, classId, since);
+  return { oneOnOneAvailable: true, oneOnOneRemaining: Math.max(0, ONE_ON_ONE_PERIOD_LIMIT - used) };
 }
 
 export interface CreateInsertionInput {
@@ -59,30 +60,17 @@ export interface CreateInsertionInput {
   targetDate: Date;
 }
 
+// 插班補課不限次數（所有科目），所以不再有額度檢查與交易需求。
 export function createInsertionMakeupRequest(input: CreateInsertionInput) {
-  return runSerializableWithRetry(() => createInsertionMakeupRequestTx(input));
-}
-
-function createInsertionMakeupRequestTx(input: CreateInsertionInput) {
-  return prisma.$transaction(async (tx) => {
-    const leave = await tx.leaveRequest.findUniqueOrThrow({
-      where: { id: input.leaveRequestId },
-      select: { studentId: true, classId: true },
-    });
-    const { start, end } = getQuarterRange(new Date());
-    const { totalUsed } = await getQuotaCounts(tx, leave.studentId, leave.classId, start, end);
-    if (totalUsed >= TOTAL_QUARTER_LIMIT) throw new Error('QUOTA_EXCEEDED');
-
-    return tx.makeupRequest.create({
-      data: {
-        leaveRequestId: input.leaveRequestId,
-        type: 'INSERTION',
-        status: 'PENDING_ADMIN',
-        targetClassId: input.targetClassId,
-        targetDate: input.targetDate,
-      },
-    });
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return prisma.makeupRequest.create({
+    data: {
+      leaveRequestId: input.leaveRequestId,
+      type: 'INSERTION',
+      status: 'PENDING_ADMIN',
+      targetClassId: input.targetClassId,
+      targetDate: input.targetDate,
+    },
+  });
 }
 
 export interface CreateOneOnOneInput {
@@ -103,13 +91,14 @@ function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
   return prisma.$transaction(async (tx) => {
     const leave = await tx.leaveRequest.findUniqueOrThrow({
       where: { id: input.leaveRequestId },
-      select: { classId: true },
+      select: { classId: true, class: { select: { subject: true } } },
     });
-    const { start, end } = getQuarterRange(new Date());
-    const { totalUsed, oneOnOneUsed } = await getQuotaCounts(tx, input.studentId, leave.classId, start, end);
-    if (oneOnOneUsed >= ONE_ON_ONE_QUARTER_LIMIT || totalUsed >= TOTAL_QUARTER_LIMIT) {
-      throw new Error('QUOTA_EXCEEDED');
-    }
+    // 一對一補課只開放圍棋班；每期（最新一期起算）限 1 次。
+    if (leave.class.subject !== GO_SUBJECT) throw new Error('NOT_AVAILABLE');
+
+    const since = await getOneOnOnePeriodStart(tx, input.studentId, leave.classId);
+    const used = await countOneOnOneUsed(tx, input.studentId, leave.classId, since);
+    if (used >= ONE_ON_ONE_PERIOD_LIMIT) throw new Error('QUOTA_EXCEEDED');
 
     // Derived from slotDate rather than trusted from the caller, so a
     // mismatched weekday/date pair can't be used to slip past the check.
