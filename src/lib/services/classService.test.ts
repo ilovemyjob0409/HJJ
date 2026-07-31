@@ -206,6 +206,39 @@ describe('setStudentEnrollments', () => {
     const updated = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
     expect(updated.lowQuotaNotifiedAt).toBeNull();
   });
+
+  it('creates the first enrollment period when a new enrollment has totalSessions', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-period-first-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-period-first-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    const periods = await prisma.enrollmentPeriod.findMany({ where: { enrollment: { studentId: student.id, classId: cls.id } } });
+    expect(periods).toHaveLength(1);
+    expect(periods[0].sessions).toBe(12);
+  });
+
+  it('does not create a period when a new enrollment has no totalSessions', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-period-none-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-period-none-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: null }]);
+
+    expect(await prisma.enrollmentPeriod.count()).toBe(0);
+  });
+
+  it('does not create a period when correcting an existing enrollment totalSessions', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-period-correct-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-period-correct-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 18 }]);
+
+    expect(await prisma.enrollmentPeriod.count()).toBe(1);
+  });
 });
 
 describe('addEnrollmentSessions', () => {
@@ -245,6 +278,21 @@ describe('addEnrollmentSessions', () => {
     const final = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
     expect(final.totalSessions).toBe(18);
   });
+
+  it('creates a new enrollment period recording the added sessions', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-add-period-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-add-period-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    await addEnrollmentSessions(cls.id, student.id, 6);
+
+    const periods = await prisma.enrollmentPeriod.findMany({
+      where: { enrollment: { studentId: student.id, classId: cls.id } },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(periods.map((p) => p.sessions)).toEqual([12, 6]);
+  });
 });
 
 describe('unenrollStudent', () => {
@@ -258,6 +306,17 @@ describe('unenrollStudent', () => {
 
     const remaining = await prisma.classEnrollment.findMany({ where: { studentId: student.id, classId: cls.id } });
     expect(remaining).toHaveLength(0);
+  });
+
+  it('cascades enrollment periods when the enrollment is removed', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-unenroll-period-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'class-unenroll-period-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+
+    await unenrollStudent(cls.id, student.id);
+
+    expect(await prisma.enrollmentPeriod.count()).toBe(0);
   });
 });
 

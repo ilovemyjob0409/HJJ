@@ -139,7 +139,18 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
 
   await prisma.$transaction([
     ...(toRemove.length > 0 ? [prisma.classEnrollment.deleteMany({ where: { studentId, classId: { in: toRemove } } })] : []),
-    ...toAdd.map((e) => prisma.classEnrollment.create({ data: { studentId, classId: e.classId, totalSessions: e.totalSessions } })),
+    ...toAdd.map((e) =>
+      prisma.classEnrollment.create({
+        data: {
+          studentId,
+          classId: e.classId,
+          totalSessions: e.totalSessions,
+          // 首次報名且有堂數＝第一期。之後的期由「新增一期」
+          // (addEnrollmentSessions) 建立；直接改 totalSessions 是校正，不建期。
+          ...(e.totalSessions !== null ? { periods: { create: { sessions: e.totalSessions } } } : {}),
+        },
+      })
+    ),
     ...toUpdate.map((e) =>
       prisma.classEnrollment.update({
         where: { studentId_classId: { studentId, classId: e.classId } },
@@ -164,9 +175,15 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
 // column is nullable and `NULL + n` stays `NULL` in SQL — COALESCE handles
 // that in a single statement. Values are bound via Prisma's tagged-template
 // parameterization, never string-concatenated.
+// 「新增一期」：累加堂數並建立一筆期紀錄（同一交易）。期紀錄是
+// 圍棋班一對一補課額度的重置點（見 makeupRequestService）。
 export async function addEnrollmentSessions(classId: string, studentId: string, amount: number) {
-  await prisma.$executeRaw`UPDATE "ClassEnrollment" SET "totalSessions" = COALESCE("totalSessions", 0) + ${amount} WHERE "studentId" = ${studentId} AND "classId" = ${classId}`;
-  return prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
+  const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
+  await prisma.$transaction([
+    prisma.$executeRaw`UPDATE "ClassEnrollment" SET "totalSessions" = COALESCE("totalSessions", 0) + ${amount} WHERE "id" = ${enrollment.id}`,
+    prisma.enrollmentPeriod.create({ data: { enrollmentId: enrollment.id, sessions: amount } }),
+  ]);
+  return prisma.classEnrollment.findUniqueOrThrow({ where: { id: enrollment.id } });
 }
 
 export function unenrollStudent(classId: string, studentId: string) {
