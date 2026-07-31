@@ -20,6 +20,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/admin/substitute-requests', label: '代課安排' },
     { href: '/admin/go-hall', label: '弈廳' },
     { href: '/admin/activities', label: '活動專區' },
+    { href: '/admin/makeup-notices', label: '補課須知' },
     { href: '/admin/faq', label: '常見問題' },
   ],
   TEACHER: [
