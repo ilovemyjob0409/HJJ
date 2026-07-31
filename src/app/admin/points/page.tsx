@@ -8,6 +8,7 @@ import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import ClassAwardTable from '@/components/ClassAwardTable';
 import PointReasonsManager from './PointReasonsManager';
 
 const DRAW_COST = 20; // 與 pointService.DRAW_COST 一致（顯示用）
@@ -26,9 +27,11 @@ interface StudentRow {
   user: { name: string };
 }
 
-interface ReasonRow {
+interface AdminClassRow {
   id: string;
-  label: string;
+  name: string;
+  subject: string;
+  enrollments: { studentId: string; student: { user: { name: string } } }[];
 }
 
 interface HistoryRow {
@@ -53,8 +56,7 @@ export default function AdminPointsPage() {
   const [data, setData] = useState<PointsData | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [reasons, setReasons] = useState<ReasonRow[]>([]);
-  const [awardRows, setAwardRows] = useState<{ amount: string; reasonId: string }[]>([{ amount: '1', reasonId: '' }]);
+  const [classes, setClasses] = useState<AdminClassRow[]>([]);
   const [redeemPoints, setRedeemPoints] = useState('');
   const [redeemDescription, setRedeemDescription] = useState('');
   const [draws, setDraws] = useState('');
@@ -65,12 +67,8 @@ export default function AdminPointsPage() {
 
   useEffect(() => {
     fetch('/api/students').then((r) => (r.ok ? r.json() : [])).then(setStudents);
-    loadReasons();
+    fetch('/api/classes').then((r) => (r.ok ? r.json() : [])).then(setClasses);
   }, []);
-
-  function loadReasons() {
-    fetch('/api/point-reasons').then((r) => (r.ok ? r.json() : [])).then(setReasons);
-  }
 
   async function loadPoints(studentId: string) {
     const res = await fetch(`/api/points?studentId=${studentId}`);
@@ -87,13 +85,40 @@ export default function AdminPointsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
+  const awardClasses = useMemo(
+    () =>
+      classes.map((c) => ({
+        id: c.id,
+        name: c.name,
+        subject: c.subject,
+        students: c.enrollments.map((e) => ({ id: e.studentId, name: e.student.user.name })),
+      })),
+    [classes]
+  );
+
+  // 學生 → 就讀班級名稱，讓「選擇學生」也能用班級名稱搜尋。
+  const studentClassNames = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const c of classes) {
+      for (const e of c.enrollments) {
+        (map[e.studentId] ??= []).push(c.name);
+      }
+    }
+    return map;
+  }, [classes]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
     return students
-      .filter((s) => s.user.name.toLowerCase().includes(q) || (s.studentNumber ?? '').toLowerCase().includes(q))
+      .filter(
+        (s) =>
+          s.user.name.toLowerCase().includes(q) ||
+          (s.studentNumber ?? '').toLowerCase().includes(q) ||
+          (studentClassNames[s.id] ?? []).some((n) => n.toLowerCase().includes(q))
+      )
       .slice(0, 8);
-  }, [students, search]);
+  }, [students, search, studentClassNames]);
 
   const selectedStudent = students.find((s) => s.id === selectedId);
   const total = data ? data.balances.regular + data.balances.redeemOnly : 0;
@@ -113,36 +138,6 @@ export default function AdminPointsPage() {
       showToast(successMessage);
       loadPoints(selectedId);
       return true;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function updateAwardRow(index: number, patch: Partial<{ amount: string; reasonId: string }>) {
-    setAwardRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  }
-
-  async function handleAward(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedId) return;
-    setBusy(true);
-    try {
-      for (const row of awardRows) {
-        const res = await fetch('/api/points/award', {
-          method: 'POST',
-          body: JSON.stringify({ studentIds: [selectedId], amount: Number(row.amount), reasonId: row.reasonId }),
-        });
-        if (!res.ok) {
-          const resData = await res.json();
-          showToast(resData.error === 'INVALID_AMOUNT' ? '點數需為 1–10 的整數' : `操作失敗：${resData.error}`);
-          loadPoints(selectedId);
-          return;
-        }
-      }
-      const totalAwarded = awardRows.reduce((sum, row) => sum + Number(row.amount), 0);
-      showToast(`已加 ${totalAwarded} 點（${awardRows.length} 筆）`);
-      setAwardRows([{ amount: '1', reasonId: '' }]);
-      loadPoints(selectedId);
     } finally {
       setBusy(false);
     }
@@ -207,6 +202,12 @@ export default function AdminPointsPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">集點管理</h1>
 
+      <h2 className="mb-2 font-bold text-ink">加分</h2>
+      <div className="mb-6">
+        <ClassAwardTable classes={awardClasses} onAwarded={() => selectedId && loadPoints(selectedId)} />
+      </div>
+
+      <h2 className="mb-2 font-bold text-ink">學生點數操作</h2>
       <Card className="mb-6 max-w-xl">
         <p className="mb-1 text-sm font-medium text-ink">選擇學生</p>
         <Input placeholder="搜尋姓名或學號…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -242,60 +243,7 @@ export default function AdminPointsPage() {
 
       {selectedStudent && data && (
         <>
-          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card>
-              <h2 className="mb-2 font-bold text-ink">加分</h2>
-              <form onSubmit={handleAward} className="flex flex-col gap-2">
-                {awardRows.map((row, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={row.amount}
-                      onChange={(e) => updateAwardRow(index, { amount: e.target.value })}
-                      className="w-24"
-                      required
-                    />
-                    <Select
-                      value={row.reasonId}
-                      onChange={(e) => updateAwardRow(index, { reasonId: e.target.value })}
-                      required
-                      className="flex-1"
-                    >
-                      <option value="">選擇理由</option>
-                      {reasons.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </Select>
-                    {awardRows.length > 1 && (
-                      <button
-                        type="button"
-                        aria-label="移除此列"
-                        onClick={() => setAwardRows((prev) => prev.filter((_, i) => i !== index))}
-                        className="text-inkMuted hover:text-rejected"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setAwardRows((prev) => [...prev, { amount: '1', reasonId: '' }])}
-                  className="self-start text-sm text-brandDark hover:underline"
-                >
-                  ＋ 新增一列
-                </button>
-                {reasons.length === 0 && <p className="text-xs text-inkMuted">請先在下方「加分理由維護」建立理由選項。</p>}
-                <Button type="submit" loading={busy} disabled={reasons.length === 0}>
-                  加分
-                </Button>
-              </form>
-            </Card>
-
+          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card>
               <h2 className="mb-2 font-bold text-ink">兌換</h2>
               <form onSubmit={handleRedeem} className="flex flex-col gap-2">
