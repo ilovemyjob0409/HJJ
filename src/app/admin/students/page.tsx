@@ -98,6 +98,8 @@ function StudentsContent() {
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
   const [addClassQuery, setAddClassQuery] = useState('');
   const [openHintClassId, setOpenHintClassId] = useState<string | null>(null);
+  const [periodInputs, setPeriodInputs] = useState<Record<string, string>>({});
+  const [addingPeriodClassId, setAddingPeriodClassId] = useState<string | null>(null);
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -187,6 +189,7 @@ function StudentsContent() {
     setEditing(s);
     setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '', studentNumber: s.studentNumber ?? '' });
     setEditEnrollments(Object.fromEntries(s.enrollments.map((e) => [e.classId, e.totalSessions === null ? '' : String(e.totalSessions)])));
+    setPeriodInputs({});
     setAddClassQuery('');
     setEditError('');
     setLineBindInfo(null);
@@ -226,6 +229,50 @@ function StudentsContent() {
       load();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleAddPeriod(classId: string) {
+    if (!editing) return;
+    const amount = Number(periodInputs[classId]);
+    if (!Number.isInteger(amount) || amount <= 0) {
+      showToast('請輸入本期堂數（正整數）');
+      return;
+    }
+    setAddingPeriodClassId(classId);
+    try {
+      const res = await fetch(`/api/classes/${classId}/enrollments`, {
+        method: 'PATCH',
+        body: JSON.stringify({ studentId: editing.id, addSessions: amount }),
+      });
+      if (!res.ok) {
+        showToast('新增一期失敗，請稍後再試');
+        return;
+      }
+      const updated: { totalSessions: number | null } = await res.json();
+      // 同步表單裡的總堂數與 Modal 顯示，避免之後按「儲存」把加期前的
+      // 舊數字當校正送回去，蓋掉剛加上的堂數。
+      setEditEnrollments((prev) => ({ ...prev, [classId]: updated.totalSessions === null ? '' : String(updated.totalSessions) }));
+      setEditing(
+        (prev) =>
+          prev && {
+            ...prev,
+            enrollments: prev.enrollments.map((en) =>
+              en.classId === classId
+                ? {
+                    ...en,
+                    totalSessions: updated.totalSessions,
+                    remaining: updated.totalSessions === null ? null : updated.totalSessions - en.usedSessions,
+                  }
+                : en
+            ),
+          }
+      );
+      setPeriodInputs((prev) => ({ ...prev, [classId]: '' }));
+      showToast('已新增一期');
+      load();
+    } finally {
+      setAddingPeriodClassId(null);
     }
   }
 
@@ -491,6 +538,39 @@ function StudentsContent() {
                           {low && <LowQuotaIcon />}
                           已上 {enrollment.usedSessions}／剩餘 {enrollment.remaining}
                         </span>
+                      );
+                    },
+                  },
+                  {
+                    header: '新增一期',
+                    render: (c) => {
+                      const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                      if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
+                      return (
+                        <div className="flex items-center justify-center gap-1">
+                          <Input
+                            type="number"
+                            placeholder="堂數"
+                            value={periodInputs[c.id] ?? ''}
+                            onChange={(e) => setPeriodInputs((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                            className="w-20"
+                          />
+                          <button
+                            type="button"
+                            disabled={addingPeriodClassId === c.id}
+                            onClick={() => handleAddPeriod(c.id)}
+                            className="whitespace-nowrap text-xs text-brandDark hover:underline disabled:opacity-50"
+                          >
+                            ＋一期
+                          </button>
+                          <HintButton
+                            label="新增一期說明"
+                            active={openHintClassId === `period-${c.id}`}
+                            onToggle={() => setOpenHintClassId((prev) => (prev === `period-${c.id}` ? null : `period-${c.id}`))}
+                          >
+                            新增一期＝這期報課：堂數會累加到總堂數，圍棋班的一對一補課額度同時重新起算。直接修改「總堂數」欄位則是校正，不會開新的一期。
+                          </HintButton>
+                        </div>
                       );
                     },
                   },
