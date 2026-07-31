@@ -20,6 +20,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/admin/substitute-requests', label: '代課安排' },
     { href: '/admin/go-hall', label: '弈廳' },
     { href: '/admin/activities', label: '活動專區' },
+    { href: '/admin/points', label: '集點' },
     { href: '/admin/makeup-notices', label: '補課須知' },
     { href: '/admin/faq', label: '常見問題' },
   ],
@@ -28,6 +29,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/teacher/leave-request', label: '請假/調課申請' },
     { href: '/teacher/availability', label: '設定可補課時段' },
     { href: '/teacher/attendance', label: '點名' },
+    { href: '/teacher/points', label: '給點' },
     { href: '/teacher/activities', label: '活動專區' },
   ],
   STUDENT: [
@@ -36,6 +38,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/student/makeup-request', label: '補課申請' },
     { href: '/student/go-hall', label: '弈廳' },
     { href: '/student/attendance', label: '我的出席紀錄' },
+    { href: '/student/points', label: '集點卡' },
     { href: '/student/activities', label: '活動專區' },
     { href: '/student/faq', label: '常見問題' },
   ],
