@@ -561,7 +561,7 @@ function StudentsContent() {
                             onClick={() => handleAddPeriod(c.id)}
                             className="whitespace-nowrap text-xs text-brandDark hover:underline disabled:opacity-50"
                           >
-                            ＋一期
+                            續報
                           </button>
                           <HintButton
                             label="新增一期說明"
