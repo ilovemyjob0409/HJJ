@@ -27,6 +27,10 @@ import {
 } from './activityService';
 
 beforeEach(async () => {
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
   await prisma.activityImage.deleteMany();
   await prisma.activityRegistration.deleteMany();
   await prisma.activityTeacher.deleteMany();

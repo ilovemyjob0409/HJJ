@@ -31,12 +31,28 @@ function filePost(id: string, type = 'image/jpeg', bytes = 100) {
   return new Request(`http://x/api/activities/${id}/images`, { method: 'POST', body: form });
 }
 
+// Full FK-safe defensive sweep (same convention as makeupRequestService.test.ts):
+// Vitest schedules test files in a data-dependent order, so this beforeEach
+// must be resilient to another file's leftover Class/LeaveRequest/etc. rows
+// still referencing a Teacher/Student this sweep is about to delete.
 beforeEach(async () => {
-  await prisma.activityImage.deleteMany();
+  await prisma.classAttendance.deleteMany();
+  await prisma.oneOnOneAttendance.deleteMany();
+  await prisma.goHallAttendance.deleteMany();
+  await prisma.activityAttendance.deleteMany();
+  await prisma.goHallRegistration.deleteMany();
+  await prisma.goHallSession.deleteMany();
   await prisma.activityRegistration.deleteMany();
+  await prisma.activityImage.deleteMany();
   await prisma.activityTeacher.deleteMany();
   await prisma.activity.deleteMany();
   await prisma.activityCategory.deleteMany();
+  await prisma.substituteRequest.deleteMany();
+  await prisma.makeupRequest.deleteMany();
+  await prisma.leaveRequest.deleteMany();
+  await prisma.teacherAvailability.deleteMany();
+  await prisma.classEnrollment.deleteMany();
+  await prisma.class.deleteMany();
   await prisma.teacher.deleteMany();
   await prisma.student.deleteMany();
   await prisma.user.deleteMany();
