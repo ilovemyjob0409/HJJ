@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService';
 import { listRegistrationsForStudent } from '@/lib/services/goHallService';
 import { listStudentEnrolledClasses } from '@/lib/services/classService';
-import { TOTAL_QUARTER_LIMIT, ONE_ON_ONE_QUARTER_LIMIT } from '@/lib/services/makeupRequestService';
+import { listMakeupNoticeItems } from '@/lib/services/makeupNoticeService';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -52,6 +52,7 @@ export default async function StudentDashboard() {
         listStudentEnrolledClasses(student.id),
       ])
     : [[], [], []];
+  const notices = await listMakeupNoticeItems();
 
   const goHallRows = myRegistrations.map((r) => ({
     id: r.id,
@@ -89,16 +90,18 @@ export default async function StudentDashboard() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
 
-      <Card className="mb-6">
-        <h2 className="mb-2 font-bold text-ink">補課須知</h2>
-        <ul className="list-disc space-y-1 pl-5 text-sm text-inkMuted">
-          <li>每位學生在每個班級，每一季最多可申請 {TOTAL_QUARTER_LIMIT} 次補課機會（插班、一對一合計計算）。</li>
-          <li>一對一補課每季最多使用 {ONE_ON_ONE_QUARTER_LIMIT} 次，包含在上述總額度內。</li>
-          <li>補課額度依「班級」各自獨立計算，不同班級的名額互不影響。</li>
-          <li>若申請被行政人員拒絕，該次不會計入額度，仍可以再次申請。</li>
-          <li>額度用完後將無法再送出補課申請，剩餘次數請至「申請補課」頁面查看。</li>
-        </ul>
-      </Card>
+      {notices.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-2 font-bold text-ink">補課須知</h2>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-inkMuted">
+            {notices.map((n) => (
+              <li key={n.id} className="whitespace-pre-wrap">
+                {n.content}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/student/leave-request">
