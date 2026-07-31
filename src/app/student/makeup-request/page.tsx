@@ -38,7 +38,7 @@ interface AvailabilityWindow {
 }
 
 interface Quota {
-  insertionRemaining: number;
+  oneOnOneAvailable: boolean;
   oneOnOneRemaining: number;
 }
 
@@ -73,9 +73,7 @@ export default function MakeupRequestPage() {
 
   useEffect(() => {
     if (!quota) return;
-    if (makeupType === 'INSERTION' && quota.insertionRemaining === 0 && quota.oneOnOneRemaining > 0) {
-      setMakeupType('ONE_ON_ONE');
-    } else if (makeupType === 'ONE_ON_ONE' && quota.oneOnOneRemaining === 0 && quota.insertionRemaining > 0) {
+    if (makeupType === 'ONE_ON_ONE' && (!quota.oneOnOneAvailable || quota.oneOnOneRemaining === 0)) {
       setMakeupType('INSERTION');
     }
   }, [quota, makeupType]);
@@ -102,8 +100,6 @@ export default function MakeupRequestPage() {
       const data = await res.json();
       if (res.ok) {
         setMessage('已送出插班申請，待行政確認');
-      } else if (data.error === 'QUOTA_EXCEEDED') {
-        setMessage('本季補課名額已使用完畢');
       } else {
         setMessage(`錯誤：${data.error}`);
       }
@@ -132,7 +128,9 @@ export default function MakeupRequestPage() {
       if (res.ok) {
         setMessage('已送出一對一補課申請，待行政確認');
       } else if (data.error === 'QUOTA_EXCEEDED') {
-        setMessage('本季一對一補課名額已使用');
+        setMessage('本期一對一補課名額已使用');
+      } else if (data.error === 'NOT_AVAILABLE') {
+        setMessage('此班級科目不提供一對一補課');
       } else if (data.error === 'OUTSIDE_AVAILABILITY') {
         setMessage('該時段不在老師可補課時段內');
       } else if (data.error === 'SLOT_CONFLICT') {
@@ -162,40 +160,40 @@ export default function MakeupRequestPage() {
 
       {selectedLeaveId && (
         <Card className="max-w-md">
-          <div className="mb-4 flex gap-6 text-sm text-ink">
-            <label className="flex flex-col gap-1">
-              <span className="flex items-center gap-1">
-                <input
-                  type="radio"
-                  checked={makeupType === 'INSERTION'}
-                  disabled={quota?.insertionRemaining === 0}
-                  onChange={() => setMakeupType('INSERTION')}
-                />
-                插班補課
-              </span>
-              {quota && (
-                <span className="text-xs text-inkMuted">
-                  {quota.insertionRemaining > 0 ? `剩餘 ${quota.insertionRemaining} 次` : '補課次數已使用完畢，請洽櫃檯了解'}
-                </span>
+          {quota?.oneOnOneAvailable ? (
+            <div className="mb-4 flex flex-col gap-3 text-sm text-ink">
+              <div className="flex gap-6">
+                <label className="flex flex-col gap-1">
+                  <span className="flex items-center gap-1">
+                    <input type="radio" checked={makeupType === 'INSERTION'} onChange={() => setMakeupType('INSERTION')} />
+                    插班補課
+                  </span>
+                  <span className="text-xs text-inkMuted">不限次數</span>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="flex items-center gap-1">
+                    <input
+                      type="radio"
+                      checked={makeupType === 'ONE_ON_ONE'}
+                      disabled={quota.oneOnOneRemaining === 0}
+                      onChange={() => setMakeupType('ONE_ON_ONE')}
+                    />
+                    一對一補課
+                  </span>
+                  <span className="text-xs text-inkMuted">
+                    {quota.oneOnOneRemaining > 0 ? `本期剩餘 ${quota.oneOnOneRemaining} 次` : '本期已使用完畢'}
+                  </span>
+                </label>
+              </div>
+              {quota.oneOnOneRemaining === 0 && (
+                <p className="text-xs text-inkMuted">
+                  本期一對一補課已使用完畢。若無法配合插班補課，該期未補課費用將於下一期學費扣除，詳情請洽櫃檯。
+                </p>
               )}
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="flex items-center gap-1">
-                <input
-                  type="radio"
-                  checked={makeupType === 'ONE_ON_ONE'}
-                  disabled={quota?.oneOnOneRemaining === 0}
-                  onChange={() => setMakeupType('ONE_ON_ONE')}
-                />
-                一對一補課
-              </span>
-              {quota && (
-                <span className="text-xs text-inkMuted">
-                  {quota.oneOnOneRemaining > 0 ? `剩餘 ${quota.oneOnOneRemaining} 次` : '補課次數已使用完畢，請洽櫃檯了解'}
-                </span>
-              )}
-            </label>
-          </div>
+            </div>
+          ) : (
+            quota && <p className="mb-4 text-xs text-inkMuted">此班級提供插班補課（不限次數）。</p>
+          )}
 
           {makeupType === 'INSERTION' && (
             <form onSubmit={submitInsertion} className="flex flex-col gap-2">
