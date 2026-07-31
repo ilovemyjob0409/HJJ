@@ -9,7 +9,7 @@ import {
   listPointHistory,
   awardPoints,
   recordLottery,
-  redeemReward,
+  redeemPoints,
   adjustPoints,
 } from './pointService';
 
@@ -125,16 +125,15 @@ describe('recordLottery', () => {
   });
 });
 
-describe('redeemReward', () => {
-  it('spends REDEEM_ONLY first, then REGULAR, as two rows with the reward name snapshot', async () => {
+describe('redeemPoints', () => {
+  it('spends REDEEM_ONLY first, then REGULAR, as two rows with the description snapshot', async () => {
     const { teacher, student, reason } = await setup();
     await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: 10, reasonId: reason.id });
     await prisma.pointTransaction.create({
       data: { studentId: student.id, bucket: 'REDEEM_ONLY', amount: 6, kind: 'LOTTERY_WIN', reason: 'x' },
     });
-    const reward = await prisma.rewardItem.create({ data: { name: '棋子鑰匙圈', pointsCost: 9, sortOrder: 0 } });
 
-    await redeemReward({ studentId: student.id, rewardItemId: reward.id });
+    await redeemPoints({ studentId: student.id, points: 9, description: '棋子鑰匙圈' });
 
     expect(await getPointBalances(student.id)).toEqual({ regular: 7, redeemOnly: 0 });
     const rows = await prisma.pointTransaction.findMany({ where: { kind: 'REDEMPTION' }, orderBy: { amount: 'asc' } });
@@ -145,14 +144,13 @@ describe('redeemReward', () => {
     ]);
   });
 
-  it('writes a single row when REDEEM_ONLY alone covers the cost', async () => {
+  it('writes a single row when REDEEM_ONLY alone covers the points', async () => {
     const { student } = await setup();
     await prisma.pointTransaction.create({
       data: { studentId: student.id, bucket: 'REDEEM_ONLY', amount: 20, kind: 'LOTTERY_WIN', reason: 'x' },
     });
-    const reward = await prisma.rewardItem.create({ data: { name: '文具組', pointsCost: 20, sortOrder: 0 } });
 
-    await redeemReward({ studentId: student.id, rewardItemId: reward.id });
+    await redeemPoints({ studentId: student.id, points: 20, description: '文具組' });
 
     expect(await prisma.pointTransaction.count({ where: { kind: 'REDEMPTION' } })).toBe(1);
     expect(await getPointBalances(student.id)).toEqual({ regular: 0, redeemOnly: 0 });
@@ -161,20 +159,24 @@ describe('redeemReward', () => {
   it('throws INSUFFICIENT_POINTS when the combined balance is short', async () => {
     const { teacher, student, reason } = await setup();
     await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: 5, reasonId: reason.id });
-    const reward = await prisma.rewardItem.create({ data: { name: '大獎', pointsCost: 6, sortOrder: 0 } });
 
-    await expect(redeemReward({ studentId: student.id, rewardItemId: reward.id })).rejects.toThrow('INSUFFICIENT_POINTS');
+    await expect(redeemPoints({ studentId: student.id, points: 6, description: '大獎' })).rejects.toThrow('INSUFFICIENT_POINTS');
     expect(await prisma.pointTransaction.count({ where: { kind: 'REDEMPTION' } })).toBe(0);
+  });
+
+  it('rejects non-positive points and a blank description', async () => {
+    const { student } = await setup();
+    await expect(redeemPoints({ studentId: student.id, points: 0, description: 'x' })).rejects.toThrow('INVALID_AMOUNT');
+    await expect(redeemPoints({ studentId: student.id, points: 1, description: ' ' })).rejects.toThrow('REASON_REQUIRED');
   });
 
   it('allows only one of two concurrent redemptions when balance covers just one', async () => {
     const { teacher, student, reason } = await setup();
     await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: 10, reasonId: reason.id });
-    const reward = await prisma.rewardItem.create({ data: { name: '獎品', pointsCost: 10, sortOrder: 0 } });
 
     const results = await Promise.allSettled([
-      redeemReward({ studentId: student.id, rewardItemId: reward.id }),
-      redeemReward({ studentId: student.id, rewardItemId: reward.id }),
+      redeemPoints({ studentId: student.id, points: 10, description: '獎品' }),
+      redeemPoints({ studentId: student.id, points: 10, description: '獎品' }),
     ]);
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');

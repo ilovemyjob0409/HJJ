@@ -6,6 +6,7 @@ import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService'
 import { listRegistrationsForStudent } from '@/lib/services/goHallService';
 import { listStudentEnrolledClasses } from '@/lib/services/classService';
 import { listMakeupNoticeItems } from '@/lib/services/makeupNoticeService';
+import { getPointBalances } from '@/lib/services/pointService';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -53,6 +54,7 @@ export default async function StudentDashboard() {
       ])
     : [[], [], []];
   const notices = await listMakeupNoticeItems();
+  const balances = student ? await getPointBalances(student.id) : { regular: 0, redeemOnly: 0 };
 
   const goHallRows = myRegistrations.map((r) => ({
     id: r.id,
@@ -89,6 +91,20 @@ export default async function StudentDashboard() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
+
+      <Link href="/student/points">
+        <Card className="mb-6 transition-shadow hover:shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm text-inkMuted">我的集點卡</p>
+              <p className="mt-1 text-2xl font-bold text-brandDark">{balances.regular + balances.redeemOnly} 點</p>
+            </div>
+            <p className="text-sm text-inkMuted">
+              一般 {balances.regular} 點・兌換專用 {balances.redeemOnly} 點
+            </p>
+          </div>
+        </Card>
+      </Link>
 
       {notices.length > 0 && (
         <Card className="mb-6">

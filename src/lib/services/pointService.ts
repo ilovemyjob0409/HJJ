@@ -83,30 +83,32 @@ export function recordLottery(input: { studentId: string; draws: number; wonPoin
   );
 }
 
-// 兌換：兩桶合計須足夠，優先扣兌換專用、不足再扣一般（各桶一筆負向紀錄）。
-export function redeemReward(input: { studentId: string; rewardItemId: string }) {
+// 兌換（無獎品目錄）：行政輸入扣多少點＋換了什麼。兩桶合計須足夠，
+// 優先扣兌換專用、不足再扣一般（各桶一筆負向紀錄）。
+export function redeemPoints(input: { studentId: string; points: number; description: string }) {
+  if (!Number.isInteger(input.points) || input.points < 1) return Promise.reject(new Error('INVALID_AMOUNT'));
+  if (!input.description.trim()) return Promise.reject(new Error('REASON_REQUIRED'));
+  const description = input.description.trim();
   return runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
-        const reward = await tx.rewardItem.findUniqueOrThrow({ where: { id: input.rewardItemId } });
         const [regular, redeemOnly] = await Promise.all([
           sumBucket(tx, input.studentId, 'REGULAR'),
           sumBucket(tx, input.studentId, 'REDEEM_ONLY'),
         ]);
-        if (regular + redeemOnly < reward.pointsCost) throw new Error('INSUFFICIENT_POINTS');
-        const fromRedeemOnly = Math.min(redeemOnly, reward.pointsCost);
-        const fromRegular = reward.pointsCost - fromRedeemOnly;
+        if (regular + redeemOnly < input.points) throw new Error('INSUFFICIENT_POINTS');
+        const fromRedeemOnly = Math.min(redeemOnly, input.points);
+        const fromRegular = input.points - fromRedeemOnly;
         if (fromRedeemOnly > 0) {
           await tx.pointTransaction.create({
-            data: { studentId: input.studentId, bucket: 'REDEEM_ONLY', amount: -fromRedeemOnly, kind: 'REDEMPTION', reason: reward.name },
+            data: { studentId: input.studentId, bucket: 'REDEEM_ONLY', amount: -fromRedeemOnly, kind: 'REDEMPTION', reason: description },
           });
         }
         if (fromRegular > 0) {
           await tx.pointTransaction.create({
-            data: { studentId: input.studentId, bucket: 'REGULAR', amount: -fromRegular, kind: 'REDEMPTION', reason: reward.name },
+            data: { studentId: input.studentId, bucket: 'REGULAR', amount: -fromRegular, kind: 'REDEMPTION', reason: description },
           });
         }
-        return reward;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )

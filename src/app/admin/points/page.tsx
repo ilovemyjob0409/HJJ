@@ -9,7 +9,6 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import PointReasonsManager from './PointReasonsManager';
-import RewardItemsManager from './RewardItemsManager';
 
 const DRAW_COST = 20; // 與 pointService.DRAW_COST 一致（顯示用）
 
@@ -25,12 +24,6 @@ interface StudentRow {
   id: string;
   studentNumber: string | null;
   user: { name: string };
-}
-
-interface RewardRow {
-  id: string;
-  name: string;
-  pointsCost: number;
 }
 
 interface HistoryRow {
@@ -50,13 +43,13 @@ interface PointsData {
 export default function AdminPointsPage() {
   const { showToast } = useToast();
   const [students, setStudents] = useState<StudentRow[]>([]);
-  const [rewards, setRewards] = useState<RewardRow[]>([]);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [data, setData] = useState<PointsData | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [redeemRewardId, setRedeemRewardId] = useState('');
+  const [redeemPoints, setRedeemPoints] = useState('');
+  const [redeemDescription, setRedeemDescription] = useState('');
   const [draws, setDraws] = useState('');
   const [wonPoints, setWonPoints] = useState('');
   const [adjustBucket, setAdjustBucket] = useState<'REGULAR' | 'REDEEM_ONLY'>('REGULAR');
@@ -65,12 +58,7 @@ export default function AdminPointsPage() {
 
   useEffect(() => {
     fetch('/api/students').then((r) => (r.ok ? r.json() : [])).then(setStudents);
-    loadRewards();
   }, []);
-
-  function loadRewards() {
-    fetch('/api/reward-items').then((r) => (r.ok ? r.json() : [])).then(setRewards);
-  }
 
   async function loadPoints(studentId: string) {
     const res = await fetch(`/api/points?studentId=${studentId}`);
@@ -120,11 +108,16 @@ export default function AdminPointsPage() {
 
   async function handleRedeem(e: React.FormEvent) {
     e.preventDefault();
-    const reward = rewards.find((r) => r.id === redeemRewardId);
-    if (!reward) return;
-    if (!confirm(`確定為「${selectedStudent?.user.name}」兌換「${reward.name}」（扣 ${reward.pointsCost} 點）嗎？`)) return;
-    const ok = await post('/api/points/redeem', { studentId: selectedId, rewardItemId: redeemRewardId }, `已兌換「${reward.name}」`);
-    if (ok) setRedeemRewardId('');
+    if (!confirm(`確定為「${selectedStudent?.user.name}」兌換「${redeemDescription}」（扣 ${Number(redeemPoints)} 點）嗎？`)) return;
+    const ok = await post(
+      '/api/points/redeem',
+      { studentId: selectedId, points: Number(redeemPoints), description: redeemDescription },
+      `已兌換「${redeemDescription}」`
+    );
+    if (ok) {
+      setRedeemPoints('');
+      setRedeemDescription('');
+    }
   }
 
   async function handleLottery(e: React.FormEvent) {
@@ -209,17 +202,24 @@ export default function AdminPointsPage() {
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card>
-              <h2 className="mb-2 font-bold text-ink">兌換獎品</h2>
+              <h2 className="mb-2 font-bold text-ink">兌換</h2>
               <form onSubmit={handleRedeem} className="flex flex-col gap-2">
-                <Select value={redeemRewardId} onChange={(e) => setRedeemRewardId(e.target.value)} required>
-                  <option value="">選擇獎品</option>
-                  {rewards.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}（{r.pointsCost} 點）
-                    </option>
-                  ))}
-                </Select>
-                <Button type="submit" loading={busy} disabled={!redeemRewardId}>
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="扣多少點"
+                  value={redeemPoints}
+                  onChange={(e) => setRedeemPoints(e.target.value)}
+                  required
+                />
+                <Input
+                  placeholder="換了什麼（例如：文具組）"
+                  value={redeemDescription}
+                  onChange={(e) => setRedeemDescription(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-inkMuted">自動優先扣兌換專用點數，不足再扣一般點數</p>
+                <Button type="submit" loading={busy}>
                   兌換並扣點
                 </Button>
               </form>
@@ -280,7 +280,6 @@ export default function AdminPointsPage() {
         </>
       )}
 
-      <RewardItemsManager onChanged={loadRewards} />
       <PointReasonsManager />
     </>
   );

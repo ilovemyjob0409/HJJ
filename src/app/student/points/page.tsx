@@ -2,7 +2,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getPointBalances, listPointHistory } from '@/lib/services/pointService';
-import { listRewardItems } from '@/lib/services/rewardItemService';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
@@ -43,11 +42,7 @@ export default async function StudentPointsPage() {
     );
   }
 
-  const [balances, history, rewards] = await Promise.all([
-    getPointBalances(student.id),
-    listPointHistory(student.id),
-    listRewardItems(),
-  ]);
+  const [balances, history] = await Promise.all([getPointBalances(student.id), listPointHistory(student.id)]);
   const total = balances.regular + balances.redeemOnly;
 
   const historyColumns: Column<HistoryRow>[] = [
@@ -84,31 +79,6 @@ export default async function StudentPointsPage() {
           <p className="mt-1 text-2xl font-bold text-brandDark">{total}</p>
         </Card>
       </div>
-
-      {rewards.length > 0 && (
-        <>
-          <h2 className="mb-2 font-bold text-ink">獎品目錄</h2>
-          <Card className="mb-6">
-            <ul className="divide-y divide-borderSubtle">
-              {rewards.map((r) => {
-                const affordable = total >= r.pointsCost;
-                return (
-                  <li key={r.id} className="flex items-center justify-between py-2 text-sm">
-                    <span className="text-ink">{r.name}</span>
-                    <span className="flex items-center gap-2">
-                      <span className="text-inkMuted">{r.pointsCost} 點</span>
-                      {affordable && (
-                        <span className="rounded-full bg-approvedBg px-2 py-0.5 text-xs font-semibold text-approved">可兌換</span>
-                      )}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="mt-3 text-xs text-inkMuted">想兌換獎品請至櫃檯，由行政人員為您扣點。</p>
-          </Card>
-        </>
-      )}
 
       <h2 className="mb-2 font-bold text-ink">點數紀錄</h2>
       <Card>

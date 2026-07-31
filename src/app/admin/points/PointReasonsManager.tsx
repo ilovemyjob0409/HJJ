@@ -151,7 +151,7 @@ export default function PointReasonsManager() {
 
   return (
     <>
-      <h2 className="mb-2 font-bold text-ink">給點理由維護</h2>
+      <h2 className="mb-2 font-bold text-ink">加分理由維護</h2>
       <div className="mb-4">{!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增理由</Button>}</div>
 
       {showAddForm && (
