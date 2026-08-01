@@ -52,7 +52,8 @@ export default function AdminPointsPage() {
   const [classFilter, setClassFilter] = useState('');
   const [nameQuery, setNameQuery] = useState('');
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [batchOpen, setBatchOpen] = useState(false);
+  // 加分視窗的對象：批量＝勾選清單、單人＝點「編輯」的那位；null＝關閉
+  const [awardTargets, setAwardTargets] = useState<{ id: string; name: string }[] | null>(null);
 
   const [selectedId, setSelectedId] = useState('');
   const [data, setData] = useState<PointsData | null>(null);
@@ -209,10 +210,12 @@ export default function AdminPointsPage() {
           className="text-brandDark hover:underline"
           onClick={(e) => {
             e.stopPropagation();
+            // 直接開啟該學生的加分視窗；下方同時帶出兌換／抽獎／調整與紀錄
             setSelectedId(s.id);
+            setAwardTargets([{ id: s.id, name: s.name }]);
           }}
         >
-          明細
+          編輯
         </button>
       ),
     },
@@ -280,23 +283,29 @@ export default function AdminPointsPage() {
           <span className="text-sm text-ink">
             已選 <span className="font-semibold">{checkedIds.length}</span> 人
           </span>
-          <Button type="button" disabled={checkedIds.length === 0} onClick={() => setBatchOpen(true)}>
+          <Button
+            type="button"
+            disabled={checkedIds.length === 0}
+            onClick={() => setAwardTargets(filtered.filter((s) => checked[s.id]).map((s) => ({ id: s.id, name: s.name })))}
+          >
             批量加分
           </Button>
         </div>
       </Card>
 
       <Modal
-        open={batchOpen}
-        onClose={() => setBatchOpen(false)}
-        title={`批量加分（${checkedIds.length} 位學生）`}
+        open={awardTargets !== null}
+        onClose={() => setAwardTargets(null)}
+        title={
+          awardTargets && awardTargets.length === 1 ? `加分：${awardTargets[0].name}` : `批量加分（${awardTargets?.length ?? 0} 位學生）`
+        }
         maxWidthClassName="max-w-2xl"
       >
-        {batchOpen && (
+        {awardTargets && (
           <AwardRowsForm
-            students={filtered.filter((s) => checked[s.id]).map((s) => ({ id: s.id, name: s.name }))}
+            students={awardTargets}
             onAwarded={() => {
-              setBatchOpen(false);
+              setAwardTargets(null);
               setChecked({});
               refreshAfterChange();
             }}
