@@ -124,6 +124,8 @@ function StudentsContent() {
   // 未報名日期清單要列幾週：預設跟著堂數走（一週一堂），手動改過就不再跟
   const [renewWeeks, setRenewWeeks] = useState('16');
   const [renewWeeksTouched, setRenewWeeksTouched] = useState(false);
+  // 未報名日期區塊預設收合，有需要再展開
+  const [renewDatesOpen, setRenewDatesOpen] = useState(false);
   const [renewBusy, setRenewBusy] = useState(false);
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -272,6 +274,7 @@ function StudentsContent() {
     setRenewDates({});
     setRenewWeeks('16');
     setRenewWeeksTouched(false);
+    setRenewDatesOpen(false);
   }
 
   function handleRenewAmountChange(value: string) {
@@ -746,13 +749,19 @@ function StudentsContent() {
             </div>
 
             <div>
-              <div className="mb-1 flex items-baseline justify-between">
-                <p className="text-sm font-medium text-ink">未報名日期（可複選）</p>
-                <span className="text-xs text-inkMuted">
-                  已選 {renewSelectedDates.length} 天
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-sm font-medium text-ink"
+                onClick={() => setRenewDatesOpen((open) => !open)}
+              >
+                <span>
+                  未報名日期（可複選{renewSelectedDates.length > 0 ? `，已選 ${renewSelectedDates.length} 天` : ''}）
                 </span>
-              </div>
-              <div className="mb-1 flex items-center gap-2 text-xs text-inkMuted">
+                <span className="text-xs text-inkMuted">{renewDatesOpen ? '收合' : '展開'}</span>
+              </button>
+              {renewDatesOpen && (
+              <>
+              <div className="mb-1 mt-1 flex items-center gap-2 text-xs text-inkMuted">
                 <span>列出未來</span>
                 <Input
                   type="number"
@@ -790,6 +799,8 @@ function StudentsContent() {
                   );
                 })}
               </div>
+              </>
+              )}
             </div>
 
             <Button type="submit" loading={renewBusy}>
