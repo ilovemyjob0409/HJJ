@@ -465,7 +465,7 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     expect(record?.checkOutTime).toBe('23:30');
   });
 
-  it('returns NO_SESSION once the only class today is fully checked in and out', async () => {
+  it('keeps checking out on repeated scans once the only class today is fully checked in and out, overwriting the check-out time', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen3@example.com', password: 'x', subjects: '數學' });
     const student = await setupStudentWithNumber('S003', 'checkin-ming3@example.com');
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
@@ -475,11 +475,62 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
 
     const result = await checkInByStudentNumber('S003', '2026-08-04', '21:10', 'marker-1');
 
-    expect(result).toEqual({ result: 'NO_SESSION' });
+    expect(result).toEqual({ result: 'CHECKED_OUT', studentName: '小明', sessionTitle: '數學A班', time: '21:10' });
     const record = await prisma.classAttendance.findUnique({
       where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: new Date('2026-08-04') } },
     });
-    expect(record?.checkOutTime).toBe('21:05');
+    expect(record?.checkInTime).toBe('18:55');
+    expect(record?.checkOutTime).toBe('21:10');
+  });
+
+  it('returns NO_SESSION when the student has no session today at all', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen14@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S014', 'checkin-ming14@example.com');
+    // 週三的班，掃描日 2026-08-04 是週二 → 今天沒課
+    const cls = await createClass({ name: '週三班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+
+    const result = await checkInByStudentNumber('S014', '2026-08-04', '19:00', 'marker-1');
+
+    expect(result).toEqual({ result: 'NO_SESSION' });
+  });
+
+  it('offers completed classes for re-check-out when everything today is done, and resolving overwrites that check-out time', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen15@example.com', password: 'x', subjects: '數學' });
+    const student = await setupStudentWithNumber('S015', 'checkin-ming15@example.com');
+    const classA = await createClass({ name: '早班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '09:00', endTime: '11:00' });
+    const classB = await createClass({ name: '晚班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '20:00' });
+    await enrollStudent(classA.id, student.id);
+    await enrollStudent(classB.id, student.id);
+    await prisma.classAttendance.create({
+      data: { classId: classA.id, studentId: student.id, date: new Date('2026-08-04'), status: 'PRESENT', checkInTime: '09:00', checkOutTime: '11:00', markedById: 'marker-1' },
+    });
+    await prisma.classAttendance.create({
+      data: { classId: classB.id, studentId: student.id, date: new Date('2026-08-04'), status: 'PRESENT', checkInTime: '19:00', checkOutTime: '20:00', markedById: 'marker-1' },
+    });
+
+    const scan = await checkInByStudentNumber('S015', '2026-08-04', '20:30', 'marker-1');
+
+    expect(scan).toEqual({
+      result: 'CHOOSE_SESSION',
+      studentName: '小明',
+      candidates: [
+        { key: `class:${classA.id}`, title: '早班', timeLabel: '09:00-11:00', teacherName: '陳老師', pendingAction: 'CHECK_OUT' },
+        { key: `class:${classB.id}`, title: '晚班', timeLabel: '19:00-20:00', teacherName: '陳老師', pendingAction: 'CHECK_OUT' },
+      ],
+    });
+
+    const resolved = await resolveCheckIn('S015', '2026-08-04', '20:30', 'marker-1', `class:${classB.id}`);
+    expect(resolved).toEqual({ result: 'CHECKED_OUT', studentName: '小明', sessionTitle: '晚班', time: '20:30' });
+
+    const recordB = await prisma.classAttendance.findUnique({
+      where: { classId_studentId_date: { classId: classB.id, studentId: student.id, date: new Date('2026-08-04') } },
+    });
+    expect(recordB?.checkOutTime).toBe('20:30');
+    const recordA = await prisma.classAttendance.findUnique({
+      where: { classId_studentId_date: { classId: classA.id, studentId: student.id, date: new Date('2026-08-04') } },
+    });
+    expect(recordA?.checkOutTime).toBe('11:00');
   });
 
   it('checks in via an approved insertion makeup targeting a class the student is not otherwise enrolled in', async () => {
@@ -572,7 +623,7 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     expect(recordA).toBeNull();
   });
 
-  it("resolveCheckIn falls back to NO_SESSION when the chosen key is no longer among today's incomplete candidates", async () => {
+  it("resolveCheckIn falls back to NO_SESSION when the chosen key doesn't match any of today's candidates", async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'checkin-chen8@example.com', password: 'x', subjects: '數學' });
     const student = await setupStudentWithNumber('S008', 'checkin-ming8@example.com');
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });

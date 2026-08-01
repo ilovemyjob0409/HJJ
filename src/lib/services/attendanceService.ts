@@ -759,21 +759,24 @@ export async function checkInByStudentNumber(
   const date = new Date(dateStr);
   const candidates = await getTodayCandidates(student.id, date, timeStr, markedById);
   const incomplete = candidates.filter((c) => !(c.checkInTime && c.checkOutTime));
+  // 今天的課都已簽到＋簽退時，再掃視為重新簽退（覆蓋簽退時間）；
+  // 只有今天完全沒課才回 NO_SESSION
+  const eligible = incomplete.length > 0 ? incomplete : candidates;
 
-  if (incomplete.length === 0) return { result: 'NO_SESSION' };
+  if (eligible.length === 0) return { result: 'NO_SESSION' };
 
-  if (incomplete.length === 1) {
-    const match = incomplete[0];
+  if (eligible.length === 1) {
+    const match = eligible[0];
     const action = await match.apply();
     await notifyAttendanceResult(student, match, action, timeStr);
     return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
   }
 
-  incomplete.sort((a, b) => a.startMinutes - b.startMinutes);
+  eligible.sort((a, b) => a.startMinutes - b.startMinutes);
   return {
     result: 'CHOOSE_SESSION',
     studentName: student.user.name,
-    candidates: incomplete.map(toCandidateOption),
+    candidates: eligible.map(toCandidateOption),
   };
 }
 
@@ -792,8 +795,8 @@ export async function resolveCheckIn(
 
   const date = new Date(dateStr);
   const candidates = await getTodayCandidates(student.id, date, timeStr, markedById);
-  const incomplete = candidates.filter((c) => !(c.checkInTime && c.checkOutTime));
-  const match = incomplete.find((c) => c.key === key);
+  // 已完成的課也可以被選來重新簽退（覆蓋簽退時間），所以直接在全部候選裡找
+  const match = candidates.find((c) => c.key === key);
   if (!match) return { result: 'NO_SESSION' };
 
   const action = await match.apply();
