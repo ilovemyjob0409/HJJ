@@ -254,17 +254,36 @@ async function createLeaveForArrangeTx(tx: Prisma.TransactionClient, input: Arra
   });
 }
 
+function findExistingLeaveTx(tx: Prisma.TransactionClient, input: ArrangeBaseInput) {
+  return tx.leaveRequest.findFirst({
+    where: { studentId: input.studentId, classId: input.classId, date: input.date },
+    include: { makeupRequest: { select: { id: true } } },
+  });
+}
+
+// 同日已有請假就直接沿用——這是行政「對既有請假單獨補排補課」的入口；
+// 該請假已掛補課則擋下，避免蓋掉原本的安排。
+async function findOrCreateLeaveForArrangeTx(tx: Prisma.TransactionClient, input: ArrangeBaseInput) {
+  const existing = await findExistingLeaveTx(tx, input);
+  if (existing?.makeupRequest) throw new Error('ALREADY_HAS_MAKEUP');
+  if (existing) return existing;
+  return createLeaveForArrangeTx(tx, input);
+}
+
 // 只代辦請假、暫不安排補課；家長之後仍可對這筆請假自行申請補課。
 // 與家長自行請假一致：直接核准、不發 LINE 通知。
 export async function arrangeLeaveOnly(input: ArrangeBaseInput) {
-  return prisma.$transaction((tx) => createLeaveForArrangeTx(tx, input));
+  return prisma.$transaction(async (tx) => {
+    if (await findExistingLeaveTx(tx, input)) throw new Error('ALREADY_ON_LEAVE');
+    return createLeaveForArrangeTx(tx, input);
+  });
 }
 
 export async function arrangeInsertionMakeup(input: ArrangeBaseInput & { targetClassId: string; targetDate: Date }) {
   const makeup = await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
-        const leave = await createLeaveForArrangeTx(tx, input);
+        const leave = await findOrCreateLeaveForArrangeTx(tx, input);
         return tx.makeupRequest.create({
           data: {
             leaveRequestId: leave.id,
@@ -297,7 +316,7 @@ export async function arrangeOneOnOneMakeup(
           slotStartTime: input.slotStartTime,
           slotEndTime: input.slotEndTime,
         });
-        const leave = await createLeaveForArrangeTx(tx, input);
+        const leave = await findOrCreateLeaveForArrangeTx(tx, input);
         return tx.makeupRequest.create({
           data: {
             leaveRequestId: leave.id,

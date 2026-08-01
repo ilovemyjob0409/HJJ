@@ -536,9 +536,58 @@ describe('arrangeInsertionMakeup', () => {
     expect(await prisma.leaveRequest.count({ where: { date: new Date(2026, 7, 3) } })).toBe(0);
     expect(await prisma.makeupRequest.count()).toBe(0);
   });
+
+  it('attaches the makeup to an existing leave on that date instead of creating a duplicate leave', async () => {
+    const { student, classA, classB, leave } = await setup();
+
+    const makeup = await arrangeInsertionMakeup({
+      studentId: student.id,
+      classId: classA.id,
+      date: new Date(2026, 6, 20), // setup() 已建立的請假日
+      reason: '行政代辦',
+      targetClassId: classB.id,
+      targetDate: new Date(2026, 6, 22),
+    });
+
+    expect(makeup.leaveRequestId).toBe(leave.id);
+    expect(
+      await prisma.leaveRequest.count({ where: { studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20) } })
+    ).toBe(1);
+  });
+
+  it('throws ALREADY_HAS_MAKEUP when that leave already has a makeup arranged', async () => {
+    const { student, classA, classB, leave } = await setup();
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+
+    await expect(
+      arrangeInsertionMakeup({
+        studentId: student.id,
+        classId: classA.id,
+        date: new Date(2026, 6, 20),
+        reason: '行政代辦',
+        targetClassId: classB.id,
+        targetDate: new Date(2026, 6, 29),
+      })
+    ).rejects.toThrow('ALREADY_HAS_MAKEUP');
+  });
 });
 
 describe('arrangeLeaveOnly', () => {
+  it('throws ALREADY_ON_LEAVE when a leave already exists for that date', async () => {
+    const { student, classA } = await setup();
+
+    await expect(
+      arrangeLeaveOnly({
+        studentId: student.id,
+        classId: classA.id,
+        date: new Date(2026, 6, 20), // setup() 已建立的請假日
+        reason: '行政代辦',
+      })
+    ).rejects.toThrow('ALREADY_ON_LEAVE');
+
+    expect(await prisma.leaveRequest.count({ where: { studentId: student.id, classId: classA.id } })).toBe(1);
+  });
+
   it('creates an approved leave with no makeup request attached', async () => {
     const { student, classA } = await setup();
 
@@ -589,6 +638,27 @@ describe('arrangeOneOnOneMakeup', () => {
 
     expect(makeup.type).toBe('ONE_ON_ONE');
     expect(makeup.status).toBe('APPROVED');
+  });
+
+  it('attaches the one-on-one to an existing leave on that date', async () => {
+    const { teacher, student, classA, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    const makeup = await arrangeOneOnOneMakeup({
+      studentId: student.id,
+      classId: classA.id,
+      date: new Date(2026, 6, 20), // setup() 已建立的請假日
+      reason: '行政代辦',
+      teacherId: teacher.id,
+      slotDate: new Date('2026-08-05'), // a Wednesday
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+
+    expect(makeup.leaveRequestId).toBe(leave.id);
+    expect(
+      await prisma.leaveRequest.count({ where: { studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20) } })
+    ).toBe(1);
   });
 
   it('throws NOT_AVAILABLE for a non-Go class', async () => {

@@ -41,6 +41,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   QUOTA_EXCEEDED: '本期一對一補課額度已使用完畢',
   OUTSIDE_AVAILABILITY: '不在老師可補課時段內',
   SLOT_CONFLICT: '該時段已被其他學生預約',
+  ALREADY_ON_LEAVE: '該學生該日已有請假紀錄；要補排補課請勾選「同時安排補課」',
+  ALREADY_HAS_MAKEUP: '該筆請假已安排過補課',
 };
 
 // 行政代排：選學生＋原課程（請假）→ 直接改排插班或一對一（直接核准，
@@ -224,6 +226,9 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
                 <input type="checkbox" checked={withMakeup} onChange={(e) => setWithMakeup(e.target.checked)} />
                 同時安排補課（不勾就只代辦請假）
               </label>
+              <p className="text-xs text-inkMuted">
+                選到已請過假的日期時，勾選補課會直接掛在原本的請假上，不會重複請假。
+              </p>
 
               {withMakeup && (
               <>
