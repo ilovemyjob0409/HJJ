@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import PointReasonsManager from './PointReasonsManager';
@@ -56,6 +57,7 @@ export default function AdminPointsPage() {
   const [classFilter, setClassFilter] = useState('');
   const [nameQuery, setNameQuery] = useState('');
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [batchOpen, setBatchOpen] = useState(false);
   const [batchAmount, setBatchAmount] = useState('1');
   const [batchReasonId, setBatchReasonId] = useState('');
 
@@ -146,6 +148,7 @@ export default function AdminPointsPage() {
       showToast(`已為 ${checkedIds.length} 位學生各加 ${Number(batchAmount)} 點`);
       setChecked({});
       setBatchAmount('1');
+      setBatchOpen(false);
       refreshAfterChange();
     } finally {
       setBusy(false);
@@ -308,33 +311,49 @@ export default function AdminPointsPage() {
           rowClassName={(s) => (checked[s.id] ? 'bg-stripe cursor-pointer' : 'cursor-pointer hover:bg-stripe')}
         />
 
-        <form onSubmit={handleBatchAward} className="mt-3 flex flex-wrap items-center gap-2 border-t border-borderSubtle pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-borderSubtle pt-3">
           <span className="text-sm text-ink">
             已選 <span className="font-semibold">{checkedIds.length}</span> 人
           </span>
-          <Input
-            type="number"
-            min={1}
-            max={10}
-            value={batchAmount}
-            onChange={(e) => setBatchAmount(e.target.value)}
-            className="w-20"
-            required
-          />
-          <Select value={batchReasonId} onChange={(e) => setBatchReasonId(e.target.value)} required className="w-56">
-            <option value="">選擇加分理由</option>
-            {reasons.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.label}
-              </option>
-            ))}
-          </Select>
-          <Button type="submit" loading={busy} disabled={checkedIds.length === 0 || reasons.length === 0}>
+          <Button type="button" disabled={checkedIds.length === 0} onClick={() => setBatchOpen(true)}>
             批量加分
           </Button>
-          {reasons.length === 0 && <span className="text-xs text-inkMuted">請先在下方建立加分理由</span>}
-        </form>
+        </div>
       </Card>
+
+      <Modal open={batchOpen} onClose={() => setBatchOpen(false)} title={`批量加分（${checkedIds.length} 位學生）`}>
+        <p className="mb-3 text-sm text-inkMuted">
+          {filtered
+            .filter((s) => checked[s.id])
+            .map((s) => s.name)
+            .join('、')}
+        </p>
+        <form onSubmit={handleBatchAward} className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={batchAmount}
+              onChange={(e) => setBatchAmount(e.target.value)}
+              className="w-24"
+              required
+            />
+            <Select value={batchReasonId} onChange={(e) => setBatchReasonId(e.target.value)} required className="flex-1">
+              <option value="">選擇加分理由</option>
+              {reasons.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {reasons.length === 0 && <p className="text-xs text-inkMuted">尚無加分理由，請先在下方「加分理由維護」建立。</p>}
+          <Button type="submit" loading={busy} disabled={reasons.length === 0}>
+            確認加分
+          </Button>
+        </form>
+      </Modal>
 
       {selectedStudent && data && (
         <>
