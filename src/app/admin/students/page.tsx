@@ -121,6 +121,9 @@ function StudentsContent() {
   const [renewTarget, setRenewTarget] = useState<ClassOption | null>(null);
   const [renewAmount, setRenewAmount] = useState('');
   const [renewDates, setRenewDates] = useState<Record<string, boolean>>({});
+  // 未報名日期清單要列幾週：預設跟著堂數走（一週一堂），手動改過就不再跟
+  const [renewWeeks, setRenewWeeks] = useState('16');
+  const [renewWeeksTouched, setRenewWeeksTouched] = useState(false);
   const [renewBusy, setRenewBusy] = useState(false);
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -254,10 +257,29 @@ function StudentsContent() {
     }
   }
 
+  // 實際列出的週數：1–52 的整數，其他輸入（清空、0、非數字）退回預設 16
+  const renewWeeksCount = (() => {
+    const n = Number(renewWeeks);
+    return Number.isInteger(n) && n >= 1 ? Math.min(n, 52) : 16;
+  })();
+  const renewDateOptions = renewTarget ? upcomingClassDates(renewTarget.weekday, renewWeeksCount) : [];
+  // 只算目前清單內有勾的日期：把週數改小後，被藏起來的勾選不送出也不計數
+  const renewSelectedDates = renewDateOptions.filter((d) => renewDates[d]);
+
   function openRenew(cls: ClassOption) {
     setRenewTarget(cls);
     setRenewAmount('');
     setRenewDates({});
+    setRenewWeeks('16');
+    setRenewWeeksTouched(false);
+  }
+
+  function handleRenewAmountChange(value: string) {
+    setRenewAmount(value);
+    if (renewWeeksTouched) return;
+    const n = Number(value);
+    if (Number.isInteger(n) && n >= 1) setRenewWeeks(String(Math.min(n, 52)));
+    else setRenewWeeks('16');
   }
 
   async function handleRenewSubmit(e: React.FormEvent) {
@@ -268,7 +290,7 @@ function StudentsContent() {
       showToast('請輸入本期堂數（正整數）');
       return;
     }
-    const selectedDates = Object.keys(renewDates).filter((d) => renewDates[d]);
+    const selectedDates = renewSelectedDates;
     setRenewBusy(true);
     try {
       const res = await fetch(`/api/classes/${renewTarget.id}/enrollments`, {
@@ -717,7 +739,7 @@ function StudentsContent() {
                 min={1}
                 placeholder="堂數"
                 value={renewAmount}
-                onChange={(e) => setRenewAmount(e.target.value)}
+                onChange={(e) => handleRenewAmountChange(e.target.value)}
                 className="w-28"
                 required
               />
@@ -727,14 +749,29 @@ function StudentsContent() {
               <div className="mb-1 flex items-baseline justify-between">
                 <p className="text-sm font-medium text-ink">未報名日期（可複選）</p>
                 <span className="text-xs text-inkMuted">
-                  已選 {Object.values(renewDates).filter(Boolean).length} 天
+                  已選 {renewSelectedDates.length} 天
                 </span>
+              </div>
+              <div className="mb-1 flex items-center gap-2 text-xs text-inkMuted">
+                <span>列出未來</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={52}
+                  value={renewWeeks}
+                  onChange={(e) => {
+                    setRenewWeeks(e.target.value);
+                    setRenewWeeksTouched(true);
+                  }}
+                  className="w-16"
+                />
+                <span>週的上課日（預設跟著堂數）</span>
               </div>
               <p className="mb-2 text-xs text-inkMuted">
                 這個班未來的上課日。勾選的日期會預先在點名中標為「未報名」，不扣堂，之後不用再改。
               </p>
               <div className="flex max-h-48 flex-col overflow-y-auto rounded-lg border border-borderSubtle">
-                {upcomingClassDates(renewTarget.weekday).map((d) => {
+                {renewDateOptions.map((d) => {
                   const selected = !!renewDates[d];
                   return (
                     <label
@@ -757,7 +794,7 @@ function StudentsContent() {
 
             <Button type="submit" loading={renewBusy}>
               確認續報
-              {Number(renewAmount) > 0 ? `（${Number(renewAmount)} 堂${Object.values(renewDates).filter(Boolean).length > 0 ? `・${Object.values(renewDates).filter(Boolean).length} 天未報名` : ''}）` : ''}
+              {Number(renewAmount) > 0 ? `（${Number(renewAmount)} 堂${renewSelectedDates.length > 0 ? `・${renewSelectedDates.length} 天未報名` : ''}）` : ''}
             </Button>
           </form>
         )}
