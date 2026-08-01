@@ -182,6 +182,9 @@ model MakeupRequest {
   slotEndTime   String?
 
   createdAt DateTime @default(now())
+  // 家長（學生端）申請撤銷已核准補課的時間戳；行政確認前補課仍有效
+  // （點名與額度只看 status，不看此欄）。行政同意撤銷＝刪除整筆補課單。
+  cancelRequestedAt DateTime?
   classAttendance    ClassAttendance?
   oneOnOneAttendance OneOnOneAttendance?
 }
