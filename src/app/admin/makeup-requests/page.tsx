@@ -96,7 +96,7 @@ function AdminMakeupRequestsContent() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">補課申請</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">請假管理</h1>
       <ArrangeMakeupForm onArranged={() => approvedListRef.current?.reload()} />
 
       <h2 className="mb-2 font-bold text-ink">待確認補課申請</h2>
