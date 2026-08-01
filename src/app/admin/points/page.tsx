@@ -9,6 +9,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import AwardRowsForm from '@/components/AwardRowsForm';
 import PointReasonsManager from './PointReasonsManager';
 
 const DRAW_COST = 20; // 與 pointService.DRAW_COST 一致（顯示用）
@@ -30,11 +31,6 @@ interface SummaryRow {
   redeemOnly: number;
 }
 
-interface ReasonRow {
-  id: string;
-  label: string;
-}
-
 interface HistoryRow {
   id: string;
   amount: number;
@@ -53,13 +49,10 @@ export default function AdminPointsPage() {
   const { showToast } = useToast();
   const [summaries, setSummaries] = useState<SummaryRow[]>([]);
   const [summariesLoading, setSummariesLoading] = useState(true);
-  const [reasons, setReasons] = useState<ReasonRow[]>([]);
   const [classFilter, setClassFilter] = useState('');
   const [nameQuery, setNameQuery] = useState('');
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [batchOpen, setBatchOpen] = useState(false);
-  const [batchAmount, setBatchAmount] = useState('1');
-  const [batchReasonId, setBatchReasonId] = useState('');
 
   const [selectedId, setSelectedId] = useState('');
   const [data, setData] = useState<PointsData | null>(null);
@@ -84,7 +77,6 @@ export default function AdminPointsPage() {
 
   useEffect(() => {
     loadSummaries();
-    fetch('/api/point-reasons').then((r) => (r.ok ? r.json() : [])).then(setReasons);
   }, []);
 
   async function loadPoints(studentId: string) {
@@ -126,33 +118,6 @@ export default function AdminPointsPage() {
   function refreshAfterChange() {
     loadSummaries();
     if (selectedId) loadPoints(selectedId);
-  }
-
-  async function handleBatchAward(e: React.FormEvent) {
-    e.preventDefault();
-    if (checkedIds.length === 0) {
-      showToast('請先勾選學生');
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch('/api/points/award', {
-        method: 'POST',
-        body: JSON.stringify({ studentIds: checkedIds, amount: Number(batchAmount), reasonId: batchReasonId }),
-      });
-      if (!res.ok) {
-        const resData = await res.json();
-        showToast(resData.error === 'INVALID_AMOUNT' ? '點數需為 1–10 的整數' : `操作失敗：${resData.error}`);
-        return;
-      }
-      showToast(`已為 ${checkedIds.length} 位學生各加 ${Number(batchAmount)} 點`);
-      setChecked({});
-      setBatchAmount('1');
-      setBatchOpen(false);
-      refreshAfterChange();
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function post(url: string, body: unknown, successMessage: string) {
@@ -322,37 +287,16 @@ export default function AdminPointsPage() {
       </Card>
 
       <Modal open={batchOpen} onClose={() => setBatchOpen(false)} title={`批量加分（${checkedIds.length} 位學生）`}>
-        <p className="mb-3 text-sm text-inkMuted">
-          {filtered
-            .filter((s) => checked[s.id])
-            .map((s) => s.name)
-            .join('、')}
-        </p>
-        <form onSubmit={handleBatchAward} className="flex flex-col gap-3">
-          <div className="flex gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={batchAmount}
-              onChange={(e) => setBatchAmount(e.target.value)}
-              className="w-24"
-              required
-            />
-            <Select value={batchReasonId} onChange={(e) => setBatchReasonId(e.target.value)} required className="flex-1">
-              <option value="">選擇加分理由</option>
-              {reasons.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          {reasons.length === 0 && <p className="text-xs text-inkMuted">尚無加分理由，請先在下方「加分理由維護」建立。</p>}
-          <Button type="submit" loading={busy} disabled={reasons.length === 0}>
-            確認加分
-          </Button>
-        </form>
+        {batchOpen && (
+          <AwardRowsForm
+            students={filtered.filter((s) => checked[s.id]).map((s) => ({ id: s.id, name: s.name }))}
+            onAwarded={() => {
+              setBatchOpen(false);
+              setChecked({});
+              refreshAfterChange();
+            }}
+          />
+        )}
       </Modal>
 
       {selectedStudent && data && (
