@@ -254,6 +254,12 @@ async function createLeaveForArrangeTx(tx: Prisma.TransactionClient, input: Arra
   });
 }
 
+// 只代辦請假、暫不安排補課；家長之後仍可對這筆請假自行申請補課。
+// 與家長自行請假一致：直接核准、不發 LINE 通知。
+export async function arrangeLeaveOnly(input: ArrangeBaseInput) {
+  return prisma.$transaction((tx) => createLeaveForArrangeTx(tx, input));
+}
+
 export async function arrangeInsertionMakeup(input: ArrangeBaseInput & { targetClassId: string; targetDate: Date }) {
   const makeup = await runSerializableWithRetry(() =>
     prisma.$transaction(

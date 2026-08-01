@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { arrangeInsertionMakeup, arrangeOneOnOneMakeup } from '@/lib/services/makeupRequestService';
+import { arrangeInsertionMakeup, arrangeOneOnOneMakeup, arrangeLeaveOnly } from '@/lib/services/makeupRequestService';
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -33,6 +33,10 @@ export async function POST(req: NextRequest) {
         slotEndTime: body.slotEndTime,
       });
       return NextResponse.json(makeup, { status: 201 });
+    }
+    if (body.type === 'LEAVE_ONLY') {
+      const leave = await arrangeLeaveOnly(base);
+      return NextResponse.json(leave, { status: 201 });
     }
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
   } catch (err) {

@@ -58,6 +58,8 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
   const [classId, setClassId] = useState('');
   const [date, setDate] = useState('');
   const [reason, setReason] = useState('行政代辦');
+  // 補課可選：不勾就只代辦請假，勾了才展開插班／一對一一併送出
+  const [withMakeup, setWithMakeup] = useState(false);
   const [type, setType] = useState<'INSERTION' | 'ONE_ON_ONE'>('INSERTION');
   const [targetClassId, setTargetClassId] = useState('');
   const [targetDate, setTargetDate] = useState('');
@@ -129,6 +131,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
     setClassId('');
     setDate('');
     setReason('行政代辦');
+    setWithMakeup(false);
     setType('INSERTION');
     setTargetClassId('');
     setTargetDate('');
@@ -139,17 +142,18 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
     e.preventDefault();
     setSubmitting(true);
     try {
-      const body =
-        type === 'INSERTION'
+      const body = !withMakeup
+        ? { type: 'LEAVE_ONLY', studentId, classId, date, reason }
+        : type === 'INSERTION'
           ? { type, studentId, classId, date, reason, targetClassId, targetDate }
           : { type, studentId, classId, date, reason, teacherId: oneOnOne.teacherId, slotDate: oneOnOne.slotDate, slotStartTime: oneOnOne.slotStartTime, slotEndTime: oneOnOne.slotEndTime };
       const res = await fetch('/api/makeup-requests/arrange', { method: 'POST', body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json();
-        showToast(ERROR_MESSAGES[data.error] ?? '代排失敗，請稍後再試');
+        showToast(ERROR_MESSAGES[data.error] ?? (withMakeup ? '代排失敗，請稍後再試' : '代辦請假失敗，請稍後再試'));
         return;
       }
-      showToast('已完成代排，點名名單已更新');
+      showToast(withMakeup ? '已完成代排，點名名單已更新' : '已代辦請假');
       reset();
       setExpanded(false);
       onArranged?.();
@@ -216,6 +220,13 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
 
           {classId && (
             <>
+              <label className="mt-1 flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" checked={withMakeup} onChange={(e) => setWithMakeup(e.target.checked)} />
+                同時安排補課（不勾就只代辦請假）
+              </label>
+
+              {withMakeup && (
+              <>
               <div className="mt-1 flex gap-6 text-sm text-ink">
                 <label className="flex items-center gap-1">
                   <input type="radio" checked={type === 'INSERTION'} onChange={() => setType('INSERTION')} />
@@ -290,9 +301,11 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
                   </div>
                 </>
               )}
+              </>
+              )}
 
               <Button type="submit" loading={submitting}>
-                送出代排（直接核准）
+                {withMakeup ? '送出代排（直接核准）' : '送出請假（直接核准）'}
               </Button>
             </>
           )}

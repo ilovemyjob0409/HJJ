@@ -16,6 +16,7 @@ import {
   formatMakeupSlot,
   arrangeInsertionMakeup,
   arrangeOneOnOneMakeup,
+  arrangeLeaveOnly,
   requestMakeupCancellation,
   rejectMakeupCancellation,
   revokeMakeup,
@@ -534,6 +535,39 @@ describe('arrangeInsertionMakeup', () => {
 
     expect(await prisma.leaveRequest.count({ where: { date: new Date(2026, 7, 3) } })).toBe(0);
     expect(await prisma.makeupRequest.count()).toBe(0);
+  });
+});
+
+describe('arrangeLeaveOnly', () => {
+  it('creates an approved leave with no makeup request attached', async () => {
+    const { student, classA } = await setup();
+
+    const leave = await arrangeLeaveOnly({
+      studentId: student.id,
+      classId: classA.id,
+      date: new Date(2026, 7, 3),
+      reason: '行政代辦',
+    });
+
+    expect(leave.status).toBe('APPROVED');
+    expect(leave.studentId).toBe(student.id);
+    expect(leave.classId).toBe(classA.id);
+    expect(await prisma.makeupRequest.count({ where: { leaveRequestId: leave.id } })).toBe(0);
+  });
+
+  it('throws NOT_ENROLLED for a class the student is not enrolled in, leaving no rows behind', async () => {
+    const { student, classB } = await setup();
+
+    await expect(
+      arrangeLeaveOnly({
+        studentId: student.id,
+        classId: classB.id, // 未就讀 classB
+        date: new Date(2026, 7, 3),
+        reason: '行政代辦',
+      })
+    ).rejects.toThrow('NOT_ENROLLED');
+
+    expect(await prisma.leaveRequest.count({ where: { date: new Date(2026, 7, 3) } })).toBe(0);
   });
 });
 
