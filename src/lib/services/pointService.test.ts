@@ -11,6 +11,7 @@ import {
   recordLottery,
   redeemPoints,
   adjustPoints,
+  listStudentPointSummaries,
 } from './pointService';
 
 async function setup() {
@@ -222,5 +223,23 @@ describe('listPointHistory', () => {
     expect(history[0].kind).toBe('ADMIN_ADJUST');
     expect(history[1].kind).toBe('TEACHER_AWARD');
     expect(history[1].teacher?.user.name).toBe('陳老師');
+  });
+});
+
+describe('listStudentPointSummaries', () => {
+  it('returns every student with per-bucket balances and enrolled class names', async () => {
+    const { teacher, student, reason } = await setup();
+    const other = await createStudent({ name: '小華', email: 'pt-sum-hua@example.com', password: 'x' });
+    await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: 8, reasonId: reason.id });
+    await prisma.pointTransaction.create({
+      data: { studentId: student.id, bucket: 'REDEEM_ONLY', amount: 5, kind: 'LOTTERY_WIN', reason: 'x' },
+    });
+
+    const summaries = await listStudentPointSummaries();
+
+    const ming = summaries.find((s) => s.id === student.id);
+    const hua = summaries.find((s) => s.id === other.id);
+    expect(ming).toMatchObject({ regular: 8, redeemOnly: 5 });
+    expect(hua).toMatchObject({ regular: 0, redeemOnly: 0 });
   });
 });

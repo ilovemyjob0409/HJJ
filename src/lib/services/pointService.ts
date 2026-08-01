@@ -116,6 +116,40 @@ export function redeemPoints(input: { studentId: string; points: number; descrip
   );
 }
 
+// 行政「集點」主表：每位學生的兩桶餘額＋就讀班級（供班級／名字篩選）。
+// 餘額用一次 groupBy 聚合，避免逐學生查詢。
+export async function listStudentPointSummaries() {
+  const [students, sums] = await Promise.all([
+    prisma.student.findMany({
+      select: {
+        id: true,
+        studentNumber: true,
+        user: { select: { name: true } },
+        enrollments: { select: { class: { select: { id: true, name: true } } } },
+      },
+      orderBy: { user: { name: 'asc' } },
+    }),
+    prisma.pointTransaction.groupBy({ by: ['studentId', 'bucket'], _sum: { amount: true } }),
+  ]);
+
+  const balances = new Map<string, { regular: number; redeemOnly: number }>();
+  for (const row of sums) {
+    const entry = balances.get(row.studentId) ?? { regular: 0, redeemOnly: 0 };
+    if (row.bucket === 'REGULAR') entry.regular = row._sum.amount ?? 0;
+    else entry.redeemOnly = row._sum.amount ?? 0;
+    balances.set(row.studentId, entry);
+  }
+
+  return students.map((s) => ({
+    id: s.id,
+    name: s.user.name,
+    studentNumber: s.studentNumber,
+    classes: s.enrollments.map((e) => e.class),
+    regular: balances.get(s.id)?.regular ?? 0,
+    redeemOnly: balances.get(s.id)?.redeemOnly ?? 0,
+  }));
+}
+
 export function adjustPoints(input: { studentId: string; bucket: PointBucket; amount: number; reason: string }) {
   if (!Number.isInteger(input.amount) || input.amount === 0) return Promise.reject(new Error('INVALID_AMOUNT'));
   if (!input.reason.trim()) return Promise.reject(new Error('REASON_REQUIRED'));
