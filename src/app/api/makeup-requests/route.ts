@@ -17,14 +17,18 @@ async function findOwnLeaveRequest(leaveRequestId: string, studentId: string) {
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'STUDENT') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
+  // 老師可補課時段查詢：學生（申請補課頁）與行政（代排補課表單）都會用。
   const teacherId = req.nextUrl.searchParams.get('teacherId');
   if (teacherId) {
+    if (!session || (session.user.role !== 'STUDENT' && session.user.role !== 'ADMIN')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const availability = await listTeacherAvailability(teacherId);
     return NextResponse.json({ availability });
+  }
+
+  if (!session || session.user.role !== 'STUDENT') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const leaveRequestId = req.nextUrl.searchParams.get('leaveRequestId');
