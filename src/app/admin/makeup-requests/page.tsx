@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -8,6 +8,8 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import ArrangeMakeupForm from './ArrangeMakeupForm';
+import ApprovedMakeupList, { ApprovedMakeupListHandle } from './ApprovedMakeupList';
 
 interface PendingRow {
   id: string;
@@ -28,6 +30,7 @@ function AdminMakeupRequestsContent() {
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const approvedListRef = useRef<ApprovedMakeupListHandle>(null);
 
   async function load() {
     try {
@@ -53,6 +56,7 @@ function AdminMakeupRequestsContent() {
       await fetch(`/api/makeup-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
       showToast(decision === 'APPROVED' ? '已核准' : '已拒絕');
       load();
+      approvedListRef.current?.reload();
     } finally {
       setPendingId(null);
     }
@@ -92,7 +96,10 @@ function AdminMakeupRequestsContent() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">待確認補課申請</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">補課申請</h1>
+      <ArrangeMakeupForm onArranged={() => approvedListRef.current?.reload()} />
+
+      <h2 className="mb-2 font-bold text-ink">待確認補課申請</h2>
       <Card>
         <DataTable
           columns={columns}
@@ -102,6 +109,8 @@ function AdminMakeupRequestsContent() {
           loading={loading}
         />
       </Card>
+
+      <ApprovedMakeupList ref={approvedListRef} />
     </>
   );
 }

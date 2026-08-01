@@ -11,6 +11,7 @@ import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
+import CancelMakeupButton from './CancelMakeupButton';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
@@ -37,9 +38,11 @@ interface LeaveRow {
   reason: string;
   class: { name: string };
   makeupRequest: {
+    id: string;
     type: string;
     status: string;
     targetDate: Date | null;
+    cancelRequestedAt: Date | null;
   } | null;
 }
 
@@ -84,7 +87,20 @@ export default async function StudentDashboard() {
     },
     {
       header: '補課狀態',
-      render: (r) => (r.makeupRequest ? <StatusBadge status={r.makeupRequest.status} /> : <span className="text-inkMuted">尚未申請</span>),
+      render: (r) => {
+        if (!r.makeupRequest) return <span className="text-inkMuted">尚未申請</span>;
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <StatusBadge status={r.makeupRequest.status} />
+            {r.makeupRequest.status === 'APPROVED' &&
+              (r.makeupRequest.cancelRequestedAt ? (
+                <span className="text-xs text-pending">撤銷申請中</span>
+              ) : (
+                <CancelMakeupButton makeupRequestId={r.makeupRequest.id} />
+              ))}
+          </div>
+        );
+      },
     },
   ];
 

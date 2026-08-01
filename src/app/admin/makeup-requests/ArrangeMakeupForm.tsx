@@ -1,0 +1,303 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
+import { useToast } from '@/components/ui/Toast';
+
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+interface StudentRow {
+  id: string;
+  studentNumber: string | null;
+  user: { name: string };
+}
+
+interface AdminClassRow {
+  id: string;
+  name: string;
+  subject: string;
+  level: string;
+  enrollments: { studentId: string; student: { user: { name: string } } }[];
+}
+
+interface TeacherOption {
+  id: string;
+  subjects: string;
+  user: { name: string };
+}
+
+interface AvailabilityWindow {
+  weekday: number;
+  startTime: string;
+  endTime: string;
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  NOT_ENROLLED: '該學生未就讀所選班級',
+  NOT_AVAILABLE: '該班科目不提供一對一補課',
+  QUOTA_EXCEEDED: '本期一對一補課額度已使用完畢',
+  OUTSIDE_AVAILABILITY: '不在老師可補課時段內',
+  SLOT_CONFLICT: '該時段已被其他學生預約',
+};
+
+// 行政代排：選學生＋原課程（請假）→ 直接改排插班或一對一（直接核准，
+// 立即進點名名單）。
+export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => void }) {
+  const { showToast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [classes, setClasses] = useState<AdminClassRow[]>([]);
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [availability, setAvailability] = useState<AvailabilityWindow[]>([]);
+
+  const [search, setSearch] = useState('');
+  const [studentId, setStudentId] = useState('');
+  const [classId, setClassId] = useState('');
+  const [date, setDate] = useState('');
+  const [reason, setReason] = useState('行政代辦');
+  const [type, setType] = useState<'INSERTION' | 'ONE_ON_ONE'>('INSERTION');
+  const [targetClassId, setTargetClassId] = useState('');
+  const [targetDate, setTargetDate] = useState('');
+  const [oneOnOne, setOneOnOne] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || students.length > 0) return;
+    fetch('/api/students').then((r) => (r.ok ? r.json() : [])).then(setStudents);
+    fetch('/api/classes').then((r) => (r.ok ? r.json() : [])).then(setClasses);
+    fetch('/api/teachers').then((r) => (r.ok ? r.json() : [])).then(setTeachers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!oneOnOne.teacherId) {
+      setAvailability([]);
+      return;
+    }
+    fetch(`/api/makeup-requests?teacherId=${oneOnOne.teacherId}`)
+      .then((r) => (r.ok ? r.json() : { availability: [] }))
+      .then((data) => setAvailability(data.availability ?? []));
+  }, [oneOnOne.teacherId]);
+
+  const studentClassNames = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const c of classes) {
+      for (const e of c.enrollments) {
+        (map[e.studentId] ??= []).push(c.name);
+      }
+    }
+    return map;
+  }, [classes]);
+
+  const matches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return students
+      .filter(
+        (s) =>
+          s.user.name.toLowerCase().includes(q) ||
+          (s.studentNumber ?? '').toLowerCase().includes(q) ||
+          (studentClassNames[s.id] ?? []).some((n) => n.toLowerCase().includes(q))
+      )
+      .slice(0, 8);
+  }, [students, search, studentClassNames]);
+
+  const selectedStudent = students.find((s) => s.id === studentId);
+  const enrolledClasses = useMemo(
+    () => classes.filter((c) => c.enrollments.some((e) => e.studentId === studentId)),
+    [classes, studentId]
+  );
+  const originalClass = classes.find((c) => c.id === classId);
+  const isGo = originalClass?.subject === '圍棋';
+  const insertionTargets = useMemo(
+    () =>
+      originalClass
+        ? classes.filter((c) => c.id !== originalClass.id && c.subject === originalClass.subject && c.level === originalClass.level)
+        : [],
+    [classes, originalClass]
+  );
+
+  useEffect(() => {
+    if (!isGo && type === 'ONE_ON_ONE') setType('INSERTION');
+  }, [isGo, type]);
+
+  function reset() {
+    setStudentId('');
+    setClassId('');
+    setDate('');
+    setReason('行政代辦');
+    setType('INSERTION');
+    setTargetClassId('');
+    setTargetDate('');
+    setOneOnOne({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const body =
+        type === 'INSERTION'
+          ? { type, studentId, classId, date, reason, targetClassId, targetDate }
+          : { type, studentId, classId, date, reason, teacherId: oneOnOne.teacherId, slotDate: oneOnOne.slotDate, slotStartTime: oneOnOne.slotStartTime, slotEndTime: oneOnOne.slotEndTime };
+      const res = await fetch('/api/makeup-requests/arrange', { method: 'POST', body: JSON.stringify(body) });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(ERROR_MESSAGES[data.error] ?? '代排失敗，請稍後再試');
+        return;
+      }
+      showToast('已完成代排，點名名單已更新');
+      reset();
+      setExpanded(false);
+      onArranged?.();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!expanded) {
+    return (
+      <div className="mb-6">
+        <Button onClick={() => setExpanded(true)}>＋ 代排補課</Button>
+      </div>
+    );
+  }
+
+  return (
+    <Card className="mb-6 max-w-2xl">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-bold text-ink">代排補課</h2>
+        <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setExpanded(false)}>
+          收合
+        </button>
+      </div>
+
+      <p className="mb-1 text-sm font-medium text-ink">選擇學生</p>
+      <Input placeholder="搜尋姓名、學號或班級名稱…" value={search} onChange={(e) => setSearch(e.target.value)} />
+      {matches.length > 0 && (
+        <div className="mt-2 flex max-h-40 flex-col overflow-y-auto rounded-lg border border-borderStrong">
+          {matches.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => {
+                setStudentId(s.id);
+                setClassId('');
+                setSearch('');
+              }}
+              className="flex items-center justify-between border-b border-borderSubtle px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stripe"
+            >
+              <span className="text-ink">{s.user.name}</span>
+              <span className="text-xs text-inkMuted">{(studentClassNames[s.id] ?? []).join('、') || '-'}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedStudent && (
+        <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
+          <p className="text-sm text-ink">
+            學生：<span className="font-semibold">{selectedStudent.user.name}</span>
+          </p>
+
+          <Select value={classId} onChange={(e) => setClassId(e.target.value)} required>
+            <option value="">選擇要請假的班級</option>
+            {enrolledClasses.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}（{c.subject}）
+              </option>
+            ))}
+          </Select>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          <Input placeholder="請假原因" value={reason} onChange={(e) => setReason(e.target.value)} required />
+
+          {classId && (
+            <>
+              <div className="mt-1 flex gap-6 text-sm text-ink">
+                <label className="flex items-center gap-1">
+                  <input type="radio" checked={type === 'INSERTION'} onChange={() => setType('INSERTION')} />
+                  插班
+                </label>
+                {isGo && (
+                  <label className="flex items-center gap-1">
+                    <input type="radio" checked={type === 'ONE_ON_ONE'} onChange={() => setType('ONE_ON_ONE')} />
+                    一對一
+                  </label>
+                )}
+              </div>
+
+              {type === 'INSERTION' && (
+                <>
+                  <Select value={targetClassId} onChange={(e) => setTargetClassId(e.target.value)} required>
+                    <option value="">選擇插班班級</option>
+                    {insertionTargets.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}（目前 {c.enrollments.length} 人）
+                      </option>
+                    ))}
+                  </Select>
+                  <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} required />
+                </>
+              )}
+
+              {type === 'ONE_ON_ONE' && (
+                <>
+                  <Select
+                    value={oneOnOne.teacherId}
+                    onChange={(e) => setOneOnOne({ ...oneOnOne, teacherId: e.target.value })}
+                    required
+                  >
+                    <option value="">選擇老師</option>
+                    {teachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.user.name}（{t.subjects}）
+                      </option>
+                    ))}
+                  </Select>
+                  {oneOnOne.teacherId && (
+                    <p className="text-sm text-inkMuted">
+                      可補課時段：
+                      {availability.length === 0
+                        ? '尚未設定'
+                        : availability.map((w, i) => (
+                            <span key={i}>
+                              週{WEEKDAYS[w.weekday]} {w.startTime}-{w.endTime}
+                              {i < availability.length - 1 ? '、' : ''}
+                            </span>
+                          ))}
+                    </p>
+                  )}
+                  <Input
+                    type="date"
+                    value={oneOnOne.slotDate}
+                    onChange={(e) => setOneOnOne({ ...oneOnOne, slotDate: e.target.value })}
+                    required
+                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="time"
+                      value={oneOnOne.slotStartTime}
+                      onChange={(e) => setOneOnOne({ ...oneOnOne, slotStartTime: e.target.value })}
+                    />
+                    <Input
+                      type="time"
+                      value={oneOnOne.slotEndTime}
+                      onChange={(e) => setOneOnOne({ ...oneOnOne, slotEndTime: e.target.value })}
+                    />
+                  </div>
+                </>
+              )}
+
+              <Button type="submit" loading={submitting}>
+                送出代排（直接核准）
+              </Button>
+            </>
+          )}
+        </form>
+      )}
+    </Card>
+  );
+}
