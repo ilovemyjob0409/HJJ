@@ -25,14 +25,16 @@ interface RowState {
   amount: string;
 }
 
-// 加分主介面：搜尋選班級 → 該班學生表格，每位學生各自填理由＋點數，
-// 一次送出。老師端傳入自己任教的班、行政端傳入全部班級。
+const EMPTY_ROW: RowState = { reasonId: '', amount: '' };
+
+// 加分主介面：搜尋選班級 → 該班學生表格，每位學生可填多列「理由＋點數」
+// （＋新增一列），一次送出。老師端傳入自己任教的班、行政端傳入全部班級。
 export default function ClassAwardTable({ classes, onAwarded }: { classes: AwardClassOption[]; onAwarded?: () => void }) {
   const { showToast } = useToast();
   const [reasons, setReasons] = useState<ReasonOption[]>([]);
   const [query, setQuery] = useState('');
   const [classId, setClassId] = useState('');
-  const [rows, setRows] = useState<Record<string, RowState>>({});
+  const [rowsByStudent, setRowsByStudent] = useState<Record<string, RowState[]>>({});
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -49,31 +51,48 @@ export default function ClassAwardTable({ classes, onAwarded }: { classes: Award
     return classes.filter((c) => c.name.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q)).slice(0, 8);
   }, [classes, query]);
 
-  function updateRow(studentId: string, patch: Partial<RowState>) {
-    setRows((prev) => {
-      const current = prev[studentId] ?? { reasonId: '', amount: '' };
-      return { ...prev, [studentId]: { ...current, ...patch } };
+  function getRows(studentId: string): RowState[] {
+    return rowsByStudent[studentId] ?? [EMPTY_ROW];
+  }
+
+  function updateRow(studentId: string, index: number, patch: Partial<RowState>) {
+    setRowsByStudent((prev) => {
+      const current = prev[studentId] ?? [EMPTY_ROW];
+      return { ...prev, [studentId]: current.map((row, i) => (i === index ? { ...row, ...patch } : row)) };
     });
   }
 
+  function addRow(studentId: string) {
+    setRowsByStudent((prev) => ({ ...prev, [studentId]: [...(prev[studentId] ?? [EMPTY_ROW]), EMPTY_ROW] }));
+  }
+
+  function removeRow(studentId: string, index: number) {
+    setRowsByStudent((prev) => {
+      const current = prev[studentId] ?? [EMPTY_ROW];
+      const next = current.filter((_, i) => i !== index);
+      return { ...prev, [studentId]: next.length > 0 ? next : [EMPTY_ROW] };
+    });
+  }
+
+  // 有動過的列（任一欄有值）才會送出；兩欄都空的列一律忽略。
   const filledEntries = currentClass
-    ? currentClass.students
-        .map((s) => ({ student: s, row: rows[s.id] }))
-        .filter((e): e is { student: { id: string; name: string }; row: RowState } => {
-          if (!e.row) return false;
-          return e.row.amount.trim() !== '' || e.row.reasonId !== '';
-        })
+    ? currentClass.students.flatMap((s) =>
+        getRows(s.id)
+          .filter((row) => row.amount.trim() !== '' || row.reasonId !== '')
+          .map((row) => ({ student: s, row }))
+      )
     : [];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const incomplete = filledEntries.filter((en) => en.row.reasonId === '' || Number(en.row.amount) < 1);
     if (filledEntries.length === 0) {
       showToast('請先為至少一位學生填點數與理由');
       return;
     }
+    const incomplete = filledEntries.filter((en) => en.row.reasonId === '' || Number(en.row.amount) < 1);
     if (incomplete.length > 0) {
-      showToast(`請補齊 ${incomplete.map((en) => en.student.name).join('、')} 的點數與理由`);
+      const names = Array.from(new Set(incomplete.map((en) => en.student.name)));
+      showToast(`請補齊 ${names.join('、')} 的點數與理由`);
       return;
     }
     setSubmitting(true);
@@ -91,8 +110,9 @@ export default function ClassAwardTable({ classes, onAwarded }: { classes: Award
           return;
         }
       }
-      showToast(`已為 ${filledEntries.length} 位學生加分`);
-      setRows({});
+      const studentCount = new Set(filledEntries.map((en) => en.student.id)).size;
+      showToast(`已為 ${studentCount} 位學生加分（共 ${filledEntries.length} 筆）`);
+      setRowsByStudent({});
       onAwarded?.();
     } finally {
       setSubmitting(false);
@@ -100,36 +120,50 @@ export default function ClassAwardTable({ classes, onAwarded }: { classes: Award
   }
 
   const columns: Column<{ id: string; name: string }>[] = [
-    { header: '學生', render: (s) => <span className="block text-left">{s.name}</span> },
+    { header: '學生', render: (s) => <span className="block text-left align-top">{s.name}</span> },
     {
-      header: '理由',
+      header: '理由＋點數',
       render: (s) => (
-        <Select
-          value={rows[s.id]?.reasonId ?? ''}
-          onChange={(e) => updateRow(s.id, { reasonId: e.target.value })}
-          className="min-w-[10rem]"
-        >
-          <option value="">－</option>
-          {reasons.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label}
-            </option>
+        <div className="flex flex-col items-start gap-1.5">
+          {getRows(s.id).map((row, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <Select
+                value={row.reasonId}
+                onChange={(e) => updateRow(s.id, index, { reasonId: e.target.value })}
+                className="min-w-[10rem]"
+              >
+                <option value="">－</option>
+                {reasons.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </Select>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                placeholder="－"
+                value={row.amount}
+                onChange={(e) => updateRow(s.id, index, { amount: e.target.value })}
+                className="w-20"
+              />
+              {getRows(s.id).length > 1 && (
+                <button
+                  type="button"
+                  aria-label={`移除${s.name}的此列`}
+                  onClick={() => removeRow(s.id, index)}
+                  className="text-inkMuted hover:text-rejected"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           ))}
-        </Select>
-      ),
-    },
-    {
-      header: '點數',
-      render: (s) => (
-        <Input
-          type="number"
-          min={1}
-          max={10}
-          placeholder="－"
-          value={rows[s.id]?.amount ?? ''}
-          onChange={(e) => updateRow(s.id, { amount: e.target.value })}
-          className="w-20"
-        />
+          <button type="button" onClick={() => addRow(s.id)} className="text-xs text-brandDark hover:underline">
+            ＋ 新增一列
+          </button>
+        </div>
       ),
     },
   ];
@@ -147,7 +181,7 @@ export default function ClassAwardTable({ classes, onAwarded }: { classes: Award
               onClick={() => {
                 setClassId(c.id);
                 setQuery('');
-                setRows({});
+                setRowsByStudent({});
               }}
               className="flex items-center justify-between border-b border-borderSubtle px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stripe"
             >
@@ -164,7 +198,7 @@ export default function ClassAwardTable({ classes, onAwarded }: { classes: Award
         <form onSubmit={handleSubmit} className="mt-4">
           <p className="mb-2 text-sm text-ink">
             <span className="font-semibold">{currentClass.name}</span>
-            <span className="ml-2 text-inkMuted">只送出有填點數與理由的學生</span>
+            <span className="ml-2 text-inkMuted">只送出有填點數與理由的列</span>
           </p>
           {currentClass.students.length === 0 ? (
             <p className="rounded-lg border border-dashed border-borderStrong p-3 text-center text-sm text-inkMuted">
@@ -177,7 +211,7 @@ export default function ClassAwardTable({ classes, onAwarded }: { classes: Award
                 <p className="mt-2 text-xs text-inkMuted">尚無加分理由選項，請先請行政人員於「集點」管理頁建立。</p>
               )}
               <Button type="submit" loading={submitting} disabled={reasons.length === 0} className="mt-3">
-                送出加分（{filledEntries.length} 位）
+                送出加分（{filledEntries.length} 筆）
               </Button>
             </>
           )}
