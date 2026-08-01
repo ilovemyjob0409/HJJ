@@ -87,44 +87,61 @@ export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
 }
 
 
+// 一對一補課的共用檢查（給學生申請與行政代排）：圍棋限定、每期
+// （最新一期起算）限 1 次、老師可補課時段、時段衝突。必須在
+// serializable 交易內呼叫，讓 check-then-act 原子。
+async function assertOneOnOneSlotAllowed(
+  tx: Prisma.TransactionClient,
+  input: { studentId: string; classId: string; teacherId: string; slotDate: Date; slotStartTime: string; slotEndTime: string }
+) {
+  const cls = await tx.class.findUniqueOrThrow({ where: { id: input.classId }, select: { subject: true } });
+  if (cls.subject !== GO_SUBJECT) throw new Error('NOT_AVAILABLE');
+
+  const since = await getOneOnOnePeriodStart(tx, input.studentId, input.classId);
+  const used = await countOneOnOneUsed(tx, input.studentId, input.classId, since);
+  if (used >= ONE_ON_ONE_PERIOD_LIMIT) throw new Error('QUOTA_EXCEEDED');
+
+  // Derived from slotDate rather than trusted from the caller, so a
+  // mismatched weekday/date pair can't be used to slip past the check.
+  // slotDate is UTC midnight (parsed from a date-only string), so read
+  // the weekday in UTC too — local getDay() would depend on the
+  // server's timezone.
+  const weekday = input.slotDate.getUTCDay();
+  const availabilities = await listTeacherAvailability(input.teacherId, tx);
+  const withinAvailability = isWithinAvailability(
+    { weekday, startTime: input.slotStartTime, endTime: input.slotEndTime },
+    availabilities
+  );
+  if (!withinAvailability) throw new Error('OUTSIDE_AVAILABILITY');
+
+  const sameDayRequests = await tx.makeupRequest.findMany({
+    where: {
+      type: 'ONE_ON_ONE',
+      teacherId: input.teacherId,
+      slotDate: input.slotDate,
+      status: { in: ['PENDING_ADMIN', 'APPROVED'] },
+    },
+  });
+  const conflict = sameDayRequests.some((r) =>
+    slotsOverlap({ startTime: input.slotStartTime, endTime: input.slotEndTime }, { startTime: r.slotStartTime!, endTime: r.slotEndTime! })
+  );
+  if (conflict) throw new Error('SLOT_CONFLICT');
+}
+
 function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
   return prisma.$transaction(async (tx) => {
     const leave = await tx.leaveRequest.findUniqueOrThrow({
       where: { id: input.leaveRequestId },
-      select: { classId: true, class: { select: { subject: true } } },
+      select: { classId: true },
     });
-    // 一對一補課只開放圍棋班；每期（最新一期起算）限 1 次。
-    if (leave.class.subject !== GO_SUBJECT) throw new Error('NOT_AVAILABLE');
-
-    const since = await getOneOnOnePeriodStart(tx, input.studentId, leave.classId);
-    const used = await countOneOnOneUsed(tx, input.studentId, leave.classId, since);
-    if (used >= ONE_ON_ONE_PERIOD_LIMIT) throw new Error('QUOTA_EXCEEDED');
-
-    // Derived from slotDate rather than trusted from the caller, so a
-    // mismatched weekday/date pair can't be used to slip past the check.
-    // slotDate is UTC midnight (parsed from a date-only string), so read
-    // the weekday in UTC too — local getDay() would depend on the
-    // server's timezone.
-    const weekday = input.slotDate.getUTCDay();
-    const availabilities = await listTeacherAvailability(input.teacherId, tx);
-    const withinAvailability = isWithinAvailability(
-      { weekday, startTime: input.slotStartTime, endTime: input.slotEndTime },
-      availabilities
-    );
-    if (!withinAvailability) throw new Error('OUTSIDE_AVAILABILITY');
-
-    const sameDayRequests = await tx.makeupRequest.findMany({
-      where: {
-        type: 'ONE_ON_ONE',
-        teacherId: input.teacherId,
-        slotDate: input.slotDate,
-        status: { in: ['PENDING_ADMIN', 'APPROVED'] },
-      },
+    await assertOneOnOneSlotAllowed(tx, {
+      studentId: input.studentId,
+      classId: leave.classId,
+      teacherId: input.teacherId,
+      slotDate: input.slotDate,
+      slotStartTime: input.slotStartTime,
+      slotEndTime: input.slotEndTime,
     });
-    const conflict = sameDayRequests.some((r) =>
-      slotsOverlap({ startTime: input.slotStartTime, endTime: input.slotEndTime }, { startTime: r.slotStartTime!, endTime: r.slotEndTime! })
-    );
-    if (conflict) throw new Error('SLOT_CONFLICT');
 
     return tx.makeupRequest.create({
       data: {
@@ -184,30 +201,186 @@ export function formatMakeupSlot(m: {
   return '';
 }
 
+const MAKEUP_NOTIFY_INCLUDE = {
+  leaveRequest: { select: { student: { select: { id: true, lineUserId: true, user: { select: { name: true } } } } } },
+  targetClass: { select: { name: true, startTime: true, endTime: true } },
+} as const;
+
+type MakeupWithNotifyInfo = Prisma.MakeupRequestGetPayload<{ include: typeof MAKEUP_NOTIFY_INCLUDE }>;
+
+// LINE 通知家長；失敗只記 log，不影響主流程（核准／代排／撤銷共用）。
+async function notifyMakeup(makeup: MakeupWithNotifyInfo, kind: 'APPROVED' | 'REJECTED' | 'REVOKED') {
+  try {
+    const student = makeup.leaveRequest.student;
+    if (!student.lineUserId) return;
+    const text =
+      kind === 'APPROVED'
+        ? `【MUP】${student.user.name}的補課申請已核准：${formatMakeupSlot(makeup)}`
+        : kind === 'REVOKED'
+          ? `【MUP】${student.user.name}的補課已取消：${formatMakeupSlot(makeup)}，如需重新安排請洽行政人員`
+          : `【MUP】${student.user.name}的補課申請未通過，請洽行政人員`;
+    await pushLineMessage(student.lineUserId, text);
+  } catch (err) {
+    console.error('makeup LINE notification failed', err);
+  }
+}
+
 export async function decideMakeupRequest(id: string, decision: 'APPROVED' | 'REJECTED') {
   const updated = await prisma.makeupRequest.update({
     where: { id },
     data: { status: decision },
-    include: {
-      leaveRequest: { select: { student: { select: { id: true, lineUserId: true, user: { select: { name: true } } } } } },
-      targetClass: { select: { name: true, startTime: true, endTime: true } },
+    include: MAKEUP_NOTIFY_INCLUDE,
+  });
+  await notifyMakeup(updated, decision);
+  return updated;
+}
+
+// ─── 行政代排：一步建立「請假＋已核准補課」，直接進點名名單 ───
+
+export interface ArrangeBaseInput {
+  studentId: string;
+  classId: string;
+  date: Date;
+  reason: string;
+}
+
+async function createLeaveForArrangeTx(tx: Prisma.TransactionClient, input: ArrangeBaseInput) {
+  const enrolled = await tx.classEnrollment.findUnique({
+    where: { studentId_classId: { studentId: input.studentId, classId: input.classId } },
+  });
+  if (!enrolled) throw new Error('NOT_ENROLLED');
+  return tx.leaveRequest.create({
+    data: { studentId: input.studentId, classId: input.classId, date: input.date, reason: input.reason, status: 'APPROVED' },
+  });
+}
+
+export async function arrangeInsertionMakeup(input: ArrangeBaseInput & { targetClassId: string; targetDate: Date }) {
+  const makeup = await runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const leave = await createLeaveForArrangeTx(tx, input);
+        return tx.makeupRequest.create({
+          data: {
+            leaveRequestId: leave.id,
+            type: 'INSERTION',
+            status: 'APPROVED',
+            targetClassId: input.targetClassId,
+            targetDate: input.targetDate,
+          },
+          include: MAKEUP_NOTIFY_INCLUDE,
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
+  await notifyMakeup(makeup, 'APPROVED');
+  return makeup;
+}
+
+export async function arrangeOneOnOneMakeup(
+  input: ArrangeBaseInput & { teacherId: string; slotDate: Date; slotStartTime: string; slotEndTime: string }
+) {
+  const makeup = await runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        await assertOneOnOneSlotAllowed(tx, {
+          studentId: input.studentId,
+          classId: input.classId,
+          teacherId: input.teacherId,
+          slotDate: input.slotDate,
+          slotStartTime: input.slotStartTime,
+          slotEndTime: input.slotEndTime,
+        });
+        const leave = await createLeaveForArrangeTx(tx, input);
+        return tx.makeupRequest.create({
+          data: {
+            leaveRequestId: leave.id,
+            type: 'ONE_ON_ONE',
+            status: 'APPROVED',
+            teacherId: input.teacherId,
+            slotDate: input.slotDate,
+            slotStartTime: input.slotStartTime,
+            slotEndTime: input.slotEndTime,
+          },
+          include: MAKEUP_NOTIFY_INCLUDE,
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
+  await notifyMakeup(makeup, 'APPROVED');
+  return makeup;
+}
+
+// ─── 撤銷：家長申請、行政確認或直接撤銷 ───
+
+// 學生（家長）對自己已核准的補課提出撤銷申請；行政確認前補課仍有效。
+export async function requestMakeupCancellation(makeupRequestId: string, studentId: string) {
+  const makeup = await prisma.makeupRequest.findUnique({
+    where: { id: makeupRequestId },
+    select: { id: true, status: true, leaveRequest: { select: { studentId: true } } },
+  });
+  if (!makeup || makeup.leaveRequest.studentId !== studentId) throw new Error('NOT_FOUND');
+  if (makeup.status !== 'APPROVED') throw new Error('NOT_APPROVED');
+  return prisma.makeupRequest.update({ where: { id: makeupRequestId }, data: { cancelRequestedAt: new Date() } });
+}
+
+export function rejectMakeupCancellation(makeupRequestId: string) {
+  return prisma.makeupRequest.update({ where: { id: makeupRequestId }, data: { cancelRequestedAt: null } });
+}
+
+// 撤銷＝刪除補課單：點名名單自動消失（名單只撈 APPROVED）、一對一額度
+// 釋放、原請假回到「尚未申請」可重新安排。已點過名則擋下。
+export async function revokeMakeup(makeupRequestId: string) {
+  const makeup = await prisma.makeupRequest.findUniqueOrThrow({
+    where: { id: makeupRequestId },
+    include: MAKEUP_NOTIFY_INCLUDE,
+  });
+  await prisma.$transaction(async (tx) => {
+    const [classAttendance, oneOnOneAttendance] = await Promise.all([
+      tx.classAttendance.count({ where: { makeupRequestId } }),
+      tx.oneOnOneAttendance.count({ where: { makeupRequestId } }),
+    ]);
+    if (classAttendance > 0 || oneOnOneAttendance > 0) throw new Error('MAKEUP_HAS_ATTENDANCE');
+    await tx.makeupRequest.delete({ where: { id: makeupRequestId } });
+  });
+  await notifyMakeup(makeup, 'REVOKED');
+}
+
+// 行政補課申請頁的「已核准補課」清單：只列未來場次（今天含以後），
+// 有撤銷申請者排最前，其餘依補課日期近到遠。
+export async function listApprovedMakeups() {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const rows = await prisma.makeupRequest.findMany({
+    where: {
+      status: 'APPROVED',
+      OR: [{ targetDate: { gte: todayStart } }, { slotDate: { gte: todayStart } }],
+    },
+    select: {
+      id: true,
+      type: true,
+      targetDate: true,
+      slotDate: true,
+      slotStartTime: true,
+      slotEndTime: true,
+      cancelRequestedAt: true,
+      leaveRequest: {
+        select: {
+          date: true,
+          student: { select: { user: { select: { name: true } } } },
+          class: { select: { name: true } },
+        },
+      },
+      targetClass: { select: { name: true } },
+      teacher: { select: { user: { select: { name: true } } } },
     },
   });
-
-  try {
-    const student = updated.leaveRequest.student;
-    if (student.lineUserId) {
-      const text =
-        decision === 'APPROVED'
-          ? `【MUP】${student.user.name}的補課申請已核准：${formatMakeupSlot(updated)}`
-          : `【MUP】${student.user.name}的補課申請未通過，請洽行政人員`;
-      await pushLineMessage(student.lineUserId, text);
-    }
-  } catch (err) {
-    console.error('decideMakeupRequest LINE notification failed', err);
-  }
-
-  return updated;
+  const when = (r: (typeof rows)[number]) => (r.targetDate ?? r.slotDate ?? new Date(0)).getTime();
+  return rows.sort((a, b) => {
+    if (!!a.cancelRequestedAt !== !!b.cancelRequestedAt) return a.cancelRequestedAt ? -1 : 1;
+    return when(a) - when(b);
+  });
 }
 
 // For the teacher dashboard: which students inserted into a class this

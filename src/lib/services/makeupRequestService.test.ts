@@ -5,6 +5,7 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent, setStudentEnrollments, addEnrollmentSessions } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { setTeacherAvailability } from './availabilityService';
+import { getClassRoster } from './attendanceService';
 import {
   createInsertionMakeupRequest,
   createOneOnOneMakeupRequest,
@@ -13,6 +14,11 @@ import {
   listInsertionsForTeacherClasses,
   getMakeupQuotaStatus,
   formatMakeupSlot,
+  arrangeInsertionMakeup,
+  arrangeOneOnOneMakeup,
+  requestMakeupCancellation,
+  rejectMakeupCancellation,
+  revokeMakeup,
 } from './makeupRequestService';
 
 // 報名帶堂數 → setStudentEnrollments 會建立第一期，之後的一對一額度
@@ -486,5 +492,230 @@ describe('listInsertionsForTeacherClasses', () => {
     expect(results).toHaveLength(1);
     expect(results[0].targetClass?.name).toBe('圍棋B班');
     expect(results[0].leaveRequest.student.user.name).toBe('小明');
+  });
+});
+
+describe('arrangeInsertionMakeup', () => {
+  it('creates an approved leave+makeup and the student appears on the target class roster', async () => {
+    const { student, classA, classB } = await setup();
+
+    const makeup = await arrangeInsertionMakeup({
+      studentId: student.id,
+      classId: classA.id,
+      date: new Date(2026, 7, 3),
+      reason: '行政代辦',
+      targetClassId: classB.id,
+      targetDate: new Date(2026, 7, 5),
+    });
+
+    expect(makeup.status).toBe('APPROVED');
+    const leave = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: makeup.leaveRequestId } });
+    expect(leave.studentId).toBe(student.id);
+    expect(leave.classId).toBe(classA.id);
+
+    const roster = await getClassRoster(classB.id, new Date(2026, 7, 5));
+    const insertion = roster.find((r) => r.makeupRequestId === makeup.id);
+    expect(insertion?.studentName).toBe('小明');
+  });
+
+  it('throws NOT_ENROLLED for a class the student is not enrolled in, leaving no rows behind', async () => {
+    const { student, classB } = await setup();
+
+    await expect(
+      arrangeInsertionMakeup({
+        studentId: student.id,
+        classId: classB.id, // 未就讀 classB
+        date: new Date(2026, 7, 3),
+        reason: '行政代辦',
+        targetClassId: classB.id,
+        targetDate: new Date(2026, 7, 5),
+      })
+    ).rejects.toThrow('NOT_ENROLLED');
+
+    expect(await prisma.leaveRequest.count({ where: { date: new Date(2026, 7, 3) } })).toBe(0);
+    expect(await prisma.makeupRequest.count()).toBe(0);
+  });
+});
+
+describe('arrangeOneOnOneMakeup', () => {
+  it('creates an approved one-on-one directly', async () => {
+    const { teacher, student, classA } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    const makeup = await arrangeOneOnOneMakeup({
+      studentId: student.id,
+      classId: classA.id,
+      date: new Date(2026, 7, 3),
+      reason: '行政代辦',
+      teacherId: teacher.id,
+      slotDate: new Date('2026-08-05'), // a Wednesday
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+
+    expect(makeup.type).toBe('ONE_ON_ONE');
+    expect(makeup.status).toBe('APPROVED');
+  });
+
+  it('throws NOT_AVAILABLE for a non-Go class', async () => {
+    const { teacher, student } = await setup();
+    const mathClass = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(mathClass.id, student.id);
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    await expect(
+      arrangeOneOnOneMakeup({
+        studentId: student.id,
+        classId: mathClass.id,
+        date: new Date(2026, 7, 4),
+        reason: '行政代辦',
+        teacherId: teacher.id,
+        slotDate: new Date('2026-08-05'),
+        slotStartTime: '16:00',
+        slotEndTime: '17:00',
+      })
+    ).rejects.toThrow('NOT_AVAILABLE');
+  });
+
+  it('enforces the per-period one-on-one quota', async () => {
+    const { teacher, student, classA, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-08-05'),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+
+    await expect(
+      arrangeOneOnOneMakeup({
+        studentId: student.id,
+        classId: classA.id,
+        date: new Date(2026, 7, 10),
+        reason: '行政代辦',
+        teacherId: teacher.id,
+        slotDate: new Date('2026-08-12'),
+        slotStartTime: '17:00',
+        slotEndTime: '18:00',
+      })
+    ).rejects.toThrow('QUOTA_EXCEEDED');
+  });
+
+  it('rejects a slot outside teacher availability', async () => {
+    const { teacher, student, classA } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    await expect(
+      arrangeOneOnOneMakeup({
+        studentId: student.id,
+        classId: classA.id,
+        date: new Date(2026, 7, 3),
+        reason: '行政代辦',
+        teacherId: teacher.id,
+        slotDate: new Date('2026-08-05'),
+        slotStartTime: '19:00',
+        slotEndTime: '20:00',
+      })
+    ).rejects.toThrow('OUTSIDE_AVAILABILITY');
+  });
+});
+
+describe('makeup cancellation', () => {
+  async function arrangedInsertion() {
+    const base = await setup();
+    const makeup = await arrangeInsertionMakeup({
+      studentId: base.student.id,
+      classId: base.classA.id,
+      date: new Date(2026, 7, 3),
+      reason: '行政代辦',
+      targetClassId: base.classB.id,
+      targetDate: new Date(2026, 7, 5),
+    });
+    return { ...base, makeup };
+  }
+
+  it('requestMakeupCancellation marks an approved makeup and keeps it on the roster', async () => {
+    const { student, classB, makeup } = await arrangedInsertion();
+
+    await requestMakeupCancellation(makeup.id, student.id);
+
+    const updated = await prisma.makeupRequest.findUniqueOrThrow({ where: { id: makeup.id } });
+    expect(updated.cancelRequestedAt).not.toBeNull();
+    expect(updated.status).toBe('APPROVED');
+    const roster = await getClassRoster(classB.id, new Date(2026, 7, 5));
+    expect(roster.some((r) => r.makeupRequestId === makeup.id)).toBe(true);
+  });
+
+  it('rejects a cancellation request from another student or on a non-approved makeup', async () => {
+    const { classB, makeup, student, classA } = await arrangedInsertion();
+    const other = await createStudent({ name: '小華', email: 'cancel-hua@example.com', password: 'x' });
+    await expect(requestMakeupCancellation(makeup.id, other.id)).rejects.toThrow('NOT_FOUND');
+
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 7, 10), reason: '事假' });
+    const pending = await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 12) });
+    await expect(requestMakeupCancellation(pending.id, student.id)).rejects.toThrow('NOT_APPROVED');
+  });
+
+  it('rejectMakeupCancellation clears the flag', async () => {
+    const { student, makeup } = await arrangedInsertion();
+    await requestMakeupCancellation(makeup.id, student.id);
+
+    await rejectMakeupCancellation(makeup.id);
+
+    const updated = await prisma.makeupRequest.findUniqueOrThrow({ where: { id: makeup.id } });
+    expect(updated.cancelRequestedAt).toBeNull();
+  });
+
+  it('revokeMakeup deletes the makeup, frees the roster, and allows re-application on the same leave', async () => {
+    const { student, classB, makeup } = await arrangedInsertion();
+
+    await revokeMakeup(makeup.id);
+
+    expect(await prisma.makeupRequest.count({ where: { id: makeup.id } })).toBe(0);
+    const roster = await getClassRoster(classB.id, new Date(2026, 7, 5));
+    expect(roster.some((r) => r.makeupRequestId === makeup.id)).toBe(false);
+    const leave = await prisma.leaveRequest.findFirstOrThrow({ where: { studentId: student.id, date: new Date(2026, 7, 3) } });
+    const again = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 19) });
+    expect(again.status).toBe('PENDING_ADMIN');
+  });
+
+  it('revoking an approved one-on-one releases the per-period quota', async () => {
+    const { teacher, student, classA } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    const makeup = await arrangeOneOnOneMakeup({
+      studentId: student.id,
+      classId: classA.id,
+      date: new Date(2026, 7, 3),
+      reason: '行政代辦',
+      teacherId: teacher.id,
+      slotDate: new Date('2026-08-05'),
+      slotStartTime: '16:00',
+      slotEndTime: '17:00',
+    });
+    expect((await getMakeupQuotaStatus(student.id, classA.id)).oneOnOneRemaining).toBe(0);
+
+    await revokeMakeup(makeup.id);
+
+    expect((await getMakeupQuotaStatus(student.id, classA.id)).oneOnOneRemaining).toBe(1);
+  });
+
+  it('revokeMakeup blocks when attendance is already marked', async () => {
+    const { student, classB, makeup } = await arrangedInsertion();
+    const marker = await prisma.user.findFirstOrThrow();
+    await prisma.classAttendance.create({
+      data: {
+        classId: classB.id,
+        studentId: student.id,
+        date: new Date(2026, 7, 5),
+        status: 'PRESENT',
+        makeupRequestId: makeup.id,
+        markedById: marker.id,
+      },
+    });
+
+    await expect(revokeMakeup(makeup.id)).rejects.toThrow('MAKEUP_HAS_ATTENDANCE');
+    expect(await prisma.makeupRequest.count({ where: { id: makeup.id } })).toBe(1);
   });
 });
