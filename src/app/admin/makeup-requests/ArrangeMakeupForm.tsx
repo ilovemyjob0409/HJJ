@@ -45,8 +45,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   ALREADY_HAS_MAKEUP: '該筆請假已安排過補課',
 };
 
-// 行政代排：選學生＋原課程（請假）→ 直接改排插班或一對一（直接核准，
-// 立即進點名名單）。
+// 代辦請假／補課：選學生＋原課程建立請假（直接核准）；可勾選同時
+// 安排插班或一對一（同樣直接核准，立即進點名名單）。選到已請假的
+// 日期時，補課會掛在原本的請假上。
 export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => void }) {
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -152,10 +153,10 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
       const res = await fetch('/api/makeup-requests/arrange', { method: 'POST', body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json();
-        showToast(ERROR_MESSAGES[data.error] ?? (withMakeup ? '代排失敗，請稍後再試' : '代辦請假失敗，請稍後再試'));
+        showToast(ERROR_MESSAGES[data.error] ?? (withMakeup ? '補課安排失敗，請稍後再試' : '代辦請假失敗，請稍後再試'));
         return;
       }
-      showToast(withMakeup ? '已完成代排，點名名單已更新' : '已代辦請假');
+      showToast(withMakeup ? '已完成請假＋補課，點名名單已更新' : '已代辦請假');
       reset();
       setExpanded(false);
       onArranged?.();
@@ -167,7 +168,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
   if (!expanded) {
     return (
       <div className="mb-6">
-        <Button onClick={() => setExpanded(true)}>＋ 代排補課</Button>
+        <Button onClick={() => setExpanded(true)}>＋ 代辦請假／補課</Button>
       </div>
     );
   }
@@ -175,7 +176,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
   return (
     <Card className="mb-6 max-w-2xl">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-bold text-ink">代排補課</h2>
+        <h2 className="font-bold text-ink">代辦請假／補課</h2>
         <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setExpanded(false)}>
           收合
         </button>
@@ -310,7 +311,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
               )}
 
               <Button type="submit" loading={submitting}>
-                {withMakeup ? '送出代排（直接核准）' : '送出請假（直接核准）'}
+                {withMakeup ? '送出請假＋補課（直接核准）' : '送出請假（直接核准）'}
               </Button>
             </>
           )}
