@@ -175,13 +175,37 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
 // column is nullable and `NULL + n` stays `NULL` in SQL — COALESCE handles
 // that in a single statement. Values are bound via Prisma's tagged-template
 // parameterization, never string-concatenated.
-// 「新增一期」：累加堂數並建立一筆期紀錄（同一交易）。期紀錄是
+// 「續報」：累加堂數並建立一筆期紀錄（同一交易）。期紀錄是
 // 圍棋班一對一補課額度的重置點（見 makeupRequestService）。
-export async function addEnrollmentSessions(classId: string, studentId: string, amount: number) {
+// notRegisteredDates：續報時就聲明不出席的上課日，預先寫入
+// NOT_REGISTERED 點名紀錄（不扣堂），行政不用再到未來的點名改狀態。
+export async function addEnrollmentSessions(
+  classId: string,
+  studentId: string,
+  amount: number,
+  options?: { notRegisteredDates?: Date[]; markedById?: string }
+) {
   const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
+  const dates = options?.notRegisteredDates ?? [];
+  const markedById = options?.markedById;
+  if (dates.length > 0) {
+    if (!markedById) throw new Error('MARKER_REQUIRED');
+    const cls = await prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { weekday: true } });
+    for (const date of dates) {
+      // 日期由 date-only 字串解析為 UTC 午夜，取 UTC 星期幾（同點名慣例）。
+      if (date.getUTCDay() !== cls.weekday) throw new Error('INVALID_DATE');
+    }
+  }
   await prisma.$transaction([
     prisma.$executeRaw`UPDATE "ClassEnrollment" SET "totalSessions" = COALESCE("totalSessions", 0) + ${amount} WHERE "id" = ${enrollment.id}`,
     prisma.enrollmentPeriod.create({ data: { enrollmentId: enrollment.id, sessions: amount } }),
+    ...dates.map((date) =>
+      prisma.classAttendance.upsert({
+        where: { classId_studentId_date: { classId, studentId, date } },
+        update: { status: 'NOT_REGISTERED', markedById: markedById! },
+        create: { classId, studentId, date, status: 'NOT_REGISTERED', markedById: markedById! },
+      })
+    ),
   ]);
   return prisma.classEnrollment.findUniqueOrThrow({ where: { id: enrollment.id } });
 }

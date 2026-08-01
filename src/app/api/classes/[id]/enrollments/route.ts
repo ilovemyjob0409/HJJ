@@ -18,9 +18,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  const { studentId, addSessions } = await req.json();
-  const updated = await addEnrollmentSessions(params.id, studentId, addSessions);
-  return NextResponse.json(updated);
+  const { studentId, addSessions, notRegisteredDates } = await req.json();
+  try {
+    const updated = await addEnrollmentSessions(params.id, studentId, addSessions, {
+      notRegisteredDates: Array.isArray(notRegisteredDates) ? notRegisteredDates.map((d: string) => new Date(d)) : undefined,
+      markedById: session.user.id,
+    });
+    return NextResponse.json(updated);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {

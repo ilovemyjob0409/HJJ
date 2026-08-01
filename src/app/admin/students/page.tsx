@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
 import QRCode from 'qrcode';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface EnrollmentQuota {
   classId: string;
@@ -31,6 +32,24 @@ interface ClassOption {
   id: string;
   name: string;
   subject: string;
+  weekday: number;
+}
+
+// 該班未來的上課日（含今天起算的下一個上課日，共 count 週），
+// 供續報彈窗勾選「未報名」日期。
+function upcomingClassDates(weekday: number, count = 16): string[] {
+  const dates: string[] = [];
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  while (d.getDay() !== weekday) d.setDate(d.getDate() + 1);
+  for (let i = 0; i < count; i++) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    dates.push(`${y}-${m}-${day}`);
+    d.setDate(d.getDate() + 7);
+  }
+  return dates;
 }
 
 function LowQuotaIcon() {
@@ -98,8 +117,11 @@ function StudentsContent() {
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
   const [addClassQuery, setAddClassQuery] = useState('');
   const [openHintClassId, setOpenHintClassId] = useState<string | null>(null);
-  const [periodInputs, setPeriodInputs] = useState<Record<string, string>>({});
-  const [addingPeriodClassId, setAddingPeriodClassId] = useState<string | null>(null);
+  // 續報彈窗：目標班級、本期堂數、勾選的未報名日期
+  const [renewTarget, setRenewTarget] = useState<ClassOption | null>(null);
+  const [renewAmount, setRenewAmount] = useState('');
+  const [renewDates, setRenewDates] = useState<Record<string, boolean>>({});
+  const [renewBusy, setRenewBusy] = useState(false);
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -189,7 +211,7 @@ function StudentsContent() {
     setEditing(s);
     setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '', studentNumber: s.studentNumber ?? '' });
     setEditEnrollments(Object.fromEntries(s.enrollments.map((e) => [e.classId, e.totalSessions === null ? '' : String(e.totalSessions)])));
-    setPeriodInputs({});
+    setRenewTarget(null);
     setAddClassQuery('');
     setEditError('');
     setLineBindInfo(null);
@@ -232,33 +254,41 @@ function StudentsContent() {
     }
   }
 
-  async function handleAddPeriod(classId: string) {
-    if (!editing) return;
-    const amount = Number(periodInputs[classId]);
+  function openRenew(cls: ClassOption) {
+    setRenewTarget(cls);
+    setRenewAmount('');
+    setRenewDates({});
+  }
+
+  async function handleRenewSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing || !renewTarget) return;
+    const amount = Number(renewAmount);
     if (!Number.isInteger(amount) || amount <= 0) {
       showToast('請輸入本期堂數（正整數）');
       return;
     }
-    setAddingPeriodClassId(classId);
+    const selectedDates = Object.keys(renewDates).filter((d) => renewDates[d]);
+    setRenewBusy(true);
     try {
-      const res = await fetch(`/api/classes/${classId}/enrollments`, {
+      const res = await fetch(`/api/classes/${renewTarget.id}/enrollments`, {
         method: 'PATCH',
-        body: JSON.stringify({ studentId: editing.id, addSessions: amount }),
+        body: JSON.stringify({ studentId: editing.id, addSessions: amount, notRegisteredDates: selectedDates }),
       });
       if (!res.ok) {
-        showToast('新增一期失敗，請稍後再試');
+        showToast('續報失敗，請稍後再試');
         return;
       }
       const updated: { totalSessions: number | null } = await res.json();
-      // 同步表單裡的總堂數與 Modal 顯示，避免之後按「儲存」把加期前的
+      // 同步表單裡的總堂數與 Modal 顯示，避免之後按「儲存」把續報前的
       // 舊數字當校正送回去，蓋掉剛加上的堂數。
-      setEditEnrollments((prev) => ({ ...prev, [classId]: updated.totalSessions === null ? '' : String(updated.totalSessions) }));
+      setEditEnrollments((prev) => ({ ...prev, [renewTarget.id]: updated.totalSessions === null ? '' : String(updated.totalSessions) }));
       setEditing(
         (prev) =>
           prev && {
             ...prev,
             enrollments: prev.enrollments.map((en) =>
-              en.classId === classId
+              en.classId === renewTarget.id
                 ? {
                     ...en,
                     totalSessions: updated.totalSessions,
@@ -268,11 +298,13 @@ function StudentsContent() {
             ),
           }
       );
-      setPeriodInputs((prev) => ({ ...prev, [classId]: '' }));
-      showToast('已新增一期');
+      showToast(
+        selectedDates.length > 0 ? `已續報 ${amount} 堂，並預先標記 ${selectedDates.length} 天未報名` : `已續報 ${amount} 堂`
+      );
+      setRenewTarget(null);
       load();
     } finally {
-      setAddingPeriodClassId(null);
+      setRenewBusy(false);
     }
   }
 
@@ -542,33 +574,25 @@ function StudentsContent() {
                     },
                   },
                   {
-                    header: '新增一期',
+                    header: '續報',
                     render: (c) => {
                       const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
                       if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
                       return (
                         <div className="flex items-center justify-center gap-1">
-                          <Input
-                            type="number"
-                            placeholder="堂數"
-                            value={periodInputs[c.id] ?? ''}
-                            onChange={(e) => setPeriodInputs((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                            className="w-20"
-                          />
                           <button
                             type="button"
-                            disabled={addingPeriodClassId === c.id}
-                            onClick={() => handleAddPeriod(c.id)}
-                            className="whitespace-nowrap text-xs text-brandDark hover:underline disabled:opacity-50"
+                            onClick={() => openRenew(c)}
+                            className="whitespace-nowrap text-xs text-brandDark hover:underline"
                           >
                             續報
                           </button>
                           <HintButton
-                            label="新增一期說明"
+                            label="續報說明"
                             active={openHintClassId === `period-${c.id}`}
                             onToggle={() => setOpenHintClassId((prev) => (prev === `period-${c.id}` ? null : `period-${c.id}`))}
                           >
-                            新增一期＝這期報課：堂數會累加到總堂數，圍棋班的一對一補課額度同時重新起算。直接修改「總堂數」欄位則是校正，不會開新的一期。
+                            續報＝這期報課：堂數會累加到總堂數，圍棋班的一對一補課額度同時重新起算；可順便勾選這期不出席的日期，預先標為「未報名」（不扣堂）。直接修改「總堂數」欄位則是校正，不會開新的一期。
                           </HintButton>
                         </div>
                       );
@@ -677,6 +701,66 @@ function StudentsContent() {
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
           刪除學生
         </button>
+      </Modal>
+
+      <Modal
+        open={renewTarget !== null}
+        onClose={() => setRenewTarget(null)}
+        title={`續報：${editing?.user.name ?? ''}（${renewTarget?.name ?? ''}）`}
+      >
+        {renewTarget && (
+          <form onSubmit={handleRenewSubmit} className="flex flex-col gap-3">
+            <div>
+              <p className="mb-1 text-sm font-medium text-ink">本期堂數</p>
+              <Input
+                type="number"
+                min={1}
+                placeholder="堂數"
+                value={renewAmount}
+                onChange={(e) => setRenewAmount(e.target.value)}
+                className="w-28"
+                required
+              />
+            </div>
+
+            <div>
+              <div className="mb-1 flex items-baseline justify-between">
+                <p className="text-sm font-medium text-ink">未報名日期（可複選）</p>
+                <span className="text-xs text-inkMuted">
+                  已選 {Object.values(renewDates).filter(Boolean).length} 天
+                </span>
+              </div>
+              <p className="mb-2 text-xs text-inkMuted">
+                這個班未來的上課日。勾選的日期會預先在點名中標為「未報名」，不扣堂，之後不用再改。
+              </p>
+              <div className="flex max-h-48 flex-col overflow-y-auto rounded-lg border border-borderSubtle">
+                {upcomingClassDates(renewTarget.weekday).map((d) => {
+                  const selected = !!renewDates[d];
+                  return (
+                    <label
+                      key={d}
+                      className={`flex cursor-pointer items-center gap-2 border-b border-borderSubtle px-3 py-2 text-sm last:border-b-0 ${
+                        selected ? 'bg-stripe font-semibold text-brandDark' : 'text-ink hover:bg-stripe'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => setRenewDates((prev) => ({ ...prev, [d]: !prev[d] }))}
+                      />
+                      {formatDateWithWeekday(d)}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <Button type="submit" loading={renewBusy}>
+              確認續報
+              {Number(renewAmount) > 0 ? `（${Number(renewAmount)} 堂${Object.values(renewDates).filter(Boolean).length > 0 ? `・${Object.values(renewDates).filter(Boolean).length} 天未報名` : ''}）` : ''}
+            </Button>
+          </form>
+        )}
       </Modal>
     </>
   );

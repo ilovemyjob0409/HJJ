@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createLeaveRequest } from './leaveRequestService';
+import { getClassRoster } from './attendanceService';
 import {
   createClass,
   listClasses,
@@ -353,5 +354,74 @@ describe('deleteClass', () => {
 
     await expect(deleteClass(cls.id)).rejects.toThrow('CLASS_HAS_RECORDS');
     expect(await prisma.class.findUnique({ where: { id: cls.id } })).not.toBeNull();
+  });
+});
+
+describe('addEnrollmentSessions with notRegisteredDates', () => {
+  async function setupWithMarker() {
+    const marker = await prisma.user.create({
+      data: { email: 'renew-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const teacher = await createTeacher({ name: '陳老師', email: 'renew-nr-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'renew-nr-ming@example.com', password: 'x' });
+    // weekday 2 = 週二
+    const cls = await createClass({ name: '週二基礎班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 10 }]);
+    return { marker, student, cls };
+  }
+
+  it('pre-marks the given class dates as NOT_REGISTERED so future rosters are already set', async () => {
+    const { marker, student, cls } = await setupWithMarker();
+
+    await addEnrollmentSessions(cls.id, student.id, 8, {
+      notRegisteredDates: [new Date('2026-08-11'), new Date('2026-08-18')], // both Tuesdays
+      markedById: marker.id,
+    });
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+    });
+    expect(enrollment.totalSessions).toBe(18);
+
+    const roster = await getClassRoster(cls.id, new Date('2026-08-11'));
+    expect(roster.find((r) => r.studentId === student.id)?.status).toBe('NOT_REGISTERED');
+
+    const marked = await prisma.classAttendance.findMany({ where: { studentId: student.id, status: 'NOT_REGISTERED' } });
+    expect(marked).toHaveLength(2);
+  });
+
+  it('rejects a date that does not fall on the class weekday, persisting nothing', async () => {
+    const { marker, student, cls } = await setupWithMarker();
+
+    await expect(
+      addEnrollmentSessions(cls.id, student.id, 8, {
+        notRegisteredDates: [new Date('2026-08-12')], // Wednesday
+        markedById: marker.id,
+      })
+    ).rejects.toThrow('INVALID_DATE');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+    });
+    expect(enrollment.totalSessions).toBe(10);
+    expect(await prisma.classAttendance.count()).toBe(0);
+    expect(await prisma.enrollmentPeriod.count()).toBe(1);
+  });
+
+  it('overwrites an existing attendance row for the same date instead of failing', async () => {
+    const { marker, student, cls } = await setupWithMarker();
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11'), status: 'PRESENT', markedById: marker.id },
+    });
+
+    await addEnrollmentSessions(cls.id, student.id, 8, {
+      notRegisteredDates: [new Date('2026-08-11')],
+      markedById: marker.id,
+    });
+
+    const row = await prisma.classAttendance.findUniqueOrThrow({
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11') } },
+    });
+    expect(row.status).toBe('NOT_REGISTERED');
   });
 });
