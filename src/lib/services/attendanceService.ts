@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { pushLineMessage } from './lineService';
 
-export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT';
+export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
 
 const NAME_SELECT = { user: { select: { name: true } } } as const;
 
@@ -132,7 +132,8 @@ export interface ClassAttendanceQuota {
 export async function getClassEnrollmentQuota(classId: string, studentId: string): Promise<ClassAttendanceQuota> {
   const [enrollment, usedSessions] = await Promise.all([
     prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } }),
-    prisma.classAttendance.count({ where: { classId, studentId, status: { not: 'ON_LEAVE' } } }),
+    // 請假與未報名（報名時聲明不來、未繳該堂費用）都不扣堂。
+    prisma.classAttendance.count({ where: { classId, studentId, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } } }),
   ]);
   const { totalSessions } = enrollment;
   return {
@@ -518,7 +519,7 @@ export async function getAttendanceStats(filter: {
     },
     select: { status: true },
   });
-  const counts: Record<AttendanceStatusValue, number> = { PRESENT: 0, LATE: 0, LEFT_EARLY: 0, ON_LEAVE: 0, ABSENT: 0 };
+  const counts: Record<AttendanceStatusValue, number> = { PRESENT: 0, LATE: 0, LEFT_EARLY: 0, ON_LEAVE: 0, ABSENT: 0, NOT_REGISTERED: 0 };
   for (const r of rows) counts[r.status as AttendanceStatusValue]++;
   return { counts };
 }

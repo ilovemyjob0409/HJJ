@@ -18,11 +18,12 @@ interface StudentOption {
   user: { name: string };
 }
 
-const STATUS_LABELS: { key: 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT'; label: string }[] = [
+const STATUS_LABELS: { key: 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED'; label: string }[] = [
   { key: 'PRESENT', label: '出席' },
   { key: 'LATE', label: '遲到' },
   { key: 'LEFT_EARLY', label: '早退' },
   { key: 'ON_LEAVE', label: '請假' },
+  { key: 'NOT_REGISTERED', label: '未報名' },
   { key: 'ABSENT', label: '缺席未請假' },
 ];
 

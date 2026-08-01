@@ -38,6 +38,7 @@ enum AttendanceStatus {
   LEFT_EARLY
   ON_LEAVE
   ABSENT
+  NOT_REGISTERED // 報名時聲明不出席、未繳該堂費用 → 不扣堂
 }
 
 enum PointBucket {

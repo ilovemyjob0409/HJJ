@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 
-export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT';
+export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
 type EditableStatus = AttendanceStatusValue | 'UNMARKED';
 
 const STATUS_OPTIONS: { value: EditableStatus; label: string }[] = [
@@ -13,6 +13,7 @@ const STATUS_OPTIONS: { value: EditableStatus; label: string }[] = [
   { value: 'LATE', label: '遲到' },
   { value: 'LEFT_EARLY', label: '早退' },
   { value: 'ON_LEAVE', label: '請假' },
+  { value: 'NOT_REGISTERED', label: '未報名' },
   { value: 'ABSENT', label: '缺席未請假' },
 ];
 

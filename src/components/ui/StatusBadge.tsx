@@ -8,7 +8,8 @@ export type KnownStatus =
   | 'LATE'
   | 'LEFT_EARLY'
   | 'ON_LEAVE'
-  | 'ABSENT';
+  | 'ABSENT'
+  | 'NOT_REGISTERED';
 
 interface StatusConfig {
   label: string;
@@ -27,6 +28,8 @@ const STATUS_CONFIG: Record<KnownStatus, StatusConfig> = {
   LEFT_EARLY: { label: '早退', bg: 'bg-pendingBg', text: 'text-pending' },
   ON_LEAVE: { label: '請假', bg: 'bg-assignedBg', text: 'text-assigned' },
   ABSENT: { label: '缺席未請假', bg: 'bg-rejectedBg', text: 'text-rejected' },
+  // 報名時聲明不出席、未繳該堂費用 → 不扣堂；中性灰顯示
+  NOT_REGISTERED: { label: '未報名', bg: 'bg-borderSubtle', text: 'text-inkMuted' },
 };
 
 export function getStatusBadgeConfig(status: string): StatusConfig {

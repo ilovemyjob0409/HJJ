@@ -171,13 +171,15 @@ describe('getClassEnrollmentQuota', () => {
     expect(quota.usedSessions).toBe(0);
   });
 
-  it('counts PRESENT/LATE/LEFT_EARLY/ABSENT as used but excludes ON_LEAVE', async () => {
+  it('counts PRESENT/LATE/LEFT_EARLY/ABSENT as used but excludes ON_LEAVE and NOT_REGISTERED', async () => {
     const { student, cls } = await setupClassWithStudent();
     await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 12 } });
 
     await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
     await saveClassAttendance(cls.id, new Date('2026-08-11'), 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
     await saveClassAttendance(cls.id, new Date('2026-08-18'), 'marker-1', [{ studentId: student.id, status: 'ON_LEAVE' }]);
+    // 報名時就聲明不來、未繳該堂費用 → 未報名，不扣堂
+    await saveClassAttendance(cls.id, new Date('2026-08-25'), 'marker-1', [{ studentId: student.id, status: 'NOT_REGISTERED' }]);
 
     const quota = await getClassEnrollmentQuota(cls.id, student.id);
 
