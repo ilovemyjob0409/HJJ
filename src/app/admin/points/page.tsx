@@ -286,7 +286,12 @@ export default function AdminPointsPage() {
         </div>
       </Card>
 
-      <Modal open={batchOpen} onClose={() => setBatchOpen(false)} title={`批量加分（${checkedIds.length} 位學生）`}>
+      <Modal
+        open={batchOpen}
+        onClose={() => setBatchOpen(false)}
+        title={`批量加分（${checkedIds.length} 位學生）`}
+        maxWidthClassName="max-w-2xl"
+      >
         {batchOpen && (
           <AwardRowsForm
             students={filtered.filter((s) => checked[s.id]).map((s) => ({ id: s.id, name: s.name }))}
