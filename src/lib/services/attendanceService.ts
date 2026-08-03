@@ -1,5 +1,8 @@
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { pushLineMessage } from './lineService';
+import { runSerializableWithRetry } from '@/lib/transaction';
+import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
 
 export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
 
@@ -199,6 +202,9 @@ export async function clearOneOnOneAttendance(makeupRequestId: string): Promise<
   await prisma.oneOnOneAttendance.deleteMany({ where: { makeupRequestId } });
 }
 
+// 「到場」才扣堂票：出席／遲到／早退；請假、缺席、未報名不扣。
+const GO_HALL_ATTENDED: ReadonlySet<string> = new Set(['PRESENT', 'LATE', 'LEFT_EARLY']);
+
 export interface GoHallRosterEntry {
   studentId: string;
   studentName: string;
@@ -235,31 +241,78 @@ export async function saveGoHallAttendance(
   markedById: string,
   records: SaveAttendanceRecordInput[]
 ): Promise<void> {
-  await prisma.$transaction(
-    records.map((r) =>
-      prisma.goHallAttendance.upsert({
-        where: { sessionId_studentId: { sessionId, studentId: r.studentId } },
-        create: {
-          sessionId,
-          studentId: r.studentId,
-          status: r.status,
-          checkInTime: r.checkInTime,
-          checkOutTime: r.checkOutTime,
-          markedById,
-        },
-        update: {
-          status: r.status,
-          checkInTime: r.checkInTime,
-          checkOutTime: r.checkOutTime,
-          markedById,
-        },
-      })
+  const session = await prisma.goHallSession.findUniqueOrThrow({ where: { id: sessionId }, select: { date: true } });
+  const deductedStudentIds: string[] = [];
+
+  await runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        deductedStudentIds.length = 0; // serializable 重試時歸零，避免重複通知
+        for (const r of records) {
+          const attended = GO_HALL_ATTENDED.has(r.status);
+          const existing = await tx.goHallAttendance.findUnique({
+            where: { sessionId_studentId: { sessionId, studentId: r.studentId } },
+            select: { qualification: true },
+          });
+          // 已到場且已戳記 → 沿用（冪等）；轉非到場 → 退堂＋清戳記。
+          let qualification: GoHallQualificationValue | null = existing?.qualification ?? null;
+          if (attended && qualification === null) {
+            qualification = await determineQualification(tx, r.studentId, session.date);
+            if (qualification === 'TICKET') {
+              await tx.goHallTicketTransaction.create({
+                data: { studentId: r.studentId, amount: -1, kind: 'ATTEND', sessionId },
+              });
+              deductedStudentIds.push(r.studentId);
+            }
+          } else if (!attended && qualification !== null) {
+            await tx.goHallTicketTransaction.deleteMany({
+              where: { studentId: r.studentId, sessionId, kind: 'ATTEND' },
+            });
+            qualification = null;
+          }
+          await tx.goHallAttendance.upsert({
+            where: { sessionId_studentId: { sessionId, studentId: r.studentId } },
+            create: {
+              sessionId,
+              studentId: r.studentId,
+              status: r.status,
+              checkInTime: r.checkInTime,
+              checkOutTime: r.checkOutTime,
+              markedById,
+              qualification,
+            },
+            update: {
+              status: r.status,
+              checkInTime: r.checkInTime,
+              checkOutTime: r.checkOutTime,
+              markedById,
+              qualification,
+            },
+          });
+        }
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
   );
+
+  for (const studentId of deductedStudentIds) {
+    await maybeNotifyLowGoHallTickets(studentId);
+  }
 }
 
 export async function clearGoHallAttendance(sessionId: string, studentIds: string[]): Promise<void> {
-  await prisma.goHallAttendance.deleteMany({ where: { sessionId, studentId: { in: studentIds } } });
+  if (studentIds.length === 0) return;
+  await runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        await tx.goHallTicketTransaction.deleteMany({
+          where: { sessionId, studentId: { in: studentIds }, kind: 'ATTEND' },
+        });
+        await tx.goHallAttendance.deleteMany({ where: { sessionId, studentId: { in: studentIds } } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
 }
 
 export interface ActivityRosterEntry {
@@ -723,6 +776,24 @@ async function maybeNotifyLowQuota(
 
   await prisma.classEnrollment.update({ where: { id: enrollment.id }, data: { lowQuotaNotifiedAt: new Date() } });
   await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`);
+}
+
+// 弈廳堂票低堂數提醒：扣堂後剩餘 ≤ LOW_TICKET_THRESHOLD 且未提醒過才發，
+// 登記購買／正向調整時旗標歸零（goHallTicketService）。失敗不影響點名。
+async function maybeNotifyLowGoHallTickets(studentId: string): Promise<void> {
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { id: true, lineUserId: true, goHallLowQuotaNotifiedAt: true, user: { select: { name: true } } },
+    });
+    if (!student?.lineUserId || student.goHallLowQuotaNotifiedAt !== null) return;
+    const remaining = await getTicketBalance(studentId);
+    if (remaining > LOW_TICKET_THRESHOLD) return;
+    await prisma.student.update({ where: { id: studentId }, data: { goHallLowQuotaNotifiedAt: new Date() } });
+    await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 弈廳堂票剩餘：${remaining} 堂，請盡快與行政人員聯繫續購`);
+  } catch (err) {
+    console.error('maybeNotifyLowGoHallTickets failed', err);
+  }
 }
 
 async function notifyAttendanceResult(

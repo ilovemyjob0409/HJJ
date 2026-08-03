@@ -8,6 +8,7 @@ import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeup
 import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
+import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
 
 beforeEach(async () => {
   // Create marker user for attendance marking
@@ -779,5 +780,105 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
 
     const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: cls.id } } });
     expect(enrollment.lowQuotaNotifiedAt).toBeNull();
+  });
+});
+
+async function setupGoHallSessionWithStudent() {
+  const teacher = await createTeacher({ name: '陳老師', email: 'gohall-t@example.com', password: 'x', subjects: '圍棋' });
+  const student = await createStudent({ name: '小明', email: 'gohall-s@example.com', password: 'x' });
+  await createSessions({ dates: [new Date(2026, 7, 15)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+  const session = await prisma.goHallSession.findFirstOrThrow();
+  await registerForSession(session.id, student.id);
+  return { student, session };
+}
+
+describe('go-hall ticket deduction on attendance', () => {
+  it('deducts one ticket and stamps TICKET when marked PRESENT', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    expect(await goHallBalance(student.id)).toBe(9);
+    const record = await prisma.goHallAttendance.findUniqueOrThrow({
+      where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+    });
+    expect(record.qualification).toBe('TICKET');
+    const attendTxn = await prisma.goHallTicketTransaction.findFirstOrThrow({ where: { studentId: student.id, kind: 'ATTEND' } });
+    expect(attendTxn.amount).toBe(-1);
+    expect(attendTxn.sessionId).toBe(session.id);
+  });
+
+  it('does not deduct when marked ABSENT', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
+
+    expect(await goHallBalance(student.id)).toBe(10);
+    const record = await prisma.goHallAttendance.findUniqueOrThrow({
+      where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+    });
+    expect(record.qualification).toBeNull();
+  });
+
+  it('refunds when changed from PRESENT to ABSENT', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
+
+    expect(await goHallBalance(student.id)).toBe(10);
+    const record = await prisma.goHallAttendance.findUniqueOrThrow({
+      where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+    });
+    expect(record.qualification).toBeNull();
+    expect(await prisma.goHallTicketTransaction.count({ where: { kind: 'ATTEND' } })).toBe(0);
+  });
+
+  it('is idempotent: re-saving PRESENT (or switching PRESENT→LATE) deducts only once', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'LATE' }]);
+
+    expect(await goHallBalance(student.id)).toBe(9);
+    expect(await prisma.goHallTicketTransaction.count({ where: { kind: 'ATTEND' } })).toBe(1);
+  });
+
+  it('refunds when the attendance record is cleared', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await clearGoHallAttendance(session.id, [student.id]);
+
+    expect(await goHallBalance(student.id)).toBe(10);
+  });
+
+  it('stamps SEASON_PASS without deduction when a pass covers the session date', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+    await addGoHallSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    expect(await goHallBalance(student.id)).toBe(10);
+    const record = await prisma.goHallAttendance.findUniqueOrThrow({
+      where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+    });
+    expect(record.qualification).toBe('SEASON_PASS');
+  });
+
+  it('stamps SINGLE when there is no pass and no balance', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    expect(await goHallBalance(student.id)).toBe(0);
+    const record = await prisma.goHallAttendance.findUniqueOrThrow({
+      where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+    });
+    expect(record.qualification).toBe('SINGLE');
   });
 });
