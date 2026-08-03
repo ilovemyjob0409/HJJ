@@ -211,10 +211,13 @@ export interface GoHallRosterEntry {
   status: AttendanceStatusValue | null;
   checkInTime: string | null;
   checkOutTime: string | null;
+  qualification: GoHallQualificationValue | null;
+  qualificationPredicted: boolean;
 }
 
 export async function getGoHallRoster(sessionId: string): Promise<GoHallRosterEntry[]> {
-  const [registrations, existing] = await Promise.all([
+  const [session, registrations, existing] = await Promise.all([
+    prisma.goHallSession.findUniqueOrThrow({ where: { id: sessionId }, select: { date: true } }),
     prisma.goHallRegistration.findMany({
       where: { sessionId },
       select: { studentId: true, student: { select: NAME_SELECT } },
@@ -222,18 +225,24 @@ export async function getGoHallRoster(sessionId: string): Promise<GoHallRosterEn
     prisma.goHallAttendance.findMany({ where: { sessionId } }),
   ]);
   const existingByStudentId = new Map(existing.map((a) => [a.studentId, a]));
-  return registrations
-    .map((r) => {
+  const rows = await Promise.all(
+    registrations.map(async (r) => {
       const record = existingByStudentId.get(r.studentId);
+      const qualification = record
+        ? ((record.qualification as GoHallQualificationValue | null) ?? null)
+        : await determineQualification(prisma, r.studentId, session.date);
       return {
         studentId: r.studentId,
         studentName: r.student.user.name,
         status: (record?.status as AttendanceStatusValue) ?? null,
         checkInTime: record?.checkInTime ?? null,
         checkOutTime: record?.checkOutTime ?? null,
+        qualification,
+        qualificationPredicted: !record,
       };
     })
-    .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
+  );
+  return rows.sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }
 
 export async function saveGoHallAttendance(

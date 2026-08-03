@@ -902,4 +902,23 @@ describe('go-hall ticket deduction on attendance', () => {
     const fresh = await prisma.student.findUniqueOrThrow({ where: { id: student.id } });
     expect(fresh.goHallLowQuotaNotifiedAt).toBeNull();
   });
+
+  it('roster returns the stamped qualification for marked rows and a prediction otherwise', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+
+    let roster = await getGoHallRoster(session.id);
+    expect(roster[0].qualification).toBe('TICKET');
+    expect(roster[0].qualificationPredicted).toBe(true);
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    roster = await getGoHallRoster(session.id);
+    expect(roster[0].qualification).toBe('TICKET');
+    expect(roster[0].qualificationPredicted).toBe(false);
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
+    roster = await getGoHallRoster(session.id);
+    expect(roster[0].qualification).toBeNull();
+    expect(roster[0].qualificationPredicted).toBe(false);
+  });
 });

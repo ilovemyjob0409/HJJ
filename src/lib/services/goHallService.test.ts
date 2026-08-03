@@ -13,7 +13,9 @@ import {
   adminRemoveRegistration,
   listRegistrationsForStudent,
   getSessionDetail,
+  getSessionDetailWithQualifications,
 } from './goHallService';
+import { purchaseTickets } from './goHallTicketService';
 
 describe('createSessions / listAllSessions', () => {
   it('creates one session per date and lists them soonest-first with a registration count', async () => {
@@ -207,5 +209,21 @@ describe('getSessionDetail', () => {
     expect(detail.teacher.user.name).toBe('陳老師');
     expect(detail.registrations).toHaveLength(1);
     expect(detail.registrations[0].student.user.name).toBe('王大明');
+  });
+});
+
+describe('getSessionDetailWithQualifications', () => {
+  it('attaches a predicted qualification per registration', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 15)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+    await purchaseTickets({ studentId: student.id, sessions: 5 });
+
+    const detail = await getSessionDetailWithQualifications(session.id);
+    expect(detail.registrations).toHaveLength(1);
+    expect(detail.registrations[0].qualification).toBe('TICKET');
+    expect(detail.registrations[0].qualificationPredicted).toBe(true);
   });
 });

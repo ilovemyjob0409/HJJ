@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
+import { determineQualification, type GoHallQualificationValue } from './goHallTicketService';
 
 // Go Hall rosters and session lists never render email in the UI, and the
 // roster is sent to STUDENT-role requesters (with names masked) — email
@@ -125,4 +126,23 @@ export function getSessionDetail(id: string) {
       },
     },
   });
+}
+
+export async function getSessionDetailWithQualifications(id: string) {
+  const detail = await getSessionDetail(id);
+  const attendances = await prisma.goHallAttendance.findMany({
+    where: { sessionId: id },
+    select: { studentId: true, qualification: true },
+  });
+  const byStudentId = new Map(attendances.map((a) => [a.studentId, a]));
+  const registrations = await Promise.all(
+    detail.registrations.map(async (r) => {
+      const record = byStudentId.get(r.studentId);
+      const qualification: GoHallQualificationValue | null = record
+        ? ((record.qualification as GoHallQualificationValue | null) ?? null)
+        : await determineQualification(prisma, r.studentId, detail.date);
+      return { ...r, qualification, qualificationPredicted: !record };
+    })
+  );
+  return { ...detail, registrations };
 }
