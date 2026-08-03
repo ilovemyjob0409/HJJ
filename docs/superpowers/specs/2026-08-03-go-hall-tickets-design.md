@@ -78,6 +78,8 @@ model GoHallSeasonPass {
 堂票餘額 = `GoHallTicketTransaction.amount` 加總，不另存欄位（與點數卡一致）。
 季票有效判定：場次日期落在任一 `GoHallSeasonPass` 的 `[startDate, endDate]`（含頭尾，date-only 比較）。多筆區間可並存，續買下一季即新增一筆，天然留歷史。
 
+日期比較基準（2026-08-03 實作時修訂）：儲存的場次／季票日期是「純日曆日」，全 app 以 **UTC 日曆日**讀取顯示（見 `dateFormat.ts` 註解），判定比較同樣取 UTC 日曆日（`utcDateKey`），確保與畫面顯示一致；「今日有效」的「今天」則取**台北時區**當下日曆日（`taipeiDateKey(new Date())`），符合使用者體感。
+
 ## 核心邏輯（goHallTicketService ＋ attendanceService 掛鉤）
 
 「到場」＝ `PRESENT`／`LATE`／`LEFT_EARLY`；`ON_LEAVE`／`ABSENT`／`NOT_REGISTERED` 不算。

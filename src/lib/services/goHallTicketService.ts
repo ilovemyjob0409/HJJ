@@ -8,8 +8,13 @@ export const LOW_TICKET_THRESHOLD = 3; // 剩餘 ≤3 堂時 LINE 提醒（比�
 
 type ClientType = typeof prisma | Prisma.TransactionClient;
 
-// 既有場次日期存在 UTC／本地午夜混用（瀏覽器 toISOString vs 'YYYY-MM-DD' 解析），
-// 兩種存法都落在台北日曆日當天 → 一律轉台北日曆日字串再比較。
+// 儲存的場次／季票日期是「純日曆日」，全 app 一律以 UTC 讀取顯示
+// （見 dateFormat.ts）——比較時同樣取 UTC 日曆日，才會與畫面顯示一致。
+// 「今天」是使用者的當下，用台北時區取日曆日（getMyTickets 等）。
+export function utcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+}
+
 const TAIPEI_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Taipei',
   year: 'numeric',
@@ -59,7 +64,7 @@ export function adjustTickets(input: { studentId: string; amount: number; reason
 }
 
 export async function addSeasonPass(input: { studentId: string; startDate: Date; endDate: Date }): Promise<{ id: string }> {
-  if (taipeiDateKey(input.endDate) < taipeiDateKey(input.startDate)) throw new Error('INVALID_RANGE');
+  if (utcDateKey(input.endDate) < utcDateKey(input.startDate)) throw new Error('INVALID_RANGE');
   const pass = await prisma.goHallSeasonPass.create({
     data: { studentId: input.studentId, startDate: input.startDate, endDate: input.endDate },
     select: { id: true },
@@ -72,9 +77,9 @@ export async function deleteSeasonPass(id: string): Promise<void> {
 }
 
 export async function hasValidSeasonPass(client: ClientType, studentId: string, onDate: Date): Promise<boolean> {
-  const key = taipeiDateKey(onDate);
+  const key = utcDateKey(onDate);
   const passes = await client.goHallSeasonPass.findMany({ where: { studentId }, select: { startDate: true, endDate: true } });
-  return passes.some((p) => taipeiDateKey(p.startDate) <= key && key <= taipeiDateKey(p.endDate));
+  return passes.some((p) => utcDateKey(p.startDate) <= key && key <= utcDateKey(p.endDate));
 }
 
 // 資格判定（純查詢、不扣堂）：季票一律優先 → 堂票餘額 > 0 → 單堂。
@@ -90,7 +95,7 @@ export async function determineQualification(
 
 function activePassEndDate(passes: { startDate: Date; endDate: Date }[], todayKey: string): Date | null {
   const active = passes
-    .filter((p) => taipeiDateKey(p.startDate) <= todayKey && todayKey <= taipeiDateKey(p.endDate))
+    .filter((p) => utcDateKey(p.startDate) <= todayKey && todayKey <= utcDateKey(p.endDate))
     .sort((a, b) => b.endDate.getTime() - a.endDate.getTime());
   return active[0]?.endDate ?? null;
 }

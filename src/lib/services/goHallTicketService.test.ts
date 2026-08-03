@@ -82,11 +82,13 @@ describe('addSeasonPass / hasValidSeasonPass', () => {
     expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-09-01'))).toBe(false);
   });
 
-  it('treats a local-midnight session instant as the same Taipei calendar day', async () => {
+  it('keys stored dates by UTC calendar day, matching how the app displays them', async () => {
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     await addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
-    // 台北 8/1 00:00（= UTC 7/31 16:00）也要算季票第一天內
-    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-07-31T16:00:00.000Z'))).toBe(true);
+    // 非正規儲存（UTC 7/31 16:00）在全 app 的 UTC 顯示慣例下呈現為 7/31（見 dateFormat.ts），
+    // 判定必須與顯示一致 → 不在 8 月季票內；同一天的 UTC 午夜正規值則在內。
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-07-31T16:00:00.000Z'))).toBe(false);
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-08-31T16:00:00.000Z'))).toBe(true);
   });
 
   it('rejects endDate before startDate', async () => {
