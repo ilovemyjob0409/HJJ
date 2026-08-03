@@ -33,6 +33,19 @@ interface RegistrationRow {
   session: SessionRow;
 }
 
+interface ClassQuotaRow {
+  classId: string;
+  className: string;
+  usedSessions: number;
+  totalSessions: number | null;
+}
+
+interface MyTickets {
+  balance: number;
+  activePassEndDate: string | null;
+  classQuotas: ClassQuotaRow[];
+}
+
 function StudentGoHallContent() {
   const { showToast } = useToast();
   const searchParams = useSearchParams();
@@ -40,6 +53,7 @@ function StudentGoHallContent() {
 
   const [openSessions, setOpenSessions] = useState<SessionRow[]>([]);
   const [myRegistrations, setMyRegistrations] = useState<RegistrationRow[]>([]);
+  const [tickets, setTickets] = useState<MyTickets | null>(null);
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
   const [highlightDismissed, setHighlightDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -47,9 +61,14 @@ function StudentGoHallContent() {
 
   async function load() {
     try {
-      const [sessionsRes, myRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/go-hall-registrations')]);
+      const [sessionsRes, myRes, ticketsRes] = await Promise.all([
+        fetch('/api/go-hall-sessions'),
+        fetch('/api/go-hall-registrations'),
+        fetch('/api/go-hall-tickets/me'),
+      ]);
       setOpenSessions(await sessionsRes.json());
       setMyRegistrations(await myRes.json());
+      setTickets(await ticketsRes.json());
     } finally {
       setLoading(false);
     }
@@ -136,6 +155,35 @@ function StudentGoHallContent() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">弈廳</h1>
+
+      <h2 className="mb-2 font-bold text-ink">票券管理</h2>
+      <Card className="mb-6">
+        {tickets === null ? (
+          <div className="h-5 w-48 animate-pulse rounded bg-stripe" />
+        ) : (
+          <div className="flex flex-col gap-3 text-sm text-ink">
+            {tickets.classQuotas.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <h3 className="font-bold">課堂</h3>
+                {tickets.classQuotas.map((q) => (
+                  <p key={q.classId}>
+                    {q.className}：已上 {q.usedSessions}
+                    {q.totalSessions !== null ? `／共 ${q.totalSessions} 堂` : ' 堂（未設定總堂數）'}
+                  </p>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-col gap-1">
+              <h3 className="font-bold">弈廳</h3>
+              {tickets.activePassEndDate && <p>季票有效期至 {formatDateWithWeekday(tickets.activePassEndDate, 'zh-TW')}</p>}
+              {tickets.balance > 0 && <p>堂票剩餘 {tickets.balance} 堂</p>}
+              {!tickets.activePassEndDate && tickets.balance <= 0 && (
+                <p className="text-inkMuted">目前以單堂計費（現場收費）</p>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
 
       <h2 className="mb-2 font-bold text-ink">開放中的場次</h2>
       <Card className="mb-6">
