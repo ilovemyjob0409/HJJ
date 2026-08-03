@@ -881,4 +881,25 @@ describe('go-hall ticket deduction on attendance', () => {
     });
     expect(record.qualification).toBe('SINGLE');
   });
+
+  it('sets the low-quota flag once when balance drops to the threshold', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'U-test-line' } });
+    await buyGoHallTickets({ studentId: student.id, sessions: 4 }); // 扣 1 後剩 3 → 觸發
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    const fresh = await prisma.student.findUniqueOrThrow({ where: { id: student.id } });
+    expect(fresh.goHallLowQuotaNotifiedAt).not.toBeNull();
+  });
+
+  it('does not set the flag when balance stays above the threshold or student has no LINE', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 }); // 剩 9，未達門檻；且未綁 LINE
+
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    const fresh = await prisma.student.findUniqueOrThrow({ where: { id: student.id } });
+    expect(fresh.goHallLowQuotaNotifiedAt).toBeNull();
+  });
 });
