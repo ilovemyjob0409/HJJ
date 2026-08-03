@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { Fragment, ReactNode } from 'react';
 
 export interface Column<T> {
   header: string;
@@ -14,9 +14,23 @@ interface DataTableProps<T> {
   onRowMouseLeave?: (row: T) => void;
   footer?: ReactNode;
   loading?: boolean;
+  // 展開列：expandedKey 對到哪一列，就在該列下方插入一列跨欄內容
+  expandedKey?: string | null;
+  renderExpanded?: (row: T) => ReactNode;
 }
 
-export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowClassName, onRowMouseLeave, footer, loading }: DataTableProps<T>) {
+export default function DataTable<T>({
+  columns,
+  rows,
+  keyField,
+  onRowClick,
+  rowClassName,
+  onRowMouseLeave,
+  footer,
+  loading,
+  expandedKey,
+  renderExpanded,
+}: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto rounded-lg border border-borderSubtle">
       <table className="w-full table-auto border-collapse text-sm md:table-fixed">
@@ -52,19 +66,27 @@ export default function DataTable<T>({ columns, rows, keyField, onRowClick, rowC
               const hasBaseBackground = customClass.split(/\s+/).some((c) => c.startsWith('bg-'));
               const stripeClass = hasBaseBackground ? '' : index % 2 === 1 ? 'bg-stripe' : 'bg-card';
               return (
-                <tr
-                  key={key}
-                  id={key}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  onMouseLeave={onRowMouseLeave ? () => onRowMouseLeave(row) : undefined}
-                  className={`border-b border-borderSubtle ${stripeClass} ${customClass}`}
-                >
-                  {columns.map((col, i) => (
-                    <td key={i} className="whitespace-nowrap px-4 py-3 text-center text-ink md:whitespace-normal">
-                      {col.render(row)}
-                    </td>
-                  ))}
-                </tr>
+                <Fragment key={key}>
+                  <tr
+                    id={key}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onMouseLeave={onRowMouseLeave ? () => onRowMouseLeave(row) : undefined}
+                    className={`border-b border-borderSubtle ${stripeClass} ${customClass}`}
+                  >
+                    {columns.map((col, i) => (
+                      <td key={i} className="whitespace-nowrap px-4 py-3 text-center text-ink md:whitespace-normal">
+                        {col.render(row)}
+                      </td>
+                    ))}
+                  </tr>
+                  {renderExpanded && expandedKey === key && (
+                    <tr className="border-b border-borderSubtle bg-stripe">
+                      <td colSpan={columns.length} className="px-4 py-4">
+                        <div className="animate-fade-in text-left">{renderExpanded(row)}</div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>

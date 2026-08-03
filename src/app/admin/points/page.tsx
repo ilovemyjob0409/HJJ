@@ -90,7 +90,15 @@ export default function AdminPointsPage() {
   }
 
   useEffect(() => {
+    // 切換展開的學生時，清掉上一位填到一半的表單，避免誤套到別人身上
     setData(null);
+    setRedeemPoints('');
+    setRedeemDescription('');
+    setDraws('');
+    setWonPoints('');
+    setAdjustBucket('REGULAR');
+    setAdjustAmount('');
+    setAdjustReason('');
     if (selectedId) loadPoints(selectedId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -210,16 +218,112 @@ export default function AdminPointsPage() {
           className="text-brandDark hover:underline"
           onClick={(e) => {
             e.stopPropagation();
-            // 直接開啟該學生的加分視窗；下方同時帶出兌換／抽獎／調整與紀錄
-            setSelectedId(s.id);
             setAwardTargets([{ id: s.id, name: s.name }]);
           }}
         >
-          編輯
+          加分
         </button>
       ),
     },
   ];
+
+  // 展開列內容：三個操作卡片（按鈕底部對齊）＋該生點數紀錄
+  function renderExpanded(s: SummaryRow) {
+    if (!data) {
+      return (
+        <div aria-hidden className="flex flex-col gap-2">
+          <div className="skeleton-shimmer h-4 w-1/3 rounded" />
+          <div className="skeleton-shimmer h-24 w-full rounded" />
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Card className="flex flex-col">
+            <h3 className="mb-2 font-bold text-ink">兌換</h3>
+            <form onSubmit={handleRedeem} className="flex flex-1 flex-col gap-2">
+              <Input
+                type="number"
+                min={1}
+                placeholder="扣多少點"
+                value={redeemPoints}
+                onChange={(e) => setRedeemPoints(e.target.value)}
+                required
+              />
+              <Input
+                placeholder="換了什麼（例如：文具組）"
+                value={redeemDescription}
+                onChange={(e) => setRedeemDescription(e.target.value)}
+                required
+              />
+              <p className="text-xs text-inkMuted">自動優先扣兌換專用點數，不足再扣一般點數</p>
+              <Button type="submit" loading={busy} className="mt-auto">
+                兌換並扣點
+              </Button>
+            </form>
+          </Card>
+
+          <Card className="flex flex-col">
+            <h3 className="mb-2 font-bold text-ink">抽獎登記</h3>
+            <form onSubmit={handleLottery} className="flex flex-1 flex-col gap-2">
+              <Input type="number" min={1} placeholder="抽幾次" value={draws} onChange={(e) => setDraws(e.target.value)} required />
+              <Input
+                type="number"
+                min={0}
+                placeholder="抽中總點數"
+                value={wonPoints}
+                onChange={(e) => setWonPoints(e.target.value)}
+                required
+              />
+              <p className="text-xs text-inkMuted">
+                {drawCostTotal > 0 ? `將扣一般點數 ${drawsNum} × ${DRAW_COST} ＝ ${drawCostTotal} 點` : `每抽固定扣 ${DRAW_COST} 點（一般點數）`}
+                ；抽中點數只能用於兌換
+              </p>
+              <Button type="submit" loading={busy} className="mt-auto">
+                送出登記
+              </Button>
+            </form>
+          </Card>
+
+          <Card className="flex flex-col">
+            <h3 className="mb-2 font-bold text-ink">點數調整</h3>
+            <form onSubmit={handleAdjust} className="flex flex-1 flex-col gap-2">
+              <Select value={adjustBucket} onChange={(e) => setAdjustBucket(e.target.value as 'REGULAR' | 'REDEEM_ONLY')}>
+                <option value="REGULAR">一般點數</option>
+                <option value="REDEEM_ONLY">兌換專用點數</option>
+              </Select>
+              <Input
+                type="number"
+                placeholder="±點數（例如 5 或 -3）"
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(e.target.value)}
+                required
+              />
+              <Input placeholder="原因（必填）" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} required />
+              <Button type="submit" loading={busy} className="mt-auto">
+                調整
+              </Button>
+            </form>
+          </Card>
+        </div>
+
+        <div>
+          <h3 className="mb-2 font-bold text-ink">
+            {s.name} 的點數紀錄
+            <span className="ml-2 text-sm font-normal text-inkMuted">
+              一般 {data.balances.regular} 點／兌換專用 {data.balances.redeemOnly} 點／合計 {total} 點
+            </span>
+          </h3>
+          {data.history.length === 0 ? (
+            <p className="text-sm text-inkMuted">尚無點數紀錄</p>
+          ) : (
+            <DataTable columns={historyColumns} rows={data.history} keyField={(r) => r.id} />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const historyColumns: Column<HistoryRow>[] = [
     { header: '日期', render: (r) => formatDateWithWeekday(r.createdAt) },
@@ -275,8 +379,10 @@ export default function AdminPointsPage() {
           rows={filtered}
           keyField={(s) => s.id}
           loading={summariesLoading}
-          onRowClick={(s) => setChecked((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
+          onRowClick={(s) => setSelectedId((prev) => (prev === s.id ? '' : s.id))}
           rowClassName={(s) => (checked[s.id] ? 'bg-stripe cursor-pointer' : 'cursor-pointer hover:bg-stripe')}
+          expandedKey={selectedId}
+          renderExpanded={renderExpanded}
         />
 
         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-borderSubtle pt-3">
@@ -312,94 +418,6 @@ export default function AdminPointsPage() {
           />
         )}
       </Modal>
-
-      {selectedStudent && data && (
-        <>
-          <h2 className="mb-2 font-bold text-ink">
-            {selectedStudent.name} 的點數明細
-            <span className="ml-2 text-sm font-normal text-inkMuted">
-              一般 {data.balances.regular} 點／兌換專用 {data.balances.redeemOnly} 點／合計 {total} 點
-            </span>
-          </h2>
-
-          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card>
-              <h3 className="mb-2 font-bold text-ink">兌換</h3>
-              <form onSubmit={handleRedeem} className="flex flex-col gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  placeholder="扣多少點"
-                  value={redeemPoints}
-                  onChange={(e) => setRedeemPoints(e.target.value)}
-                  required
-                />
-                <Input
-                  placeholder="換了什麼（例如：文具組）"
-                  value={redeemDescription}
-                  onChange={(e) => setRedeemDescription(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-inkMuted">自動優先扣兌換專用點數，不足再扣一般點數</p>
-                <Button type="submit" loading={busy}>
-                  兌換並扣點
-                </Button>
-              </form>
-            </Card>
-
-            <Card>
-              <h3 className="mb-2 font-bold text-ink">抽獎登記</h3>
-              <form onSubmit={handleLottery} className="flex flex-col gap-2">
-                <Input type="number" min={1} placeholder="抽幾次" value={draws} onChange={(e) => setDraws(e.target.value)} required />
-                <Input
-                  type="number"
-                  min={0}
-                  placeholder="抽中總點數"
-                  value={wonPoints}
-                  onChange={(e) => setWonPoints(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-inkMuted">
-                  {drawCostTotal > 0 ? `將扣一般點數 ${drawsNum} × ${DRAW_COST} ＝ ${drawCostTotal} 點` : `每抽固定扣 ${DRAW_COST} 點（一般點數）`}
-                  ；抽中點數只能用於兌換
-                </p>
-                <Button type="submit" loading={busy}>
-                  送出登記
-                </Button>
-              </form>
-            </Card>
-
-            <Card>
-              <h3 className="mb-2 font-bold text-ink">點數調整</h3>
-              <form onSubmit={handleAdjust} className="flex flex-col gap-2">
-                <Select value={adjustBucket} onChange={(e) => setAdjustBucket(e.target.value as 'REGULAR' | 'REDEEM_ONLY')}>
-                  <option value="REGULAR">一般點數</option>
-                  <option value="REDEEM_ONLY">兌換專用點數</option>
-                </Select>
-                <Input
-                  type="number"
-                  placeholder="±點數（例如 5 或 -3）"
-                  value={adjustAmount}
-                  onChange={(e) => setAdjustAmount(e.target.value)}
-                  required
-                />
-                <Input placeholder="原因（必填）" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} required />
-                <Button type="submit" loading={busy}>
-                  調整
-                </Button>
-              </form>
-            </Card>
-          </div>
-
-          <Card className="mb-8">
-            {data.history.length === 0 ? (
-              <p className="text-sm text-inkMuted">尚無點數紀錄</p>
-            ) : (
-              <DataTable columns={historyColumns} rows={data.history} keyField={(r) => r.id} />
-            )}
-          </Card>
-        </>
-      )}
 
       <PointReasonsManager />
     </>
