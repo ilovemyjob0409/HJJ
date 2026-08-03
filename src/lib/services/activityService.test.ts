@@ -355,12 +355,18 @@ describe('coverUrl on list/detail queries', () => {
   it('returns the earliest-uploaded image as a signed coverUrl, and omits the raw images field', async () => {
     const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
     const camp = await createCategory('營隊');
+    // listOpenActivitiesForStudent only lists activities ending today or later,
+    // so this fixture must use relative dates to stay "open" whenever it runs.
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayAfter = new Date();
+    dayAfter.setDate(dayAfter.getDate() + 2);
     const activity = await createActivity({
       title: '有照片活動',
       description: 'd',
       categoryId: camp.id,
-      startDate: new Date(2026, 7, 1),
-      endDate: new Date(2026, 7, 2),
+      startDate: tomorrow,
+      endDate: dayAfter,
       capacity: 10,
       teacherIds: [teacher.id],
     });
