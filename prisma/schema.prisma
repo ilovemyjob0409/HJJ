@@ -54,6 +54,18 @@ enum PointKind {
   ADMIN_ADJUST
 }
 
+enum GoHallQualification {
+  SEASON_PASS // 季票
+  TICKET      // 堂票
+  SINGLE      // 單堂（現場收費）
+}
+
+enum GoHallTicketKind {
+  PURCHASE     // 購買 +N（管理員登記）
+  ATTEND       // 到場扣堂 -1（系統自動，關聯場次）
+  ADMIN_ADJUST // 管理員調整 ±N（附原因）
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -100,6 +112,9 @@ model Student {
   classAttendances    ClassAttendance[]
   pointTransactions   PointTransaction[]
   goHallAttendances   GoHallAttendance[]
+  goHallLowQuotaNotifiedAt DateTime?                 // 弈廳堂票低堂數提醒防重複
+  goHallTicketTransactions GoHallTicketTransaction[]
+  goHallSeasonPasses       GoHallSeasonPass[]
   activityAttendances ActivityAttendance[]
 }
 
@@ -215,6 +230,7 @@ model GoHallSession {
   registrations GoHallRegistration[]
   createdAt     DateTime             @default(now())
   attendances GoHallAttendance[]
+  ticketTransactions GoHallTicketTransaction[]
 }
 
 model GoHallRegistration {
@@ -226,6 +242,29 @@ model GoHallRegistration {
   createdAt DateTime      @default(now())
 
   @@unique([sessionId, studentId])
+}
+
+// 弈廳堂票帳本：購買 +N、到場扣 -1、調整 ±N；餘額由加總導出。
+model GoHallTicketTransaction {
+  id        String           @id @default(cuid())
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id])
+  amount    Int              // 正＝加堂、負＝扣堂
+  kind      GoHallTicketKind
+  reason    String?          // ADMIN_ADJUST 原因等文字快照
+  sessionId String?          // ATTEND 時關聯場次；場次被刪時保留帳、關聯設 null
+  session   GoHallSession?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  createdAt DateTime         @default(now())
+}
+
+// 弈廳季票：一筆一個起訖區間（含頭尾），可多筆並存留購買歷史。
+model GoHallSeasonPass {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  startDate DateTime // 含當日
+  endDate   DateTime // 含當日
+  createdAt DateTime @default(now())
 }
 
 model SubjectColor {
@@ -327,6 +366,7 @@ model GoHallAttendance {
   studentId    String
   student      Student           @relation(fields: [studentId], references: [id])
   status       AttendanceStatus
+  qualification GoHallQualification? // 標到場時戳記的當次資格；非到場為 null
   checkInTime  String?
   checkOutTime String?
   markedById   String
