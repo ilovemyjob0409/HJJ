@@ -15,7 +15,8 @@ import {
   getSessionDetail,
   getSessionDetailWithQualifications,
 } from './goHallService';
-import { purchaseTickets } from './goHallTicketService';
+import { purchaseTickets, getTicketBalance } from './goHallTicketService';
+import { saveGoHallAttendance } from './attendanceService';
 
 describe('createSessions / listAllSessions', () => {
   it('creates one session per date and lists them soonest-first with a registration count', async () => {
@@ -225,5 +226,29 @@ describe('getSessionDetailWithQualifications', () => {
     expect(detail.registrations).toHaveLength(1);
     expect(detail.registrations[0].qualification).toBe('TICKET');
     expect(detail.registrations[0].qualificationPredicted).toBe(true);
+  });
+});
+
+describe('adminRemoveRegistration (attendance cleanup)', () => {
+  it('refunds the ticket and clears attendance when removing a registration that was already marked present', async () => {
+    await prisma.user.create({
+      data: { id: 'marker-1', email: 'marker@example.com', password: 'x', name: 'Marker', role: 'TEACHER' },
+    });
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 15)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    const registration = await registerForSession(session.id, student.id);
+    await purchaseTickets({ studentId: student.id, sessions: 5 });
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    await adminRemoveRegistration(registration.id);
+
+    const balance = await getTicketBalance(student.id);
+    expect(balance).toBe(5);
+    const attendanceCount = await prisma.goHallAttendance.count({ where: { sessionId: session.id, studentId: student.id } });
+    expect(attendanceCount).toBe(0);
+    const remaining = await prisma.goHallRegistration.count({ where: { id: registration.id } });
+    expect(remaining).toBe(0);
   });
 });

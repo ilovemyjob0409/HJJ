@@ -8,6 +8,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  await deleteSeasonPass(params.id);
-  return NextResponse.json({ success: true });
+  try {
+    await deleteSeasonPass(params.id);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 }

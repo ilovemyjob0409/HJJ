@@ -151,6 +151,11 @@ describe('getMyTickets / listStudentTicketSummaries', () => {
   it('ignores expired and future-only passes for the active end date', async () => {
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     await addSeasonPass({ studentId: student.id, startDate: new Date('2020-01-01'), endDate: new Date('2020-03-31') });
+    const futureStart = new Date();
+    futureStart.setDate(futureStart.getDate() + 30);
+    const futureEnd = new Date();
+    futureEnd.setDate(futureEnd.getDate() + 60);
+    await addSeasonPass({ studentId: student.id, startDate: futureStart, endDate: futureEnd });
     const mine = await getMyTickets(student.id);
     expect(mine.activePassEndDate).toBeNull();
   });

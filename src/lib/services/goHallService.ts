@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, type GoHallQualificationValue } from './goHallTicketService';
+import { clearGoHallAttendance } from './attendanceService';
 
 // Go Hall rosters and session lists never render email in the UI, and the
 // roster is sent to STUDENT-role requesters (with names masked) — email
@@ -89,10 +90,13 @@ function registerForSessionTx(sessionId: string, studentId: string) {
 export async function cancelRegistration(id: string, studentId: string) {
   const registration = await prisma.goHallRegistration.findUniqueOrThrow({ where: { id } });
   if (registration.studentId !== studentId) throw new Error('NOT_OWNER');
+  await clearGoHallAttendance(registration.sessionId, [registration.studentId]);
   await prisma.goHallRegistration.delete({ where: { id } });
 }
 
 export async function adminRemoveRegistration(id: string) {
+  const registration = await prisma.goHallRegistration.findUniqueOrThrow({ where: { id } });
+  await clearGoHallAttendance(registration.sessionId, [registration.studentId]);
   await prisma.goHallRegistration.delete({ where: { id } });
 }
 

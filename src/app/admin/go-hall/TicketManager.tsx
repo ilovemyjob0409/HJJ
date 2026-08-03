@@ -152,7 +152,12 @@ export default function TicketManager() {
     if (!confirm('確定要刪除這筆季票嗎？')) return;
     setBusy(true);
     try {
-      await fetch(`/api/go-hall-season-passes/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/go-hall-season-passes/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        showToast('刪除失敗，季票可能已被刪除');
+        await refreshAfterMutation();
+        return;
+      }
       showToast('已刪除季票');
       await refreshAfterMutation();
     } finally {
@@ -294,7 +299,7 @@ export default function TicketManager() {
                           <span>
                             {formatDateWithWeekday(p.startDate, 'zh-TW')} ～ {formatDateWithWeekday(p.endDate, 'zh-TW')}
                           </span>
-                          <button type="button" className="text-rejected hover:underline" onClick={() => handleDeletePass(p.id)}>
+                          <button type="button" className="text-rejected hover:underline" onClick={() => handleDeletePass(p.id)} disabled={busy}>
                             刪除
                           </button>
                         </li>
