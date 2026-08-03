@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { createSignedUrls, deleteActivityImages } from '@/lib/storage';
+import { isBeforeToday } from '@/lib/pastDate';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -129,8 +130,9 @@ function registerForActivityTx(activityId: string, studentId: string) {
 }
 
 export async function cancelRegistration(id: string, studentId: string) {
-  const registration = await prisma.activityRegistration.findUniqueOrThrow({ where: { id } });
+  const registration = await prisma.activityRegistration.findUniqueOrThrow({ where: { id }, include: { activity: true } });
   if (registration.studentId !== studentId) throw new Error('NOT_OWNER');
+  if (isBeforeToday(registration.activity.endDate)) throw new Error('ACTIVITY_ENDED');
   await prisma.activityRegistration.delete({ where: { id } });
 }
 

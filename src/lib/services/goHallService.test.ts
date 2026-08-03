@@ -121,10 +121,14 @@ describe('registerForSession', () => {
 });
 
 describe('cancelRegistration', () => {
+  // Cancellation is only allowed while the session has not passed, so these
+  // fixtures must use relative dates to keep testing the allowed path.
   it('deletes the registration when the student owns it', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    await createSessions({ dates: [tomorrow], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
     const session = await prisma.goHallSession.findFirstOrThrow();
     const registration = await registerForSession(session.id, student.id);
 
@@ -138,11 +142,43 @@ describe('cancelRegistration', () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    await createSessions({ dates: [tomorrow], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
     const session = await prisma.goHallSession.findFirstOrThrow();
     const registration = await registerForSession(session.id, student.id);
 
     await expect(cancelRegistration(registration.id, otherStudent.id)).rejects.toThrow('NOT_OWNER');
+  });
+
+  it('throws SESSION_EXPIRED and keeps the registration when the session date has passed', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    await createSessions({ dates: [yesterday], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    const registration = await registerForSession(session.id, student.id);
+
+    await expect(cancelRegistration(registration.id, student.id)).rejects.toThrow('SESSION_EXPIRED');
+
+    const remaining = await prisma.goHallRegistration.count();
+    expect(remaining).toBe(1);
+  });
+
+  it('still allows cancelling a session dated today', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    await createSessions({ dates: [todayMidnight], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    const registration = await registerForSession(session.id, student.id);
+
+    await cancelRegistration(registration.id, student.id);
+
+    const remaining = await prisma.goHallRegistration.count();
+    expect(remaining).toBe(0);
   });
 });
 

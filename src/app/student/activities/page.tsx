@@ -7,6 +7,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
+import { isBeforeToday } from '@/lib/pastDate';
 import ActivityAlbum from '@/components/ActivityAlbum';
 
 interface ActivityStudentRow {
@@ -92,7 +93,8 @@ export default function StudentActivitiesPage() {
     try {
       const res = await fetch(`/api/activity-registrations/${registrationId}`, { method: 'DELETE' });
       if (!res.ok) {
-        showToast('取消失敗，請稍後再試');
+        const data = await res.json().catch(() => null);
+        showToast(data?.error === 'ACTIVITY_ENDED' ? '這個活動已結束，無法取消報名' : '取消失敗，請稍後再試');
         load();
         if (viewing) openDetail(viewing.id, registrationId);
         return;
@@ -231,14 +233,18 @@ export default function StudentActivitiesPage() {
 
             <div className="flex justify-end border-t border-borderSubtle pt-4">
               {viewing.registrationId ? (
-                <Button
-                  variant="secondary"
-                  className="border-rejected text-rejected hover:bg-rejectedBg"
-                  onClick={() => handleCancel(viewing.registrationId as string)}
-                  loading={pendingId === viewing.registrationId}
-                >
-                  取消報名
-                </Button>
+                isBeforeToday(viewing.endDate) ? (
+                  <span className="text-sm text-inkMuted">活動已結束</span>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    className="border-rejected text-rejected hover:bg-rejectedBg"
+                    onClick={() => handleCancel(viewing.registrationId as string)}
+                    loading={pendingId === viewing.registrationId}
+                  >
+                    取消報名
+                  </Button>
+                )
               ) : (
                 <Button
                   disabled={viewing._count.registrations >= viewing.capacity}

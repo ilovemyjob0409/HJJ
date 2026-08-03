@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
+import { isBeforeToday } from '@/lib/pastDate';
 
 // Go Hall rosters and session lists never render email in the UI, and the
 // roster is sent to STUDENT-role requesters (with names masked) — email
@@ -86,8 +87,9 @@ function registerForSessionTx(sessionId: string, studentId: string) {
 }
 
 export async function cancelRegistration(id: string, studentId: string) {
-  const registration = await prisma.goHallRegistration.findUniqueOrThrow({ where: { id } });
+  const registration = await prisma.goHallRegistration.findUniqueOrThrow({ where: { id }, include: { session: true } });
   if (registration.studentId !== studentId) throw new Error('NOT_OWNER');
+  if (isBeforeToday(registration.session.date)) throw new Error('SESSION_EXPIRED');
   await prisma.goHallRegistration.delete({ where: { id } });
 }
 
