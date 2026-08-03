@@ -6,7 +6,6 @@ import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService'
 import { listRegistrationsForStudent } from '@/lib/services/goHallService';
 import { listStudentEnrolledClasses } from '@/lib/services/classService';
 import { getMyTickets } from '@/lib/services/goHallTicketService';
-import { listMakeupNoticeItems } from '@/lib/services/makeupNoticeService';
 import { getPointBalances } from '@/lib/services/pointService';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
@@ -46,7 +45,6 @@ export default async function StudentDashboard() {
         getMyTickets(student.id),
       ])
     : [[], [], [], { balance: 0, activePassEndDate: null }];
-  const notices = await listMakeupNoticeItems();
   const balances = student ? await getPointBalances(student.id) : { regular: 0, redeemOnly: 0 };
 
   const goHallRows = myRegistrations.map((r) => ({
@@ -167,19 +165,6 @@ export default async function StudentDashboard() {
           </div>
         </Card>
       </Link>
-
-      {notices.length > 0 && (
-        <Card className="mb-6">
-          <h2 className="mb-2 font-bold text-ink">補課須知</h2>
-          <ul className="list-disc space-y-1 pl-5 text-sm text-inkMuted">
-            {notices.map((n) => (
-              <li key={n.id} className="whitespace-pre-wrap">
-                {n.content}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/student/leave-request">

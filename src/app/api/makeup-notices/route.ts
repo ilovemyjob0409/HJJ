@@ -5,7 +5,7 @@ import { listMakeupNoticeItems, createMakeupNoticeItem } from '@/lib/services/ma
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN') {
+  if (!session) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   return NextResponse.json(await listMakeupNoticeItems());

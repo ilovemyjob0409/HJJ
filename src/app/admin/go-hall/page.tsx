@@ -277,7 +277,7 @@ function AdminGoHallContent() {
           className="max-w-md"
         />
       </div>
-      <Card>
+      <Card className="mb-6">
         <CollapsibleDataTable
           columns={columns}
           rows={filteredSessions}

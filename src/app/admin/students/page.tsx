@@ -599,27 +599,29 @@ function StudentsContent() {
                     },
                   },
                   {
-                    header: '續報',
+                    header: (
+                      <span className="flex items-center justify-center gap-1">
+                        續報
+                        <HintButton
+                          label="續報說明"
+                          active={openHintClassId === 'period-header'}
+                          onToggle={() => setOpenHintClassId((prev) => (prev === 'period-header' ? null : 'period-header'))}
+                        >
+                          續報＝這期報課：堂數會累加到總堂數，圍棋班的一對一補課額度同時重新起算；可順便勾選這期不出席的日期，預先標為「未報名」（不扣堂）。直接修改「總堂數」欄位則是校正，不會開新的一期。
+                        </HintButton>
+                      </span>
+                    ),
                     render: (c) => {
                       const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
                       if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
                       return (
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openRenew(c)}
-                            className="whitespace-nowrap text-xs text-brandDark hover:underline"
-                          >
-                            續報
-                          </button>
-                          <HintButton
-                            label="續報說明"
-                            active={openHintClassId === `period-${c.id}`}
-                            onToggle={() => setOpenHintClassId((prev) => (prev === `period-${c.id}` ? null : `period-${c.id}`))}
-                          >
-                            續報＝這期報課：堂數會累加到總堂數，圍棋班的一對一補課額度同時重新起算；可順便勾選這期不出席的日期，預先標為「未報名」（不扣堂）。直接修改「總堂數」欄位則是校正，不會開新的一期。
-                          </HintButton>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openRenew(c)}
+                          className="whitespace-nowrap text-xs text-brandDark hover:underline"
+                        >
+                          續報
+                        </button>
                       );
                     },
                   },

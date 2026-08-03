@@ -42,6 +42,11 @@ interface Quota {
   oneOnOneRemaining: number;
 }
 
+interface NoticeItem {
+  id: string;
+  content: string;
+}
+
 export default function MakeupRequestPage() {
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [selectedLeaveId, setSelectedLeaveId] = useState('');
@@ -51,6 +56,7 @@ export default function MakeupRequestPage() {
   const [availability, setAvailability] = useState<AvailabilityWindow[]>([]);
   const [message, setMessage] = useState('');
   const [quota, setQuota] = useState<Quota | null>(null);
+  const [notices, setNotices] = useState<NoticeItem[]>([]);
 
   const [insertionForm, setInsertionForm] = useState({ targetClassId: '', targetDate: '' });
   const [oneOnOneForm, setOneOnOneForm] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
@@ -59,6 +65,7 @@ export default function MakeupRequestPage() {
   useEffect(() => {
     fetch('/api/leave-requests').then((r) => r.json()).then(setLeaves);
     fetch('/api/teachers').then((r) => r.json()).then(setTeachers);
+    fetch('/api/makeup-notices').then((r) => r.json()).then(setNotices);
   }, []);
 
   useEffect(() => {
@@ -148,6 +155,19 @@ export default function MakeupRequestPage() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">申請補課</h1>
+
+      {notices.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-2 font-bold text-ink">補課須知</h2>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-inkMuted">
+            {notices.map((n) => (
+              <li key={n.id} className="whitespace-pre-wrap">
+                {n.content}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Select className="mb-4" value={selectedLeaveId} onChange={(e) => setSelectedLeaveId(e.target.value)}>
         <option value="">選擇要補課的請假紀錄</option>

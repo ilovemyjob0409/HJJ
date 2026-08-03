@@ -21,20 +21,12 @@ const KIND_LABELS: Record<string, string> = {
   ADMIN_ADJUST: '調整',
 };
 
-interface ClassQuotaRow {
-  classId: string;
-  className: string;
-  usedSessions: number;
-  totalSessions: number | null;
-}
-
 interface SummaryRow {
   id: string;
   name: string;
   studentNumber: string | null;
   balance: number;
   activePassEndDate: string | null;
-  classQuotas: ClassQuotaRow[];
 }
 
 interface SeasonPassRow {
@@ -174,32 +166,6 @@ export default function TicketManager() {
   const columns: Column<SummaryRow>[] = [
     { header: '姓名', render: (s) => s.name },
     { header: '學號', render: (s) => s.studentNumber ?? '-' },
-    {
-      header: '課堂堂數',
-      render: (s) =>
-        s.classQuotas.length === 0 ? (
-          '-'
-        ) : (
-          <div className="flex flex-col items-center gap-1">
-            {s.classQuotas.map((q) => (
-              <div key={q.classId} className="flex items-center gap-2 whitespace-nowrap">
-                <span>{q.className}</span>
-                <span className="tabular-nums text-inkMuted">
-                  <span className="font-semibold text-ink">{q.usedSessions}</span>／{q.totalSessions ?? '—'}
-                </span>
-                {q.totalSessions !== null && q.totalSessions > 0 && (
-                  <span className="h-1 w-10 overflow-hidden rounded-full bg-stripe">
-                    <span
-                      className="block h-full rounded-full bg-brand"
-                      style={{ width: `${Math.min(100, (q.usedSessions / q.totalSessions) * 100)}%` }}
-                    />
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        ),
-    },
     {
       header: '堂票剩餘',
       render: (s) => (
