@@ -57,3 +57,33 @@ export function adjustTickets(input: { studentId: string; amount: number; reason
     )
   );
 }
+
+export async function addSeasonPass(input: { studentId: string; startDate: Date; endDate: Date }): Promise<{ id: string }> {
+  if (taipeiDateKey(input.endDate) < taipeiDateKey(input.startDate)) throw new Error('INVALID_RANGE');
+  const pass = await prisma.goHallSeasonPass.create({
+    data: { studentId: input.studentId, startDate: input.startDate, endDate: input.endDate },
+    select: { id: true },
+  });
+  return pass;
+}
+
+export async function deleteSeasonPass(id: string): Promise<void> {
+  await prisma.goHallSeasonPass.delete({ where: { id } });
+}
+
+export async function hasValidSeasonPass(client: ClientType, studentId: string, onDate: Date): Promise<boolean> {
+  const key = taipeiDateKey(onDate);
+  const passes = await client.goHallSeasonPass.findMany({ where: { studentId }, select: { startDate: true, endDate: true } });
+  return passes.some((p) => taipeiDateKey(p.startDate) <= key && key <= taipeiDateKey(p.endDate));
+}
+
+// 資格判定（純查詢、不扣堂）：季票一律優先 → 堂票餘額 > 0 → 單堂。
+export async function determineQualification(
+  client: ClientType,
+  studentId: string,
+  sessionDate: Date
+): Promise<GoHallQualificationValue> {
+  if (await hasValidSeasonPass(client, studentId, sessionDate)) return 'SEASON_PASS';
+  if ((await getTicketBalance(studentId, client)) > 0) return 'TICKET';
+  return 'SINGLE';
+}

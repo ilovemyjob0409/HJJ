@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createStudent } from './studentService';
-import { taipeiDateKey, getTicketBalance, purchaseTickets, adjustTickets } from './goHallTicketService';
+import { taipeiDateKey, getTicketBalance, purchaseTickets, adjustTickets, addSeasonPass, deleteSeasonPass, hasValidSeasonPass, determineQualification } from './goHallTicketService';
 
 describe('taipeiDateKey', () => {
   it('converts an instant to its Asia/Taipei calendar date', () => {
@@ -68,5 +68,59 @@ describe('adjustTickets', () => {
     await adjustTickets({ studentId: student.id, amount: 2, reason: '補購' });
     fresh = await prisma.student.findUniqueOrThrow({ where: { id: student.id } });
     expect(fresh.goHallLowQuotaNotifiedAt).toBeNull();
+  });
+});
+
+describe('addSeasonPass / hasValidSeasonPass', () => {
+  it('is valid on the start day, the end day, and days between (inclusive)', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-08-01'))).toBe(true);
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-08-31'))).toBe(true);
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-08-15'))).toBe(true);
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-07-31'))).toBe(false);
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-09-01'))).toBe(false);
+  });
+
+  it('treats a local-midnight session instant as the same Taipei calendar day', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
+    // 台北 8/1 00:00（= UTC 7/31 16:00）也要算季票第一天內
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-07-31T16:00:00.000Z'))).toBe(true);
+  });
+
+  it('rejects endDate before startDate', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await expect(
+      addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-31'), endDate: new Date('2026-08-01') })
+    ).rejects.toThrow('INVALID_RANGE');
+  });
+
+  it('deleteSeasonPass removes the pass', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const pass = await addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
+    await deleteSeasonPass(pass.id);
+    expect(await hasValidSeasonPass(prisma, student.id, new Date('2026-08-15'))).toBe(false);
+  });
+});
+
+describe('determineQualification', () => {
+  it('prefers a valid season pass even when tickets remain', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await purchaseTickets({ studentId: student.id, sessions: 10 });
+    await addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
+    expect(await determineQualification(prisma, student.id, new Date('2026-08-15'))).toBe('SEASON_PASS');
+  });
+
+  it('falls back to TICKET when no pass covers the date but balance > 0', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await purchaseTickets({ studentId: student.id, sessions: 1 });
+    await addSeasonPass({ studentId: student.id, startDate: new Date('2026-09-01'), endDate: new Date('2026-11-30') });
+    expect(await determineQualification(prisma, student.id, new Date('2026-08-15'))).toBe('TICKET');
+  });
+
+  it('falls back to SINGLE when there is no pass and no balance', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    expect(await determineQualification(prisma, student.id, new Date('2026-08-15'))).toBe('SINGLE');
   });
 });
