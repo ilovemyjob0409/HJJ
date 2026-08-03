@@ -921,17 +921,22 @@ cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && git add src/lib/services/atten
 
 ---
 
-### Task 7: 查詢彙整 service（學生自查／管理列表／單人明細）
+### Task 7: 查詢彙整 service（學生自查／管理列表／單人明細／課堂堂數）
+
+（2026-08-03 使用者追加：票券管理要同時顯示課堂堂數與弈廳資訊 → 本 task 一併新增 `listClassQuotaSummaries`。）
 
 **Files:**
 - Modify: `src/lib/services/goHallTicketService.ts`
+- Modify: `src/lib/services/attendanceService.ts`（新增 `listClassQuotaSummaries`）
 - Test: `src/lib/services/goHallTicketService.test.ts`
+- Test: `src/lib/services/attendanceService.test.ts`
 
 **Interfaces:**
 - Produces:
   - `getMyTickets(studentId: string): Promise<{ balance: number; activePassEndDate: Date | null }>` — activePass 以「今日（台北）有效」判定
   - `listStudentTicketSummaries(): Promise<Array<{ id: string; name: string; studentNumber: string | null; balance: number; activePassEndDate: Date | null }>>`
   - `getTicketDetail(studentId: string): Promise<{ balance: number; seasonPasses: Array<{ id: string; startDate: Date; endDate: Date }>; history: Array<{ id: string; amount: number; kind: string; reason: string | null; createdAt: Date; sessionDate: Date | null }> }>`
+  - attendanceService：`listClassQuotaSummaries(studentId?: string): Promise<ClassQuotaSummaryRow[]>`，其中 `ClassQuotaSummaryRow = { studentId: string; classId: string; className: string; usedSessions: number; totalSessions: number | null; remaining: number | null }` — 與 `getClassEnrollmentQuota` 同一套扣堂語意（`ON_LEAVE`／`NOT_REGISTERED` 不扣）
 
 - [ ] **Step 1: 寫失敗測試**
 
@@ -986,13 +991,48 @@ describe('getTicketDetail', () => {
 });
 ```
 
+`attendanceService.test.ts` 底部加（沿用檔頭既有 import 的 `saveClassAttendance` 與 `setupClassWithStudent`；`listClassQuotaSummaries` 併入既有 `./attendanceService` import）：
+
+```ts
+describe('listClassQuotaSummaries', () => {
+  it('computes used/total/remaining per enrollment, excluding ON_LEAVE and NOT_REGISTERED', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await prisma.classEnrollment.update({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+      data: { totalSessions: 10 },
+    });
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-11'), 'marker-1', [{ studentId: student.id, status: 'ON_LEAVE' }]);
+
+    const all = await listClassQuotaSummaries();
+    const row = all.find((r) => r.studentId === student.id && r.classId === cls.id)!;
+    expect(row.className).toBe('週二基礎班');
+    expect(row.usedSessions).toBe(1);
+    expect(row.totalSessions).toBe(10);
+    expect(row.remaining).toBe(9);
+
+    const mine = await listClassQuotaSummaries(student.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].usedSessions).toBe(1);
+  });
+
+  it('returns null total/remaining when totalSessions is unset', async () => {
+    const { student } = await setupClassWithStudent();
+    const rows = await listClassQuotaSummaries(student.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].totalSessions).toBeNull();
+    expect(rows[0].remaining).toBeNull();
+  });
+});
+```
+
 - [ ] **Step 2: 跑測試確認失敗**
 
 ```bash
-cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && npm test -- src/lib/services/goHallTicketService.test.ts
+cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && npm test -- src/lib/services/goHallTicketService.test.ts src/lib/services/attendanceService.test.ts
 ```
 
-Expected: FAIL（函式不存在）
+Expected: 新增測試 FAIL（函式不存在），其餘既有測試 PASS
 
 - [ ] **Step 3: 實作**
 
@@ -1071,10 +1111,51 @@ export async function getTicketDetail(studentId: string) {
 }
 ```
 
+`attendanceService.ts` 在 `getClassEnrollmentQuota` 函式後面加：
+
+```ts
+export interface ClassQuotaSummaryRow {
+  studentId: string;
+  classId: string;
+  className: string;
+  usedSessions: number;
+  totalSessions: number | null;
+  remaining: number | null;
+}
+
+// 與 getClassEnrollmentQuota 同一套扣堂語意（請假、未報名不扣），
+// 但一次 groupBy 算完（單人或全部學生），供票券管理顯示課堂堂數。
+export async function listClassQuotaSummaries(studentId?: string): Promise<ClassQuotaSummaryRow[]> {
+  const [enrollments, counts] = await Promise.all([
+    prisma.classEnrollment.findMany({
+      where: studentId ? { studentId } : {},
+      select: { studentId: true, totalSessions: true, class: { select: { id: true, name: true } } },
+    }),
+    prisma.classAttendance.groupBy({
+      by: ['classId', 'studentId'],
+      where: { status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] }, ...(studentId ? { studentId } : {}) },
+      _count: { _all: true },
+    }),
+  ]);
+  const usedByKey = new Map(counts.map((c) => [`${c.classId}:${c.studentId}`, c._count._all]));
+  return enrollments.map((e) => {
+    const usedSessions = usedByKey.get(`${e.class.id}:${e.studentId}`) ?? 0;
+    return {
+      studentId: e.studentId,
+      classId: e.class.id,
+      className: e.class.name,
+      usedSessions,
+      totalSessions: e.totalSessions,
+      remaining: e.totalSessions === null ? null : e.totalSessions - usedSessions,
+    };
+  });
+}
+```
+
 - [ ] **Step 4: 跑測試確認通過**
 
 ```bash
-cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && npm test -- src/lib/services/goHallTicketService.test.ts
+cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && npm test -- src/lib/services/goHallTicketService.test.ts src/lib/services/attendanceService.test.ts
 ```
 
 Expected: PASS
@@ -1082,7 +1163,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && git add src/lib/services/goHallTicketService.ts src/lib/services/goHallTicketService.test.ts && git commit -m "feat: 弈廳票券查詢彙整（學生自查／管理列表／單人明細）"
+cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && git add src/lib/services/goHallTicketService.ts src/lib/services/goHallTicketService.test.ts src/lib/services/attendanceService.ts src/lib/services/attendanceService.test.ts && git commit -m "feat: 弈廳票券查詢彙整與課堂堂數批次查詢"
 ```
 
 ---
@@ -1102,8 +1183,8 @@ cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && git add src/lib/services/goHal
 **Interfaces:**
 - Consumes: Task 3／6／7 的 service 函式
 - Produces（前端呼叫用）:
-  - `GET /api/go-hall-tickets/me` → `{ balance: number, activePassEndDate: string | null }`（STUDENT）
-  - `GET /api/go-hall-tickets/summary` → summary 陣列（ADMIN）
+  - `GET /api/go-hall-tickets/me` → `{ balance: number, activePassEndDate: string | null, classQuotas: ClassQuotaSummaryRow[] }`（STUDENT）
+  - `GET /api/go-hall-tickets/summary` → summary 陣列，每列含 `classQuotas: ClassQuotaSummaryRow[]`（ADMIN）
   - `GET /api/go-hall-tickets/[studentId]` → `{ balance, seasonPasses, history }`（ADMIN）
   - `POST /api/go-hall-tickets/purchase` body `{ studentId, sessions }` → 201（ADMIN）
   - `POST /api/go-hall-tickets/adjust` body `{ studentId, amount, reason }` → 201（ADMIN）
@@ -1121,6 +1202,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getMyTickets } from '@/lib/services/goHallTicketService';
+import { listClassQuotaSummaries } from '@/lib/services/attendanceService';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -1128,7 +1210,8 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const student = await prisma.student.findUniqueOrThrow({ where: { userId: session.user.id } });
-  return NextResponse.json(await getMyTickets(student.id));
+  const [tickets, classQuotas] = await Promise.all([getMyTickets(student.id), listClassQuotaSummaries(student.id)]);
+  return NextResponse.json({ ...tickets, classQuotas });
 }
 ```
 
@@ -1139,13 +1222,21 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { listStudentTicketSummaries } from '@/lib/services/goHallTicketService';
+import { listClassQuotaSummaries, type ClassQuotaSummaryRow } from '@/lib/services/attendanceService';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  return NextResponse.json(await listStudentTicketSummaries());
+  const [summaries, quotas] = await Promise.all([listStudentTicketSummaries(), listClassQuotaSummaries()]);
+  const quotasByStudentId = new Map<string, ClassQuotaSummaryRow[]>();
+  for (const q of quotas) {
+    const list = quotasByStudentId.get(q.studentId) ?? [];
+    list.push(q);
+    quotasByStudentId.set(q.studentId, list);
+  }
+  return NextResponse.json(summaries.map((s) => ({ ...s, classQuotas: quotasByStudentId.get(s.id) ?? [] })));
 }
 ```
 
@@ -1315,10 +1406,27 @@ cd "/Users/s.w.kung/Downloads/Wade Claude/HJJ" && git add src/app/api/go-hall-ti
 
 `StudentGoHallContent` 內：
 
+檔案頂層（其他 interface 旁）加：
+
+```ts
+interface ClassQuotaRow {
+  classId: string;
+  className: string;
+  usedSessions: number;
+  totalSessions: number | null;
+}
+
+interface MyTickets {
+  balance: number;
+  activePassEndDate: string | null;
+  classQuotas: ClassQuotaRow[];
+}
+```
+
 state 區加：
 
 ```ts
-  const [tickets, setTickets] = useState<{ balance: number; activePassEndDate: string | null } | null>(null);
+  const [tickets, setTickets] = useState<MyTickets | null>(null);
 ```
 
 `load()` 的 `Promise.all` 改為三路並在其後 set：
@@ -1342,12 +1450,26 @@ JSX 在 `<h1>弈廳</h1>` 之後、「開放中的場次」之前插入（標題
         {tickets === null ? (
           <div className="h-5 w-48 animate-pulse rounded bg-stripe" />
         ) : (
-          <div className="flex flex-col gap-1 text-sm text-ink">
-            {tickets.activePassEndDate && <p>季票有效期至 {formatDateWithWeekday(tickets.activePassEndDate, 'zh-TW')}</p>}
-            {tickets.balance > 0 && <p>堂票剩餘 {tickets.balance} 堂</p>}
-            {!tickets.activePassEndDate && tickets.balance <= 0 && (
-              <p className="text-inkMuted">目前以單堂計費（現場收費）</p>
+          <div className="flex flex-col gap-3 text-sm text-ink">
+            {tickets.classQuotas.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <h3 className="font-bold">課堂</h3>
+                {tickets.classQuotas.map((q) => (
+                  <p key={q.classId}>
+                    {q.className}：已上 {q.usedSessions}
+                    {q.totalSessions !== null ? `／共 ${q.totalSessions} 堂` : ' 堂（未設定總堂數）'}
+                  </p>
+                ))}
+              </div>
             )}
+            <div className="flex flex-col gap-1">
+              <h3 className="font-bold">弈廳</h3>
+              {tickets.activePassEndDate && <p>季票有效期至 {formatDateWithWeekday(tickets.activePassEndDate, 'zh-TW')}</p>}
+              {tickets.balance > 0 && <p>堂票剩餘 {tickets.balance} 堂</p>}
+              {!tickets.activePassEndDate && tickets.balance <= 0 && (
+                <p className="text-inkMuted">目前以單堂計費（現場收費）</p>
+              )}
+            </div>
           </div>
         )}
       </Card>
@@ -1363,7 +1485,7 @@ Expected: 無錯誤
 
 - [ ] **Step 3: 瀏覽器驗證**
 
-啟動 dev server（用 launch.json 的既有設定），以 seed 學生帳號登入 `student/go-hall`，確認卡片三種狀態之一正確顯示、報名／取消不受影響。
+啟動 dev server（用 launch.json 的既有設定），以 seed 學生帳號登入 `student/go-hall`，確認卡片「課堂」區（各班 已上／共）與「弈廳」區（三種狀態之一）正確顯示、報名／取消不受影響。
 
 - [ ] **Step 4: Commit**
 
@@ -1411,12 +1533,20 @@ const KIND_LABELS: Record<string, string> = {
   ADMIN_ADJUST: '調整',
 };
 
+interface ClassQuotaRow {
+  classId: string;
+  className: string;
+  usedSessions: number;
+  totalSessions: number | null;
+}
+
 interface SummaryRow {
   id: string;
   name: string;
   studentNumber: string | null;
   balance: number;
   activePassEndDate: string | null;
+  classQuotas: ClassQuotaRow[];
 }
 
 interface SeasonPassRow {
@@ -1551,6 +1681,21 @@ export default function TicketManager() {
   const columns: Column<SummaryRow>[] = [
     { header: '姓名', render: (s) => s.name },
     { header: '學號', render: (s) => s.studentNumber ?? '-' },
+    {
+      header: '課堂堂數',
+      render: (s) =>
+        s.classQuotas.length === 0 ? (
+          '-'
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {s.classQuotas.map((q) => (
+              <span key={q.classId}>
+                {q.className}：{q.usedSessions}／{q.totalSessions ?? '—'}
+              </span>
+            ))}
+          </div>
+        ),
+    },
     { header: '堂票剩餘', render: (s) => `${s.balance} 堂` },
     {
       header: '季票',
@@ -1714,7 +1859,7 @@ Expected: 無錯誤
 
 - [ ] **Step 4: 瀏覽器驗證**
 
-dev server 以 seed 管理員帳號進 `admin/go-hall`：購買 10 堂 → 摘要表餘額更新；調整 -3 附原因 → 餘額 7；調整 -99 → 顯示「調整後餘額不能為負」；新增季票（結束日早於開始日 → 顯示「結束日不能早於開始日」）；刪除季票；場次名單 Modal 顯示資格標籤。
+dev server 以 seed 管理員帳號進 `admin/go-hall`：摘要表顯示課堂堂數欄（各班 已上／共）；購買 10 堂 → 摘要表餘額更新；調整 -3 附原因 → 餘額 7；調整 -99 → 顯示「調整後餘額不能為負」；新增季票（結束日早於開始日 → 顯示「結束日不能早於開始日」）；刪除季票；場次名單 Modal 顯示資格標籤。
 
 - [ ] **Step 5: Commit**
 

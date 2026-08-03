@@ -104,13 +104,15 @@ model GoHallSeasonPass {
 
 | 端點 | 權限 | 用途 |
 |---|---|---|
-| `GET /api/go-hall-tickets/summary` | ADMIN | 全部學生：堂票餘額＋季票效期（票券管理列表） |
+| `GET /api/go-hall-tickets/summary` | ADMIN | 全部學生：堂票餘額＋季票效期＋各班課堂堂數（票券管理列表） |
 | `GET /api/go-hall-tickets/[studentId]` | ADMIN | 單一學生：餘額＋帳本明細＋季票清單 |
 | `POST /api/go-hall-tickets/purchase` | ADMIN | 登記購買 +N 堂（N ≥ 1 整數） |
 | `POST /api/go-hall-tickets/adjust` | ADMIN | 調整 ±N（必填原因；餘額不可為負） |
 | `POST /api/go-hall-season-passes` | ADMIN | 新增季票（startDate、endDate） |
 | `DELETE /api/go-hall-season-passes/[id]` | ADMIN | 刪除季票（登記錯誤時用） |
-| `GET /api/go-hall-tickets/me` | STUDENT | 自己的餘額＋季票效期 |
+| `GET /api/go-hall-tickets/me` | STUDENT | 自己的餘額＋季票效期＋各班課堂堂數 |
+
+課堂堂數（2026-08-03 使用者追加需求「票券管理要可以顯示課堂的堂數跟弈廳的資訊」）：沿用現有 `getClassEnrollmentQuota` 的語意（`ON_LEAVE`／`NOT_REGISTERED` 不扣堂），新增批次查詢 `listClassQuotaSummaries(studentId?)`（attendanceService）一次算出各班「已上／總堂數／剩餘」，`/me` 回自己的、`/summary` 併入每位學生。
 
 既有名單 API 加資格欄位（僅回給 ADMIN／TEACHER；學生看到的場次名單維持只有名字）：
 
@@ -121,16 +123,18 @@ model GoHallSeasonPass {
 
 ## UI
 
-**學生弈廳頁**（`student/go-hall`）：頂部加「**票券管理**」卡片（名稱為使用者指定）——
+**學生弈廳頁**（`student/go-hall`）：頂部加「**票券管理**」卡片（名稱為使用者指定），分兩區——
 
-- 有效季票：「季票有效期至 2026/10/31（六）」（日期一律 `formatDateWithWeekday`）
-- 有堂票：「堂票剩餘 8 堂」
-- 都沒有：「目前以單堂計費（現場收費）」
+- **課堂**：每個就讀班級一行「{班名}：已上 X／共 Y 堂」（`totalSessions` 未設定顯示「已上 X 堂（未設定總堂數）」）；沒有任何班級報名時整區不顯示
+- **弈廳**：
+  - 有效季票：「季票有效期至 2026/10/31（六）」（日期一律 `formatDateWithWeekday`）
+  - 有堂票：「堂票剩餘 8 堂」
+  - 都沒有：「目前以單堂計費（現場收費）」
 
 卡片與 summary 的「季票效期」皆以**今日有效**的那筆為準；只有未來才生效的季票顯示於管理端單人 Modal 的季票清單，不影響學生卡片判定。
 - 其餘報名／取消流程不變；骨架屏與動效沿用現有 `animate-*` pattern
 
-**管理端 `admin/go-hall`**：加「**票券管理**」區塊（與場次管理並列）——學生列表（姓名、學號、堂票餘額、季票效期），可搜尋；點開單人 Modal：購買堂票、調整（附原因）、新增／刪除季票、帳本明細。版型比照點數卡後台（`admin/points`）。
+**管理端 `admin/go-hall`**：加「**票券管理**」區塊（與場次管理並列）——學生列表（姓名、學號、**課堂堂數（各班已上／共）**、堂票餘額、季票效期），可搜尋；點開單人 Modal：購買堂票、調整（附原因）、新增／刪除季票、帳本明細。版型比照點數卡後台（`admin/points`）。
 
 **點名名單**（`AttendanceHub` 弈廳 roster，老師＋管理端）：每位學生加資格標籤——季票／堂票／**單堂（醒目樣式，提醒現場收費）**；未點名前顯示「預計」資格。
 
