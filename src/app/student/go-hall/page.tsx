@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { withStopPropagation } from '@/components/ui/stopPropagation';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface RosterEntry {
@@ -110,7 +111,7 @@ function StudentGoHallContent() {
         <Button
           className="px-3 py-1 text-xs"
           disabled={s._count.registrations >= s.capacity}
-          onClick={() => handleRegister(s.id)}
+          onClick={withStopPropagation(() => handleRegister(s.id))}
           loading={pendingId === s.id}
         >
           {s._count.registrations >= s.capacity ? '已額滿' : '報名'}
@@ -126,7 +127,7 @@ function StudentGoHallContent() {
     {
       header: '操作',
       render: (r) => (
-        <button type="button" className="text-rejected hover:underline" onClick={() => handleCancel(r.id)}>
+        <button type="button" className="text-rejected hover:underline" onClick={withStopPropagation(() => handleCancel(r.id))}>
           取消
         </button>
       ),
