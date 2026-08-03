@@ -5,7 +5,7 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn } from './attendanceService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
@@ -920,5 +920,36 @@ describe('go-hall ticket deduction on attendance', () => {
     roster = await getGoHallRoster(session.id);
     expect(roster[0].qualification).toBeNull();
     expect(roster[0].qualificationPredicted).toBe(false);
+  });
+});
+
+describe('listClassQuotaSummaries', () => {
+  it('computes used/total/remaining per enrollment, excluding ON_LEAVE and NOT_REGISTERED', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await prisma.classEnrollment.update({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+      data: { totalSessions: 10 },
+    });
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-11'), 'marker-1', [{ studentId: student.id, status: 'ON_LEAVE' }]);
+
+    const all = await listClassQuotaSummaries();
+    const row = all.find((r) => r.studentId === student.id && r.classId === cls.id)!;
+    expect(row.className).toBe('週二基礎班');
+    expect(row.usedSessions).toBe(1);
+    expect(row.totalSessions).toBe(10);
+    expect(row.remaining).toBe(9);
+
+    const mine = await listClassQuotaSummaries(student.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].usedSessions).toBe(1);
+  });
+
+  it('returns null total/remaining when totalSessions is unset', async () => {
+    const { student } = await setupClassWithStudent();
+    const rows = await listClassQuotaSummaries(student.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].totalSessions).toBeNull();
+    expect(rows[0].remaining).toBeNull();
   });
 });

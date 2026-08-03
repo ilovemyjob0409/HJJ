@@ -146,6 +146,43 @@ export async function getClassEnrollmentQuota(classId: string, studentId: string
   };
 }
 
+export interface ClassQuotaSummaryRow {
+  studentId: string;
+  classId: string;
+  className: string;
+  usedSessions: number;
+  totalSessions: number | null;
+  remaining: number | null;
+}
+
+// 與 getClassEnrollmentQuota 同一套扣堂語意（請假、未報名不扣），
+// 但一次 groupBy 算完（單人或全部學生），供票券管理顯示課堂堂數。
+export async function listClassQuotaSummaries(studentId?: string): Promise<ClassQuotaSummaryRow[]> {
+  const [enrollments, counts] = await Promise.all([
+    prisma.classEnrollment.findMany({
+      where: studentId ? { studentId } : {},
+      select: { studentId: true, totalSessions: true, class: { select: { id: true, name: true } } },
+    }),
+    prisma.classAttendance.groupBy({
+      by: ['classId', 'studentId'],
+      where: { status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] }, ...(studentId ? { studentId } : {}) },
+      _count: { _all: true },
+    }),
+  ]);
+  const usedByKey = new Map(counts.map((c) => [`${c.classId}:${c.studentId}`, c._count._all]));
+  return enrollments.map((e) => {
+    const usedSessions = usedByKey.get(`${e.class.id}:${e.studentId}`) ?? 0;
+    return {
+      studentId: e.studentId,
+      classId: e.class.id,
+      className: e.class.name,
+      usedSessions,
+      totalSessions: e.totalSessions,
+      remaining: e.totalSessions === null ? null : e.totalSessions - usedSessions,
+    };
+  });
+}
+
 export interface OneOnOneRosterEntry {
   makeupRequestId: string;
   studentId: string;

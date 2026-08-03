@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createStudent } from './studentService';
-import { taipeiDateKey, getTicketBalance, purchaseTickets, adjustTickets, addSeasonPass, deleteSeasonPass, hasValidSeasonPass, determineQualification } from './goHallTicketService';
+import { taipeiDateKey, getTicketBalance, purchaseTickets, adjustTickets, addSeasonPass, deleteSeasonPass, hasValidSeasonPass, determineQualification, getMyTickets, listStudentTicketSummaries, getTicketDetail } from './goHallTicketService';
 
 describe('taipeiDateKey', () => {
   it('converts an instant to its Asia/Taipei calendar date', () => {
@@ -122,5 +122,50 @@ describe('determineQualification', () => {
   it('falls back to SINGLE when there is no pass and no balance', async () => {
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     expect(await determineQualification(prisma, student.id, new Date('2026-08-15'))).toBe('SINGLE');
+  });
+});
+
+describe('getMyTickets / listStudentTicketSummaries', () => {
+  it('reports balance and the end date of a currently-valid pass', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await purchaseTickets({ studentId: student.id, sessions: 7 });
+    const past = new Date();
+    past.setDate(past.getDate() - 30);
+    const future = new Date();
+    future.setDate(future.getDate() + 30);
+    await addSeasonPass({ studentId: student.id, startDate: past, endDate: future });
+
+    const mine = await getMyTickets(student.id);
+    expect(mine.balance).toBe(7);
+    expect(mine.activePassEndDate?.getTime()).toBe(future.getTime());
+
+    const summaries = await listStudentTicketSummaries();
+    const row = summaries.find((s) => s.id === student.id)!;
+    expect(row.name).toBe('小明');
+    expect(row.balance).toBe(7);
+    expect(row.activePassEndDate?.getTime()).toBe(future.getTime());
+  });
+
+  it('ignores expired and future-only passes for the active end date', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await addSeasonPass({ studentId: student.id, startDate: new Date('2020-01-01'), endDate: new Date('2020-03-31') });
+    const mine = await getMyTickets(student.id);
+    expect(mine.activePassEndDate).toBeNull();
+  });
+});
+
+describe('getTicketDetail', () => {
+  it('returns balance, passes, and newest-first history', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await purchaseTickets({ studentId: student.id, sessions: 10 });
+    await adjustTickets({ studentId: student.id, amount: -2, reason: '登記錯誤' });
+    await addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
+
+    const detail = await getTicketDetail(student.id);
+    expect(detail.balance).toBe(8);
+    expect(detail.seasonPasses).toHaveLength(1);
+    expect(detail.history).toHaveLength(2);
+    expect(detail.history[0].kind).toBe('ADMIN_ADJUST'); // 最新在前
+    expect(detail.history[0].reason).toBe('登記錯誤');
   });
 });

@@ -87,3 +87,74 @@ export async function determineQualification(
   if ((await getTicketBalance(studentId, client)) > 0) return 'TICKET';
   return 'SINGLE';
 }
+
+function activePassEndDate(passes: { startDate: Date; endDate: Date }[], todayKey: string): Date | null {
+  const active = passes
+    .filter((p) => taipeiDateKey(p.startDate) <= todayKey && todayKey <= taipeiDateKey(p.endDate))
+    .sort((a, b) => b.endDate.getTime() - a.endDate.getTime());
+  return active[0]?.endDate ?? null;
+}
+
+export async function getMyTickets(studentId: string): Promise<{ balance: number; activePassEndDate: Date | null }> {
+  const todayKey = taipeiDateKey(new Date());
+  const [balance, passes] = await Promise.all([
+    getTicketBalance(studentId),
+    prisma.goHallSeasonPass.findMany({ where: { studentId }, select: { startDate: true, endDate: true } }),
+  ]);
+  return { balance, activePassEndDate: activePassEndDate(passes, todayKey) };
+}
+
+// 管理端「票券管理」主表：全部學生＋餘額（一次 groupBy）＋今日有效季票結束日。
+export async function listStudentTicketSummaries() {
+  const todayKey = taipeiDateKey(new Date());
+  const [students, sums, passes] = await Promise.all([
+    prisma.student.findMany({
+      select: { id: true, studentNumber: true, user: { select: { name: true } } },
+      orderBy: { user: { name: 'asc' } },
+    }),
+    prisma.goHallTicketTransaction.groupBy({ by: ['studentId'], _sum: { amount: true } }),
+    prisma.goHallSeasonPass.findMany({ select: { studentId: true, startDate: true, endDate: true } }),
+  ]);
+  const balanceByStudentId = new Map(sums.map((s) => [s.studentId, s._sum.amount ?? 0]));
+  const passesByStudentId = new Map<string, { startDate: Date; endDate: Date }[]>();
+  for (const p of passes) {
+    const list = passesByStudentId.get(p.studentId) ?? [];
+    list.push(p);
+    passesByStudentId.set(p.studentId, list);
+  }
+  return students.map((s) => ({
+    id: s.id,
+    name: s.user.name,
+    studentNumber: s.studentNumber,
+    balance: balanceByStudentId.get(s.id) ?? 0,
+    activePassEndDate: activePassEndDate(passesByStudentId.get(s.id) ?? [], todayKey),
+  }));
+}
+
+export async function getTicketDetail(studentId: string) {
+  const [balance, seasonPasses, history] = await Promise.all([
+    getTicketBalance(studentId),
+    prisma.goHallSeasonPass.findMany({
+      where: { studentId },
+      select: { id: true, startDate: true, endDate: true },
+      orderBy: { startDate: 'desc' },
+    }),
+    prisma.goHallTicketTransaction.findMany({
+      where: { studentId },
+      select: { id: true, amount: true, kind: true, reason: true, createdAt: true, session: { select: { date: true } } },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+  return {
+    balance,
+    seasonPasses,
+    history: history.map((h) => ({
+      id: h.id,
+      amount: h.amount,
+      kind: h.kind as string,
+      reason: h.reason,
+      createdAt: h.createdAt,
+      sessionDate: h.session?.date ?? null,
+    })),
+  };
+}
