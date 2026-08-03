@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { maskName } from '@/lib/maskName';
-import { getSessionDetail, deleteSession } from '@/lib/services/goHallService';
+import { getSessionDetail, getSessionDetailWithQualifications, deleteSession } from '@/lib/services/goHallService';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -10,11 +10,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const detail = await getSessionDetail(params.id);
   if (session.user.role !== 'STUDENT') {
-    return NextResponse.json(detail);
+    return NextResponse.json(await getSessionDetailWithQualifications(params.id));
   }
 
+  const detail = await getSessionDetail(params.id);
   return NextResponse.json({
     ...detail,
     registrations: detail.registrations.map((r) => ({

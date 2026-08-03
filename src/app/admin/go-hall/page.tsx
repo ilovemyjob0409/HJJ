@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/Toast';
 import { previewSessionDates } from '@/lib/goHallDates';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { matchesSessionSearch } from './sessionSearch';
+import TicketManager, { QUALIFICATION_LABEL } from './TicketManager';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -39,6 +40,8 @@ interface SessionRow {
 interface RosterEntry {
   id: string;
   student: { user: { name: string } };
+  qualification?: string | null;
+  qualificationPredicted?: boolean;
 }
 
 interface SessionDetail extends SessionRow {
@@ -302,7 +305,12 @@ function AdminGoHallContent() {
               <ul className="flex flex-col gap-1">
                 {viewing.registrations.map((r) => (
                   <li key={r.id} className="flex items-center justify-between text-sm text-ink">
-                    {r.student.user.name}
+                    <span>{r.student.user.name}</span>
+                    {r.qualification && (
+                      <span className={r.qualification === 'SINGLE' ? 'text-xs font-semibold text-pending' : 'text-xs text-inkMuted'}>
+                        {(r.qualificationPredicted ? '預計：' : '') + QUALIFICATION_LABEL[r.qualification]}
+                      </span>
+                    )}
                     <button type="button" className="text-rejected hover:underline" onClick={() => handleRemoveRegistration(r.id)}>
                       移除
                     </button>
@@ -316,6 +324,8 @@ function AdminGoHallContent() {
           </div>
         )}
       </Modal>
+
+      <TicketManager />
     </>
   );
 }

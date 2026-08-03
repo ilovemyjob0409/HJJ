@@ -78,6 +78,8 @@ model GoHallSeasonPass {
 堂票餘額 = `GoHallTicketTransaction.amount` 加總，不另存欄位（與點數卡一致）。
 季票有效判定：場次日期落在任一 `GoHallSeasonPass` 的 `[startDate, endDate]`（含頭尾，date-only 比較）。多筆區間可並存，續買下一季即新增一筆，天然留歷史。
 
+日期比較基準（2026-08-03 實作時修訂）：儲存的場次／季票日期是「純日曆日」，全 app 以 **UTC 日曆日**讀取顯示（見 `dateFormat.ts` 註解），判定比較同樣取 UTC 日曆日（`utcDateKey`），確保與畫面顯示一致；「今日有效」的「今天」則取**台北時區**當下日曆日（`taipeiDateKey(new Date())`），符合使用者體感。
+
 ## 核心邏輯（goHallTicketService ＋ attendanceService 掛鉤）
 
 「到場」＝ `PRESENT`／`LATE`／`LEFT_EARLY`；`ON_LEAVE`／`ABSENT`／`NOT_REGISTERED` 不算。
@@ -104,13 +106,15 @@ model GoHallSeasonPass {
 
 | 端點 | 權限 | 用途 |
 |---|---|---|
-| `GET /api/go-hall-tickets/summary` | ADMIN | 全部學生：堂票餘額＋季票效期（票券管理列表） |
+| `GET /api/go-hall-tickets/summary` | ADMIN | 全部學生：堂票餘額＋季票效期＋各班課堂堂數（票券管理列表） |
 | `GET /api/go-hall-tickets/[studentId]` | ADMIN | 單一學生：餘額＋帳本明細＋季票清單 |
 | `POST /api/go-hall-tickets/purchase` | ADMIN | 登記購買 +N 堂（N ≥ 1 整數） |
 | `POST /api/go-hall-tickets/adjust` | ADMIN | 調整 ±N（必填原因；餘額不可為負） |
 | `POST /api/go-hall-season-passes` | ADMIN | 新增季票（startDate、endDate） |
 | `DELETE /api/go-hall-season-passes/[id]` | ADMIN | 刪除季票（登記錯誤時用） |
-| `GET /api/go-hall-tickets/me` | STUDENT | 自己的餘額＋季票效期 |
+| `GET /api/go-hall-tickets/me` | STUDENT | 自己的餘額＋季票效期＋各班課堂堂數 |
+
+課堂堂數（2026-08-03 使用者追加需求「票券管理要可以顯示課堂的堂數跟弈廳的資訊」）：沿用現有 `getClassEnrollmentQuota` 的語意（`ON_LEAVE`／`NOT_REGISTERED` 不扣堂），新增批次查詢 `listClassQuotaSummaries(studentId?)`（attendanceService）一次算出各班「已上／總堂數／剩餘」，`/me` 回自己的、`/summary` 併入每位學生。
 
 既有名單 API 加資格欄位（僅回給 ADMIN／TEACHER；學生看到的場次名單維持只有名字）：
 
@@ -121,16 +125,18 @@ model GoHallSeasonPass {
 
 ## UI
 
-**學生弈廳頁**（`student/go-hall`）：頂部加「**票券管理**」卡片（名稱為使用者指定）——
+**學生弈廳頁**（`student/go-hall`）：頂部加「**票券管理**」卡片（名稱為使用者指定），左右分欄——
 
-- 有效季票：「季票有效期至 2026/10/31（六）」（日期一律 `formatDateWithWeekday`）
-- 有堂票：「堂票剩餘 8 堂」
-- 都沒有：「目前以單堂計費（現場收費）」
+- **左「課堂堂數」**：每個就讀班級一列，含「已上 X／共 Y」與細進度條（`totalSessions` 未設定顯示「X 堂・未設定」，不畫進度條）；未報名任何課堂時顯示「尚未報名任何課堂」空狀態
+- **右「弈廳資格」**：單一狀態——
+  - 季票使用中：badge＋效期「有效期至 2026/10/31（六）」（日期一律 `formatDateWithWeekday`）；若同時有堂票餘額，加註一行「另有堂票 N 堂（季票期間不扣）」
+  - 無季票、有堂票：大數字「堂票剩餘 N 堂」＋扣堂說明「點名到場自動扣 1 堂・缺席不扣」
+  - 都沒有：「單堂計費」badge＋「現場收費」
 
 卡片與 summary 的「季票效期」皆以**今日有效**的那筆為準；只有未來才生效的季票顯示於管理端單人 Modal 的季票清單，不影響學生卡片判定。
 - 其餘報名／取消流程不變；骨架屏與動效沿用現有 `animate-*` pattern
 
-**管理端 `admin/go-hall`**：加「**票券管理**」區塊（與場次管理並列）——學生列表（姓名、學號、堂票餘額、季票效期），可搜尋；點開單人 Modal：購買堂票、調整（附原因）、新增／刪除季票、帳本明細。版型比照點數卡後台（`admin/points`）。
+**管理端 `admin/go-hall`**：加「**票券管理**」區塊（與場次管理並列）——學生列表（姓名、學號、**課堂堂數（各班已上／共，同款分數＋迷你進度條）**、堂票餘額、**季票欄為「使用中」badge＋效期**），可搜尋；點開單人 Modal：購買堂票、調整（附原因）、新增／刪除季票、帳本明細。版型比照點數卡後台（`admin/points`）。
 
 **點名名單**（`AttendanceHub` 弈廳 roster，老師＋管理端）：每位學生加資格標籤——季票／堂票／**單堂（醒目樣式，提醒現場收費）**；未點名前顯示「預計」資格。
 

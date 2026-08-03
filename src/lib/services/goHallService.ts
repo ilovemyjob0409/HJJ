@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { isBeforeToday } from '@/lib/pastDate';
+import { determineQualification, type GoHallQualificationValue } from './goHallTicketService';
+import { clearGoHallAttendance } from './attendanceService';
 
 // Go Hall rosters and session lists never render email in the UI, and the
 // roster is sent to STUDENT-role requesters (with names masked) — email
@@ -90,10 +92,13 @@ export async function cancelRegistration(id: string, studentId: string) {
   const registration = await prisma.goHallRegistration.findUniqueOrThrow({ where: { id }, include: { session: true } });
   if (registration.studentId !== studentId) throw new Error('NOT_OWNER');
   if (isBeforeToday(registration.session.date)) throw new Error('SESSION_EXPIRED');
+  await clearGoHallAttendance(registration.sessionId, [registration.studentId]);
   await prisma.goHallRegistration.delete({ where: { id } });
 }
 
 export async function adminRemoveRegistration(id: string) {
+  const registration = await prisma.goHallRegistration.findUniqueOrThrow({ where: { id } });
+  await clearGoHallAttendance(registration.sessionId, [registration.studentId]);
   await prisma.goHallRegistration.delete({ where: { id } });
 }
 
@@ -127,4 +132,23 @@ export function getSessionDetail(id: string) {
       },
     },
   });
+}
+
+export async function getSessionDetailWithQualifications(id: string) {
+  const detail = await getSessionDetail(id);
+  const attendances = await prisma.goHallAttendance.findMany({
+    where: { sessionId: id },
+    select: { studentId: true, qualification: true },
+  });
+  const byStudentId = new Map(attendances.map((a) => [a.studentId, a]));
+  const registrations = await Promise.all(
+    detail.registrations.map(async (r) => {
+      const record = byStudentId.get(r.studentId);
+      const qualification: GoHallQualificationValue | null = record
+        ? ((record.qualification as GoHallQualificationValue | null) ?? null)
+        : await determineQualification(prisma, r.studentId, detail.date);
+      return { ...r, qualification, qualificationPredicted: !record };
+    })
+  );
+  return { ...detail, registrations };
 }

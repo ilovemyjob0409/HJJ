@@ -26,6 +26,7 @@ export interface RosterRow {
   checkOutTime: string | null;
   defaultOnLeave?: boolean;
   quotaLabel?: string;
+  quotaTone?: 'warning';
 }
 
 export interface SavedRecord {
@@ -104,7 +105,11 @@ export default function AttendanceRosterEditor({ rows, onSave }: Props) {
           <div key={r.key} className="flex flex-col gap-2 rounded-lg border border-borderSubtle p-3">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-ink">{r.studentName}</span>
-              {r.quotaLabel && <span className="text-xs text-inkMuted">{r.quotaLabel}</span>}
+              {r.quotaLabel && (
+                <span className={r.quotaTone === 'warning' ? 'text-xs font-semibold text-pending' : 'text-xs text-inkMuted'}>
+                  {r.quotaLabel}
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {STATUS_OPTIONS.map((opt) => {

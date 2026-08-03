@@ -35,6 +35,19 @@ interface RegistrationRow {
   session: SessionRow;
 }
 
+interface ClassQuotaRow {
+  classId: string;
+  className: string;
+  usedSessions: number;
+  totalSessions: number | null;
+}
+
+interface MyTickets {
+  balance: number;
+  activePassEndDate: string | null;
+  classQuotas: ClassQuotaRow[];
+}
+
 function StudentGoHallContent() {
   const { showToast } = useToast();
   const searchParams = useSearchParams();
@@ -42,6 +55,7 @@ function StudentGoHallContent() {
 
   const [openSessions, setOpenSessions] = useState<SessionRow[]>([]);
   const [myRegistrations, setMyRegistrations] = useState<RegistrationRow[]>([]);
+  const [tickets, setTickets] = useState<MyTickets | null>(null);
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
   const [highlightDismissed, setHighlightDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -49,9 +63,14 @@ function StudentGoHallContent() {
 
   async function load() {
     try {
-      const [sessionsRes, myRes] = await Promise.all([fetch('/api/go-hall-sessions'), fetch('/api/go-hall-registrations')]);
+      const [sessionsRes, myRes, ticketsRes] = await Promise.all([
+        fetch('/api/go-hall-sessions'),
+        fetch('/api/go-hall-registrations'),
+        fetch('/api/go-hall-tickets/me'),
+      ]);
       setOpenSessions(await sessionsRes.json());
       setMyRegistrations(await myRes.json());
+      setTickets(await ticketsRes.json());
     } finally {
       setLoading(false);
     }
@@ -147,6 +166,68 @@ function StudentGoHallContent() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">弈廳</h1>
+
+      <h2 className="mb-2 font-bold text-ink">票券管理</h2>
+      <Card className="mb-6">
+        {tickets === null ? (
+          <div className="flex flex-col gap-2">
+            <div className="skeleton-shimmer h-4 w-40 rounded" />
+            <div className="skeleton-shimmer h-4 w-56 rounded" />
+          </div>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-[1fr_1px_240px]">
+            <div>
+              <p className="mb-1 text-xs font-semibold text-inkMuted">課堂堂數</p>
+              {tickets.classQuotas.length === 0 ? (
+                <p className="py-2 text-sm text-inkMuted">尚未報名任何課堂</p>
+              ) : (
+                tickets.classQuotas.map((q, i) => (
+                  <div key={q.classId} className={`flex flex-col gap-1.5 py-2 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm text-ink">{q.className}</span>
+                      <span className="text-xs tabular-nums text-inkMuted">
+                        <span className="font-semibold text-ink">{q.usedSessions}</span>
+                        {q.totalSessions !== null ? `／${q.totalSessions} 堂` : ' 堂・未設定'}
+                      </span>
+                    </div>
+                    {q.totalSessions !== null && q.totalSessions > 0 && (
+                      <div className="h-1 overflow-hidden rounded-full bg-stripe">
+                        <div
+                          className="h-full rounded-full bg-brand"
+                          style={{ width: `${Math.min(100, (q.usedSessions / q.totalSessions) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="hidden bg-borderSubtle sm:block" />
+            <div className="flex flex-col gap-2 border-t border-borderSubtle pt-4 sm:border-t-0 sm:pt-0">
+              <p className="text-xs font-semibold text-inkMuted">弈廳資格</p>
+              {tickets.activePassEndDate ? (
+                <>
+                  <span className="self-start rounded-full bg-approvedBg px-3 py-1 text-xs font-semibold text-approved">季票使用中</span>
+                  <p className="text-xs text-inkMuted">有效期至 {formatDateWithWeekday(tickets.activePassEndDate, 'zh-TW')}</p>
+                  {tickets.balance > 0 && <p className="text-xs text-inkMuted">另有堂票 {tickets.balance} 堂（季票期間不扣）</p>}
+                </>
+              ) : tickets.balance > 0 ? (
+                <>
+                  <p className="text-sm text-ink">
+                    <span className="text-2xl font-bold tabular-nums">{tickets.balance}</span> 堂票剩餘
+                  </p>
+                  <p className="text-xs text-inkMuted">點名到場自動扣 1 堂・缺席不扣</p>
+                </>
+              ) : (
+                <>
+                  <span className="self-start rounded-full bg-pendingBg px-3 py-1 text-xs font-semibold text-pending">單堂計費</span>
+                  <p className="text-xs text-inkMuted">現場收費</p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
 
       <h2 className="mb-2 font-bold text-ink">開放中的場次</h2>
       <Card className="mb-6">
