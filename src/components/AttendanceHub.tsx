@@ -44,6 +44,17 @@ interface SimpleRosterApiRow {
   checkOutTime: string | null;
 }
 
+interface GoHallRosterApiRow extends SimpleRosterApiRow {
+  qualification: 'SEASON_PASS' | 'TICKET' | 'SINGLE' | null;
+  qualificationPredicted: boolean;
+}
+
+const GO_HALL_QUALIFICATION_LABEL: Record<string, string> = {
+  SEASON_PASS: '季票',
+  TICKET: '堂票',
+  SINGLE: '單堂（現場收費）',
+};
+
 export function todayDateInput() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -119,13 +130,17 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       const res = await fetch(`/api/attendance/go-hall/${s.id}`);
       const roster = await res.json();
       setRosterRows(
-        roster.map((r: SimpleRosterApiRow) => ({
+        roster.map((r: GoHallRosterApiRow) => ({
           key: r.studentId,
           studentId: r.studentId,
           studentName: r.studentName,
           status: r.status,
           checkInTime: r.checkInTime,
           checkOutTime: r.checkOutTime,
+          quotaLabel: r.qualification
+            ? (r.qualificationPredicted ? '預計：' : '') + GO_HALL_QUALIFICATION_LABEL[r.qualification]
+            : undefined,
+          quotaTone: r.qualification === 'SINGLE' ? ('warning' as const) : undefined,
         }))
       );
     } else {
