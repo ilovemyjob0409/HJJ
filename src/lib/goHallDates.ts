@@ -8,12 +8,15 @@ export function previewSessionDates(weekday: number, month: string): Date[] {
   const year = Number(yearStr);
   const monthIndex = Number(monthStr) - 1;
   const dates: Date[] = [];
-  const cursor = new Date(year, monthIndex, 1);
-  while (cursor.getMonth() === monthIndex) {
-    if (cursor.getDay() === weekday) {
+  // Work in UTC: calendar dates are stored and displayed as UTC midnight
+  // app-wide (see dateFormat.ts). Local-midnight dates would serialize to
+  // the previous day at 16:00Z from a GMT+8 browser.
+  const cursor = new Date(Date.UTC(year, monthIndex, 1));
+  while (cursor.getUTCMonth() === monthIndex) {
+    if (cursor.getUTCDay() === weekday) {
       dates.push(new Date(cursor));
     }
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return dates;
 }

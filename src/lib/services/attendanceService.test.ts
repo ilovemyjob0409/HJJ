@@ -371,6 +371,32 @@ describe('listAttendanceSessionsForDate', () => {
     const own = await listAttendanceSessionsForDate(date, teacher.id);
     expect(own.find((s) => s.type === 'CLASS' && s.id === cls.id)).toBeDefined();
   });
+
+  it('includes go-hall sessions stored with a time-of-day offset (legacy 16:00Z rows)', async () => {
+    // Sessions batch-created from a GMT+8 browser were stored at 16:00 UTC
+    // instead of UTC midnight. The whole app displays them on their UTC
+    // calendar day, so the attendance list must find them on that same day.
+    const { teacher } = await setupClassWithStudent();
+    await prisma.goHallSession.create({
+      data: { date: new Date('2026-08-14T16:00:00Z'), startTime: '18:00', endTime: '20:00', capacity: 8, teacherId: teacher.id },
+    });
+
+    const sessions = await listAttendanceSessionsForDate(new Date('2026-08-14'), null);
+    expect(sessions.filter((s) => s.type === 'GO_HALL')).toHaveLength(1);
+  });
+
+  it('excludes go-hall sessions belonging to an adjacent UTC calendar day', async () => {
+    const { teacher } = await setupClassWithStudent();
+    await prisma.goHallSession.createMany({
+      data: [
+        { date: new Date('2026-08-13T16:00:00Z'), startTime: '18:00', endTime: '20:00', capacity: 8, teacherId: teacher.id },
+        { date: new Date('2026-08-15T00:00:00Z'), startTime: '18:00', endTime: '20:00', capacity: 8, teacherId: teacher.id },
+      ],
+    });
+
+    const sessions = await listAttendanceSessionsForDate(new Date('2026-08-14'), null);
+    expect(sessions.filter((s) => s.type === 'GO_HALL')).toHaveLength(0);
+  });
 });
 
 import { listMyAttendance, getAttendanceStats } from './attendanceService';

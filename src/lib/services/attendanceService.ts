@@ -442,6 +442,11 @@ export async function listAttendanceSessionsForDate(
   teacherId: string | null
 ): Promise<AttendanceSessionSummary[]> {
   const weekday = date.getUTCDay();
+  // GoHallSession dates should be UTC midnight, but legacy rows created
+  // from a GMT+8 browser carry a 16:00Z time-of-day. Match by UTC calendar
+  // day so those rows appear on the same day the rest of the app displays.
+  const dayStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const nextDayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
   const [classes, oneOnOnes, goHallSessions, activities] = await Promise.all([
     prisma.class.findMany({
@@ -458,7 +463,7 @@ export async function listAttendanceSessionsForDate(
       },
     }),
     prisma.goHallSession.findMany({
-      where: { date, ...(teacherId ? { teacherId } : {}) },
+      where: { date: { gte: dayStart, lt: nextDayStart }, ...(teacherId ? { teacherId } : {}) },
       select: { id: true, startTime: true, endTime: true, _count: { select: { registrations: true } } },
     }),
     prisma.activity.findMany({
