@@ -185,11 +185,15 @@ describe('registerForActivity', () => {
 });
 
 describe('cancelRegistration', () => {
+  // Cancellation is only allowed while the activity has not ended, so these
+  // fixtures must use relative dates to keep testing the allowed path.
   it('deletes the registration when the student owns it', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
     const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: tomorrow, endDate: tomorrow, capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     const registration = await registerForActivity(activity.id, student.id);
 
@@ -204,11 +208,47 @@ describe('cancelRegistration', () => {
     const category = await createCategory('營隊');
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
-    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: tomorrow, endDate: tomorrow, capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     const registration = await registerForActivity(activity.id, student.id);
 
     await expect(cancelRegistration(registration.id, otherStudent.id)).rejects.toThrow('NOT_OWNER');
+  });
+
+  it('throws ACTIVITY_ENDED and keeps the registration when the activity end date has passed', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: yesterday, endDate: yesterday, capacity: 8, teacherIds: [teacher.id] });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const registration = await registerForActivity(activity.id, student.id);
+
+    await expect(cancelRegistration(registration.id, student.id)).rejects.toThrow('ACTIVITY_ENDED');
+
+    const remaining = await prisma.activityRegistration.count();
+    expect(remaining).toBe(1);
+  });
+
+  it('still allows cancelling a multi-day activity that ends today', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: yesterday, endDate: todayMidnight, capacity: 8, teacherIds: [teacher.id] });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const registration = await registerForActivity(activity.id, student.id);
+
+    await cancelRegistration(registration.id, student.id);
+
+    const remaining = await prisma.activityRegistration.count();
+    expect(remaining).toBe(0);
   });
 });
 

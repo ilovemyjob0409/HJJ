@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { isBeforeToday } from '@/lib/pastDate';
 
 interface RosterEntry {
   id: string;
@@ -90,7 +91,13 @@ function StudentGoHallContent() {
 
   async function handleCancel(registrationId: string) {
     if (!confirm('確定要取消這場報名嗎？')) return;
-    await fetch(`/api/go-hall-registrations/${registrationId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/go-hall-registrations/${registrationId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      showToast(data?.error === 'SESSION_EXPIRED' ? '這筆報名已過期，無法取消' : `錯誤：${data?.error ?? res.status}`);
+      load();
+      return;
+    }
     showToast('已取消');
     load();
   }
@@ -126,11 +133,14 @@ function StudentGoHallContent() {
     { header: '老師', render: (r) => r.session.teacher.user.name },
     {
       header: '操作',
-      render: (r) => (
-        <button type="button" className="text-rejected hover:underline" onClick={withStopPropagation(() => handleCancel(r.id))}>
-          取消
-        </button>
-      ),
+      render: (r) =>
+        isBeforeToday(r.session.date) ? (
+          <span className="text-inkMuted">已結束</span>
+        ) : (
+          <button type="button" className="text-rejected hover:underline" onClick={withStopPropagation(() => handleCancel(r.id))}>
+            取消
+          </button>
+        ),
     },
   ];
 
