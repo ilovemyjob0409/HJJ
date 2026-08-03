@@ -1448,7 +1448,10 @@ JSX 在 `<h1>弈廳</h1>` 之後、「開放中的場次」之前插入（標題
       <h2 className="mb-2 font-bold text-ink">票券管理</h2>
       <Card className="mb-6">
         {tickets === null ? (
-          <div className="h-5 w-48 animate-pulse rounded bg-stripe" />
+          <div className="flex flex-col gap-2">
+            <div className="skeleton-shimmer h-4 w-40 rounded" />
+            <div className="skeleton-shimmer h-4 w-56 rounded" />
+          </div>
         ) : (
           <div className="flex flex-col gap-3 text-sm text-ink">
             {tickets.classQuotas.length > 0 && (
@@ -1735,7 +1738,10 @@ export default function TicketManager() {
         {managing && (
           <div className="flex flex-col gap-4">
             {detail === null ? (
-              <div className="h-5 w-48 animate-pulse rounded bg-stripe" />
+              <div className="flex flex-col gap-2">
+                <div className="skeleton-shimmer h-4 w-40 rounded" />
+                <div className="skeleton-shimmer h-4 w-56 rounded" />
+              </div>
             ) : (
               <>
                 <p className="text-sm text-ink">
