@@ -164,24 +164,53 @@ function StudentGoHallContent() {
             <div className="skeleton-shimmer h-4 w-56 rounded" />
           </div>
         ) : (
-          <div className="flex flex-col gap-3 text-sm text-ink">
-            {tickets.classQuotas.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <h3 className="font-bold">課堂</h3>
-                {tickets.classQuotas.map((q) => (
-                  <p key={q.classId}>
-                    {q.className}：已上 {q.usedSessions}
-                    {q.totalSessions !== null ? `／共 ${q.totalSessions} 堂` : ' 堂（未設定總堂數）'}
+          <div className="grid gap-5 sm:grid-cols-[1fr_1px_240px]">
+            <div>
+              <p className="mb-1 text-xs font-semibold text-inkMuted">課堂堂數</p>
+              {tickets.classQuotas.length === 0 ? (
+                <p className="py-2 text-sm text-inkMuted">尚未報名任何課堂</p>
+              ) : (
+                tickets.classQuotas.map((q, i) => (
+                  <div key={q.classId} className={`flex flex-col gap-1.5 py-2 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm text-ink">{q.className}</span>
+                      <span className="text-xs tabular-nums text-inkMuted">
+                        <span className="font-semibold text-ink">{q.usedSessions}</span>
+                        {q.totalSessions !== null ? `／${q.totalSessions} 堂` : ' 堂・未設定'}
+                      </span>
+                    </div>
+                    {q.totalSessions !== null && q.totalSessions > 0 && (
+                      <div className="h-1 overflow-hidden rounded-full bg-stripe">
+                        <div
+                          className="h-full rounded-full bg-brand"
+                          style={{ width: `${Math.min(100, (q.usedSessions / q.totalSessions) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="hidden bg-borderSubtle sm:block" />
+            <div className="flex flex-col gap-2 border-t border-borderSubtle pt-4 sm:border-t-0 sm:pt-0">
+              <p className="text-xs font-semibold text-inkMuted">弈廳資格</p>
+              {tickets.activePassEndDate ? (
+                <>
+                  <span className="self-start rounded-full bg-approvedBg px-3 py-1 text-xs font-semibold text-approved">季票使用中</span>
+                  <p className="text-xs text-inkMuted">有效期至 {formatDateWithWeekday(tickets.activePassEndDate, 'zh-TW')}</p>
+                </>
+              ) : tickets.balance > 0 ? (
+                <>
+                  <p className="text-sm text-ink">
+                    <span className="text-2xl font-bold tabular-nums">{tickets.balance}</span> 堂票剩餘
                   </p>
-                ))}
-              </div>
-            )}
-            <div className="flex flex-col gap-1">
-              <h3 className="font-bold">弈廳</h3>
-              {tickets.activePassEndDate && <p>季票有效期至 {formatDateWithWeekday(tickets.activePassEndDate, 'zh-TW')}</p>}
-              {tickets.balance > 0 && <p>堂票剩餘 {tickets.balance} 堂</p>}
-              {!tickets.activePassEndDate && tickets.balance <= 0 && (
-                <p className="text-inkMuted">目前以單堂計費（現場收費）</p>
+                  <p className="text-xs text-inkMuted">點名到場自動扣 1 堂・缺席不扣</p>
+                </>
+              ) : (
+                <>
+                  <span className="self-start rounded-full bg-pendingBg px-3 py-1 text-xs font-semibold text-pending">單堂計費</span>
+                  <p className="text-xs text-inkMuted">現場收費</p>
+                </>
               )}
             </div>
           </div>

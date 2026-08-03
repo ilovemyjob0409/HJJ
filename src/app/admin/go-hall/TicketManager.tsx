@@ -175,19 +175,45 @@ export default function TicketManager() {
         s.classQuotas.length === 0 ? (
           '-'
         ) : (
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col items-center gap-1">
             {s.classQuotas.map((q) => (
-              <span key={q.classId}>
-                {q.className}：{q.usedSessions}／{q.totalSessions ?? '—'}
-              </span>
+              <div key={q.classId} className="flex items-center gap-2 whitespace-nowrap">
+                <span>{q.className}</span>
+                <span className="tabular-nums text-inkMuted">
+                  <span className="font-semibold text-ink">{q.usedSessions}</span>／{q.totalSessions ?? '—'}
+                </span>
+                {q.totalSessions !== null && q.totalSessions > 0 && (
+                  <span className="h-1 w-10 overflow-hidden rounded-full bg-stripe">
+                    <span
+                      className="block h-full rounded-full bg-brand"
+                      style={{ width: `${Math.min(100, (q.usedSessions / q.totalSessions) * 100)}%` }}
+                    />
+                  </span>
+                )}
+              </div>
             ))}
           </div>
         ),
     },
-    { header: '堂票剩餘', render: (s) => `${s.balance} 堂` },
+    {
+      header: '堂票剩餘',
+      render: (s) => (
+        <span className="tabular-nums">
+          <span className="font-semibold text-ink">{s.balance}</span> 堂
+        </span>
+      ),
+    },
     {
       header: '季票',
-      render: (s) => (s.activePassEndDate ? `有效至 ${formatDateWithWeekday(s.activePassEndDate, 'zh-TW')}` : '-'),
+      render: (s) =>
+        s.activePassEndDate ? (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <span className="rounded-full bg-approvedBg px-2 py-0.5 text-xs font-semibold text-approved">使用中</span>
+            <span className="text-xs text-inkMuted">至 {formatDateWithWeekday(s.activePassEndDate, 'zh-TW')}</span>
+          </span>
+        ) : (
+          '-'
+        ),
     },
     {
       header: '操作',
