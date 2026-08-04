@@ -84,7 +84,7 @@ export default function ActivityDetail({
   const { showToast } = useToast();
   const [images, setImages] = useState<AlbumImage[]>([]);
   const [albumLoading, setAlbumLoading] = useState(true);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | null>(null);
@@ -106,22 +106,24 @@ export default function ActivityDetail({
     loadImages();
   }, [loadImages]);
 
-  // 陣列縮短（刪除、重載）時把選取索引收斂回合法範圍；
-  // 刪除選取中的照片＝原索引順移下一張、刪到最後退前一張。
-  useEffect(() => {
-    setSelectedIndex((i) => Math.min(i, Math.max(images.length - 1, 0)));
-  }, [images.length]);
-
   useEffect(() => {
     if (!lightboxOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setLightboxOpen(false);
-      if (e.key === 'ArrowRight') setSelectedIndex((i) => (i + 1) % images.length);
-      if (e.key === 'ArrowLeft') setSelectedIndex((i) => (i - 1 + images.length) % images.length);
+      if (images.length > 1 && e.key === 'ArrowRight') {
+        const currentIdx = selectedId === null ? -1 : images.findIndex((i) => i.id === selectedId);
+        const idx = currentIdx === -1 ? 0 : currentIdx;
+        setSelectedId(images[(idx + 1) % images.length].id);
+      }
+      if (images.length > 1 && e.key === 'ArrowLeft') {
+        const currentIdx = selectedId === null ? -1 : images.findIndex((i) => i.id === selectedId);
+        const idx = currentIdx === -1 ? 0 : currentIdx;
+        setSelectedId(images[(idx - 1 + images.length) % images.length].id);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxOpen, images.length]);
+  }, [lightboxOpen, images, selectedId]);
 
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -153,8 +155,15 @@ export default function ActivityDetail({
     try {
       const res = await fetch(`/api/activity-images/${imageId}`, { method: 'DELETE' });
       if (res.ok) {
-        // functional update：即使兩張照片的刪除請求交錯完成，也不會用到過期陣列
+        const idx = images.findIndex((i) => i.id === imageId);
+        const next = images.filter((i) => i.id !== imageId);
         setImages((prev) => prev.filter((i) => i.id !== imageId));
+        // 刪除選取中的照片：原位順移下一張、刪到最後退前一張；刪其他張：選取不動。
+        setSelectedId((sel) => {
+          if (sel !== imageId) return sel;
+          if (next.length === 0) return null;
+          return next[Math.min(Math.max(idx, 0), next.length - 1)].id;
+        });
         showToast('照片已刪除');
         onImagesChanged?.();
       }
@@ -163,6 +172,8 @@ export default function ActivityDetail({
     }
   }
 
+  const selectedIndexRaw = selectedId === null ? -1 : images.findIndex((i) => i.id === selectedId);
+  const selectedIndex = selectedIndexRaw === -1 ? 0 : selectedIndexRaw;
   const selected = images[selectedIndex];
   const hasPhotos = !albumLoading && images.length > 0;
 
@@ -210,8 +221,9 @@ export default function ActivityDetail({
                 {img.url ? (
                   <button
                     type="button"
-                    onClick={() => setSelectedIndex(i)}
+                    onClick={() => setSelectedId(img.id)}
                     aria-label={`第 ${i + 1} 張照片`}
+                    aria-current={i === selectedIndex ? 'true' : undefined}
                     className={`block h-14 w-14 overflow-hidden rounded-lg ${i === selectedIndex ? 'outline outline-2 outline-brandDark' : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived */}
@@ -223,7 +235,7 @@ export default function ActivityDetail({
                 {canManageAlbum && (
                   <button
                     type="button"
-                    aria-label="刪除照片"
+                    aria-label={`刪除第 ${i + 1} 張照片`}
                     disabled={pendingImageId === img.id}
                     onClick={() => handleDeleteImage(img.id)}
                     className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] text-white hover:bg-black/80 disabled:opacity-50"
@@ -340,7 +352,7 @@ export default function ActivityDetail({
 
       {lightboxOpen && selected?.url && typeof document !== 'undefined' &&
         createPortal(
-          <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" onClick={() => setLightboxOpen(false)}>
+          <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="照片檢視" onClick={() => setLightboxOpen(false)}>
             {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived */}
             <img src={selected.url} alt="活動照片" className="max-h-[90vh] max-w-[92vw] object-contain" onClick={(e) => e.stopPropagation()} />
             {images.length > 1 && (
@@ -348,7 +360,7 @@ export default function ActivityDetail({
                 <button
                   type="button"
                   aria-label="上一張"
-                  onClick={(e) => { e.stopPropagation(); setSelectedIndex((i) => (i - 1 + images.length) % images.length); }}
+                  onClick={(e) => { e.stopPropagation(); setSelectedId(images[(selectedIndex - 1 + images.length) % images.length].id); }}
                   className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/75"
                 >
                   ‹
@@ -356,7 +368,7 @@ export default function ActivityDetail({
                 <button
                   type="button"
                   aria-label="下一張"
-                  onClick={(e) => { e.stopPropagation(); setSelectedIndex((i) => (i + 1) % images.length); }}
+                  onClick={(e) => { e.stopPropagation(); setSelectedId(images[(selectedIndex + 1) % images.length].id); }}
                   className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/75"
                 >
                   ›

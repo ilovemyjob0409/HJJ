@@ -565,6 +565,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 <Modal open={viewing !== null || detailLoading} onClose={closeDetail} flush maxWidthClassName="max-w-xl">
   {viewing ? (
     <ActivityDetail
+      key={viewing.id}
       activity={viewing}
       onClose={closeDetail}
       footer={
@@ -613,6 +614,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 <Modal open={viewing !== null} onClose={() => setViewing(null)} flush maxWidthClassName="max-w-xl">
   {viewing && (
     <ActivityDetail
+      key={viewing.id}
       activity={viewing}
       onClose={() => setViewing(null)}
       canManageAlbum
@@ -638,7 +640,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ```tsx
 <Modal open={viewing !== null} onClose={() => setViewing(null)} flush maxWidthClassName="max-w-xl">
-  {viewing && <ActivityDetail activity={viewing} onClose={() => setViewing(null)} />}
+  {viewing && <ActivityDetail key={viewing.id} activity={viewing} onClose={() => setViewing(null)} />}
 </Modal>
 ```
 
