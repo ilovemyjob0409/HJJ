@@ -827,7 +827,7 @@ describe('makeup cancellation', () => {
 
 describe('listAssignedOneOnOneForTeacher', () => {
   it('lists upcoming pending/approved one-on-ones for the teacher, sorted by date then start time', async () => {
-    const { teacher, student, classA } = await setup();
+    const { teacher, classA } = await setup();
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
     async function makeStudentWithLeave(name: string, email: string, leaveDay: number) {
