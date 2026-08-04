@@ -202,7 +202,6 @@ describe('getOneOnOneAttendance / saveOneOnOneAttendance', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-08-11'),
       slotStartTime: '15:00',
-      slotEndTime: '16:00',
     });
     return { student, makeup };
   }
@@ -592,7 +591,6 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
       teacherId: availabilityTeacher.id,
       slotDate: new Date('2026-08-04'),
       slotStartTime: '15:00',
-      slotEndTime: '16:00',
     });
     await decideMakeupRequest(makeup.id, 'APPROVED');
 
@@ -773,7 +771,6 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
       teacherId: availabilityTeacher.id,
       slotDate: new Date('2026-08-04'),
       slotStartTime: '15:00',
-      slotEndTime: '16:00',
     });
     await decideMakeupRequest(makeup.id, 'APPROVED');
 

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Button from '@/components/ui/Button';
 import ImageCropModal from '@/components/ImageCropModal';
 import { useToast } from '@/components/ui/Toast';
+import { useDialogA11y } from '@/components/ui/useDialogA11y';
 import { uploadActivityImageFile } from '@/lib/uploadActivityImage';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 
@@ -90,6 +91,9 @@ export default function ActivityDetail({
   const [pendingImageId, setPendingImageId] = useState<string | null>(null);
   const [cropQueue, setCropQueue] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lightboxRef = useRef<HTMLDivElement>(null);
+  // 燈箱沿用 Modal 同一套無障礙機制；疊在 Modal 上時 Esc 會先關燈箱（dialogStack 判斷最上層）。
+  useDialogA11y(lightboxOpen, lightboxRef, () => setLightboxOpen(false));
 
   const loadImages = useCallback(async () => {
     try {
@@ -121,7 +125,6 @@ export default function ActivityDetail({
   useEffect(() => {
     if (!lightboxOpen) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setLightboxOpen(false);
       if (e.key === 'ArrowRight') stepSelected(1);
       if (e.key === 'ArrowLeft') stepSelected(-1);
     }
@@ -358,7 +361,15 @@ export default function ActivityDetail({
 
       {lightboxOpen && selected && typeof document !== 'undefined' &&
         createPortal(
-          <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="照片檢視" onClick={() => setLightboxOpen(false)}>
+          <div
+            ref={lightboxRef}
+            tabIndex={-1}
+            className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 outline-none"
+            role="dialog"
+            aria-modal="true"
+            aria-label="照片檢視"
+            onClick={() => setLightboxOpen(false)}
+          >
             {selected.url ? (
               // eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived
               <img src={selected.url} alt="活動照片" className="max-h-[90vh] max-w-[92vw] object-contain" onClick={(e) => e.stopPropagation()} />

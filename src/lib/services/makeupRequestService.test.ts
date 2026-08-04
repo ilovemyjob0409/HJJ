@@ -109,10 +109,26 @@ describe('createOneOnOneMakeupRequest', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'), // a Wednesday
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
     expect(makeup.type).toBe('ONE_ON_ONE');
     expect(makeup.status).toBe('PENDING_ADMIN');
+    // 結束時間不由呼叫端決定，固定為開始＋40 分鐘
+    expect(makeup.slotEndTime).toBe('16:40');
+  });
+
+  it('throws OUTSIDE_AVAILABILITY when the fixed 40-minute span exceeds the window end', async () => {
+    const { teacher, student, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    await expect(
+      createOneOnOneMakeupRequest({
+        leaveRequestId: leave.id,
+        studentId: student.id,
+        teacherId: teacher.id,
+        slotDate: new Date('2026-07-15'),
+        slotStartTime: '17:30', // 17:30+40 = 18:10 超出 18:00
+      })
+    ).rejects.toThrow('OUTSIDE_AVAILABILITY');
   });
 
   it('throws NOT_AVAILABLE for a non-Go class', async () => {
@@ -129,7 +145,6 @@ describe('createOneOnOneMakeupRequest', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-07-15'),
         slotStartTime: '16:00',
-        slotEndTime: '17:00',
       })
     ).rejects.toThrow('NOT_AVAILABLE');
   });
@@ -145,7 +160,6 @@ describe('createOneOnOneMakeupRequest', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-07-15'),
         slotStartTime: '19:00',
-        slotEndTime: '20:00',
       })
     ).rejects.toThrow('OUTSIDE_AVAILABILITY');
   });
@@ -159,7 +173,6 @@ describe('createOneOnOneMakeupRequest', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
@@ -174,7 +187,6 @@ describe('createOneOnOneMakeupRequest', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-07-15'),
         slotStartTime: '16:30',
-        slotEndTime: '17:30',
       })
     ).rejects.toThrow('SLOT_CONFLICT');
   });
@@ -188,7 +200,6 @@ describe('createOneOnOneMakeupRequest', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
@@ -201,7 +212,6 @@ describe('createOneOnOneMakeupRequest', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-07-29'),
         slotStartTime: '17:00',
-        slotEndTime: '18:00',
       })
     ).rejects.toThrow('QUOTA_EXCEEDED');
   });
@@ -220,7 +230,6 @@ describe('createOneOnOneMakeupRequest', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     expect(makeup.status).toBe('PENDING_ADMIN');
@@ -235,7 +244,6 @@ describe('createOneOnOneMakeupRequest', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     await addEnrollmentSessions(classA.id, student.id, 10); // 新的一期
@@ -247,7 +255,6 @@ describe('createOneOnOneMakeupRequest', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-29'),
       slotStartTime: '17:00',
-      slotEndTime: '18:00',
     });
 
     expect(makeup.status).toBe('PENDING_ADMIN');
@@ -266,7 +273,6 @@ describe('createOneOnOneMakeupRequest', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     };
 
     const results = await Promise.allSettled([
@@ -300,7 +306,6 @@ describe('createOneOnOneMakeupRequest', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-07-15'),
         slotStartTime: '16:00',
-        slotEndTime: '17:00',
       }),
       createOneOnOneMakeupRequest({
         leaveRequestId: secondLeave.id,
@@ -308,7 +313,6 @@ describe('createOneOnOneMakeupRequest', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-07-29'),
         slotStartTime: '17:00',
-        slotEndTime: '18:00',
       }),
     ]);
 
@@ -351,7 +355,6 @@ describe('getMakeupQuotaStatus', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     const quota = await getMakeupQuotaStatus(student.id, classA.id);
@@ -375,7 +378,6 @@ describe('getMakeupQuotaStatus', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     await decideMakeupRequest(makeup.id, 'REJECTED');
@@ -393,7 +395,6 @@ describe('getMakeupQuotaStatus', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     await addEnrollmentSessions(classA.id, student.id, 10);
@@ -413,7 +414,6 @@ describe('getMakeupQuotaStatus', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     const quota = await getMakeupQuotaStatus(student.id, classB.id);
@@ -433,7 +433,6 @@ describe('getMakeupQuotaStatus', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-07-15'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     expect(await getMakeupQuotaStatus(student.id, classA.id)).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 0 });
@@ -634,7 +633,6 @@ describe('arrangeOneOnOneMakeup', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-08-05'), // a Wednesday
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     expect(makeup.type).toBe('ONE_ON_ONE');
@@ -653,7 +651,6 @@ describe('arrangeOneOnOneMakeup', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-08-05'), // a Wednesday
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     expect(makeup.leaveRequestId).toBe(leave.id);
@@ -677,7 +674,6 @@ describe('arrangeOneOnOneMakeup', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-08-05'),
         slotStartTime: '16:00',
-        slotEndTime: '17:00',
       })
     ).rejects.toThrow('NOT_AVAILABLE');
   });
@@ -691,7 +687,6 @@ describe('arrangeOneOnOneMakeup', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-08-05'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
 
     await expect(
@@ -703,7 +698,6 @@ describe('arrangeOneOnOneMakeup', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-08-12'),
         slotStartTime: '17:00',
-        slotEndTime: '18:00',
       })
     ).rejects.toThrow('QUOTA_EXCEEDED');
   });
@@ -721,7 +715,6 @@ describe('arrangeOneOnOneMakeup', () => {
         teacherId: teacher.id,
         slotDate: new Date('2026-08-05'),
         slotStartTime: '19:00',
-        slotEndTime: '20:00',
       })
     ).rejects.toThrow('OUTSIDE_AVAILABILITY');
   });
@@ -797,7 +790,6 @@ describe('makeup cancellation', () => {
       teacherId: teacher.id,
       slotDate: new Date('2026-08-05'),
       slotStartTime: '16:00',
-      slotEndTime: '17:00',
     });
     expect((await getMakeupQuotaStatus(student.id, classA.id)).oneOnOneRemaining).toBe(0);
 
@@ -841,21 +833,21 @@ describe('listAssignedOneOnOneForTeacher', () => {
     const a = await makeStudentWithLeave('學生甲', 'a@example.com', 10);
     const rLater = await createOneOnOneMakeupRequest({
       leaveRequestId: a.leave.id, studentId: a.student.id, teacherId: teacher.id,
-      slotDate: new Date('2030-01-02'), slotStartTime: '17:00', slotEndTime: '18:00',
+      slotDate: new Date('2030-01-02'), slotStartTime: '17:00',
     });
     await decideMakeupRequest(rLater.id, 'APPROVED');
 
     const b = await makeStudentWithLeave('學生乙', 'b@example.com', 11);
     const rEarlier = await createOneOnOneMakeupRequest({
       leaveRequestId: b.leave.id, studentId: b.student.id, teacherId: teacher.id,
-      slotDate: new Date('2030-01-02'), slotStartTime: '16:00', slotEndTime: '17:00',
+      slotDate: new Date('2030-01-02'), slotStartTime: '16:00',
     });
 
     // 過去的已核准：不出現
     const c = await makeStudentWithLeave('學生丙', 'c@example.com', 12);
     const rPast = await createOneOnOneMakeupRequest({
       leaveRequestId: c.leave.id, studentId: c.student.id, teacherId: teacher.id,
-      slotDate: new Date('2020-01-01'), slotStartTime: '16:00', slotEndTime: '17:00',
+      slotDate: new Date('2020-01-01'), slotStartTime: '16:00',
     });
     await decideMakeupRequest(rPast.id, 'APPROVED');
 
@@ -863,7 +855,7 @@ describe('listAssignedOneOnOneForTeacher', () => {
     const d = await makeStudentWithLeave('學生丁', 'd@example.com', 13);
     const rRejected = await createOneOnOneMakeupRequest({
       leaveRequestId: d.leave.id, studentId: d.student.id, teacherId: teacher.id,
-      slotDate: new Date('2030-01-09'), slotStartTime: '16:00', slotEndTime: '17:00',
+      slotDate: new Date('2030-01-09'), slotStartTime: '16:00',
     });
     await decideMakeupRequest(rRejected.id, 'REJECTED');
 
@@ -873,7 +865,7 @@ describe('listAssignedOneOnOneForTeacher', () => {
     const e = await makeStudentWithLeave('學生戊', 'e@example.com', 14);
     await createOneOnOneMakeupRequest({
       leaveRequestId: e.leave.id, studentId: e.student.id, teacherId: teacher2.id,
-      slotDate: new Date('2030-01-02'), slotStartTime: '16:00', slotEndTime: '17:00',
+      slotDate: new Date('2030-01-02'), slotStartTime: '16:00',
     });
 
     const results = await listAssignedOneOnOneForTeacher(teacher.id);
@@ -883,6 +875,6 @@ describe('listAssignedOneOnOneForTeacher', () => {
     expect(results[0].leaveRequest.student.user.name).toBe('學生乙');
     expect(results[0].leaveRequest.class.name).toBe('圍棋A班');
     expect(results[0].slotStartTime).toBe('16:00');
-    expect(results[0].slotEndTime).toBe('17:00');
+    expect(results[0].slotEndTime).toBe('16:40');
   });
 });

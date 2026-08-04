@@ -71,7 +71,6 @@ export async function POST(req: NextRequest) {
         teacherId: body.teacherId,
         slotDate: new Date(body.slotDate),
         slotStartTime: body.slotStartTime,
-        slotEndTime: body.slotEndTime,
       });
       return NextResponse.json(makeup, { status: 201 });
     }

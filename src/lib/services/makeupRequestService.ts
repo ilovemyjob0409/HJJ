@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
+import { oneOnOneEndTime } from '@/lib/oneOnOneSlot';
 import { listTeacherAvailability } from './availabilityService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { pushLineMessage } from './lineService';
@@ -79,7 +80,7 @@ export interface CreateOneOnOneInput {
   teacherId: string;
   slotDate: Date;
   slotStartTime: string;
-  slotEndTime: string;
+  // 結束時間不由呼叫端決定：固定為開始＋ONE_ON_ONE_DURATION_MINUTES。
 }
 
 export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
@@ -129,6 +130,7 @@ async function assertOneOnOneSlotAllowed(
 }
 
 function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
+  const slotEndTime = oneOnOneEndTime(input.slotStartTime);
   return prisma.$transaction(async (tx) => {
     const leave = await tx.leaveRequest.findUniqueOrThrow({
       where: { id: input.leaveRequestId },
@@ -140,7 +142,7 @@ function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
       teacherId: input.teacherId,
       slotDate: input.slotDate,
       slotStartTime: input.slotStartTime,
-      slotEndTime: input.slotEndTime,
+      slotEndTime,
     });
 
     return tx.makeupRequest.create({
@@ -151,7 +153,7 @@ function createOneOnOneMakeupRequestTx(input: CreateOneOnOneInput) {
         teacherId: input.teacherId,
         slotDate: input.slotDate,
         slotStartTime: input.slotStartTime,
-        slotEndTime: input.slotEndTime,
+        slotEndTime,
       },
     });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -303,8 +305,9 @@ export async function arrangeInsertionMakeup(input: ArrangeBaseInput & { targetC
 }
 
 export async function arrangeOneOnOneMakeup(
-  input: ArrangeBaseInput & { teacherId: string; slotDate: Date; slotStartTime: string; slotEndTime: string }
+  input: ArrangeBaseInput & { teacherId: string; slotDate: Date; slotStartTime: string }
 ) {
+  const slotEndTime = oneOnOneEndTime(input.slotStartTime);
   const makeup = await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
@@ -314,7 +317,7 @@ export async function arrangeOneOnOneMakeup(
           teacherId: input.teacherId,
           slotDate: input.slotDate,
           slotStartTime: input.slotStartTime,
-          slotEndTime: input.slotEndTime,
+          slotEndTime,
         });
         const leave = await findOrCreateLeaveForArrangeTx(tx, input);
         return tx.makeupRequest.create({
@@ -325,7 +328,7 @@ export async function arrangeOneOnOneMakeup(
             teacherId: input.teacherId,
             slotDate: input.slotDate,
             slotStartTime: input.slotStartTime,
-            slotEndTime: input.slotEndTime,
+            slotEndTime,
           },
           include: MAKEUP_NOTIFY_INCLUDE,
         });

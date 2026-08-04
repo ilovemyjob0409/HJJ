@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
+import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
 
 interface StudentRow {
   id: string;
@@ -65,7 +66,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
   const [type, setType] = useState<'INSERTION' | 'ONE_ON_ONE'>('INSERTION');
   const [targetClassId, setTargetClassId] = useState('');
   const [targetDate, setTargetDate] = useState('');
-  const [oneOnOne, setOneOnOne] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
+  const [oneOnOne, setOneOnOne] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00' });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -137,7 +138,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
     setType('INSERTION');
     setTargetClassId('');
     setTargetDate('');
-    setOneOnOne({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
+    setOneOnOne({ teacherId: '', slotDate: '', slotStartTime: '16:00' });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -148,7 +149,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
         ? { type: 'LEAVE_ONLY', studentId, classId, date, reason }
         : type === 'INSERTION'
           ? { type, studentId, classId, date, reason, targetClassId, targetDate }
-          : { type, studentId, classId, date, reason, teacherId: oneOnOne.teacherId, slotDate: oneOnOne.slotDate, slotStartTime: oneOnOne.slotStartTime, slotEndTime: oneOnOne.slotEndTime };
+          : { type, studentId, classId, date, reason, teacherId: oneOnOne.teacherId, slotDate: oneOnOne.slotDate, slotStartTime: oneOnOne.slotStartTime };
       const res = await fetch('/api/makeup-requests/arrange', { method: 'POST', body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json();
@@ -292,17 +293,15 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
                     onChange={(e) => setOneOnOne({ ...oneOnOne, slotDate: e.target.value })}
                     required
                   />
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <Input
                       type="time"
                       value={oneOnOne.slotStartTime}
                       onChange={(e) => setOneOnOne({ ...oneOnOne, slotStartTime: e.target.value })}
                     />
-                    <Input
-                      type="time"
-                      value={oneOnOne.slotEndTime}
-                      onChange={(e) => setOneOnOne({ ...oneOnOne, slotEndTime: e.target.value })}
-                    />
+                    <span className="whitespace-nowrap text-sm text-inkMuted">
+                      至 {oneOnOneEndTime(oneOnOne.slotStartTime)}（固定 {ONE_ON_ONE_DURATION_MINUTES} 分鐘）
+                    </span>
                   </div>
                 </>
               )}

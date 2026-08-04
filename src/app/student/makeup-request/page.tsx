@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
+import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
 
 interface LeaveRow {
   id: string;
@@ -57,7 +58,7 @@ export default function MakeupRequestPage() {
   const [notices, setNotices] = useState<NoticeItem[]>([]);
 
   const [insertionForm, setInsertionForm] = useState({ targetClassId: '', targetDate: '' });
-  const [oneOnOneForm, setOneOnOneForm] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00', slotEndTime: '17:00' });
+  const [oneOnOneForm, setOneOnOneForm] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00' });
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -126,7 +127,6 @@ export default function MakeupRequestPage() {
           teacherId: oneOnOneForm.teacherId,
           slotDate: oneOnOneForm.slotDate,
           slotStartTime: oneOnOneForm.slotStartTime,
-          slotEndTime: oneOnOneForm.slotEndTime,
         }),
       });
       const data = await res.json();
@@ -293,17 +293,15 @@ export default function MakeupRequestPage() {
                 onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotDate: e.target.value })}
                 required
               />
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <Input
                   type="time"
                   value={oneOnOneForm.slotStartTime}
                   onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotStartTime: e.target.value })}
                 />
-                <Input
-                  type="time"
-                  value={oneOnOneForm.slotEndTime}
-                  onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotEndTime: e.target.value })}
-                />
+                <span className="whitespace-nowrap text-sm text-inkMuted">
+                  至 {oneOnOneEndTime(oneOnOneForm.slotStartTime)}（固定 {ONE_ON_ONE_DURATION_MINUTES} 分鐘）
+                </span>
               </div>
               <Button type="submit" loading={submitting}>送出一對一申請</Button>
             </form>
