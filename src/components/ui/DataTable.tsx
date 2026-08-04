@@ -1,8 +1,13 @@
 import { Fragment, ReactNode } from 'react';
+import { getCellClass } from './dataTableCellClass';
 
 export interface Column<T> {
   header: ReactNode;
   render: (row: T) => ReactNode;
+  // 欄寬 class（如 w-40）：md:table-fixed 下由表頭寬度決定整欄，其餘未指定的欄平分剩餘寬度
+  width?: string;
+  // 額外套用到該欄 th 與 td 的 class
+  className?: string;
 }
 
 interface DataTableProps<T> {
@@ -37,7 +42,10 @@ export default function DataTable<T>({
         <thead>
           <tr className="border-b border-brandDark bg-brand text-center text-brandInk">
             {columns.map((col, i) => (
-              <th key={i} className="whitespace-nowrap px-4 py-2 font-semibold md:whitespace-normal">
+              <th
+                key={i}
+                className={getCellClass('whitespace-nowrap px-4 py-2 font-semibold md:whitespace-normal', col)}
+              >
                 {col.header}
               </th>
             ))}
@@ -47,8 +55,8 @@ export default function DataTable<T>({
           <tbody aria-hidden>
             {Array.from({ length: 5 }).map((_, r) => (
               <tr key={r} className={`border-b border-borderSubtle ${r % 2 === 1 ? 'bg-stripe' : 'bg-card'}`}>
-                {columns.map((_, c) => (
-                  <td key={c} className="px-4 py-3">
+                {columns.map((col, c) => (
+                  <td key={c} className={getCellClass('px-4 py-3', col)}>
                     <div className="skeleton-shimmer mx-auto h-4 w-3/4 rounded" />
                   </td>
                 ))}
@@ -74,7 +82,10 @@ export default function DataTable<T>({
                     className={`border-b border-borderSubtle ${stripeClass} ${customClass}`}
                   >
                     {columns.map((col, i) => (
-                      <td key={i} className="whitespace-nowrap px-4 py-3 text-center text-ink md:whitespace-normal">
+                      <td
+                        key={i}
+                        className={getCellClass('whitespace-nowrap px-4 py-3 text-center text-ink md:whitespace-normal', col)}
+                      >
                         {col.render(row)}
                       </td>
                     ))}

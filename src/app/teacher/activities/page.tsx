@@ -43,6 +43,7 @@ export default function TeacherActivitiesPage() {
   const columns: Column<ActivityRow>[] = [
     {
       header: '封面',
+      width: 'w-40',
       render: (a) =>
         a.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived

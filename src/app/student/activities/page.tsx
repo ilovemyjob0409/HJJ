@@ -132,6 +132,7 @@ export default function StudentActivitiesPage() {
   const openColumns: Column<ActivityStudentRow>[] = [
     {
       header: '封面',
+      width: 'w-40',
       render: (a) =>
         a.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
@@ -151,6 +152,7 @@ export default function StudentActivitiesPage() {
   const myColumns: Column<RegistrationRow>[] = [
     {
       header: '封面',
+      width: 'w-40',
       render: (r) =>
         r.activity.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
