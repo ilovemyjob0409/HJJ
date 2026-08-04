@@ -135,9 +135,9 @@ export default function StudentActivitiesPage() {
       render: (a) =>
         a.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 rounded object-cover" />
+          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 max-w-full rounded object-cover" />
         ) : (
-          <div className="bg-stripe mx-auto h-20 w-32 rounded" />
+          <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
         ),
     },
     { header: '標題', render: (a) => a.title },
@@ -154,9 +154,9 @@ export default function StudentActivitiesPage() {
       render: (r) =>
         r.activity.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={r.activity.coverUrl} alt="封面" className="mx-auto h-20 w-32 rounded object-cover" />
+          <img src={r.activity.coverUrl} alt="封面" className="mx-auto h-20 w-32 max-w-full rounded object-cover" />
         ) : (
-          <div className="bg-stripe mx-auto h-20 w-32 rounded" />
+          <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
         ),
     },
     { header: '標題', render: (r) => r.activity.title },
@@ -226,11 +226,16 @@ export default function StudentActivitiesPage() {
             }
           />
         ) : (
-          <div className="flex flex-col gap-3 p-5" aria-hidden>
-            <div className="skeleton-shimmer h-4 w-3/4 rounded" />
-            <div className="skeleton-shimmer h-4 w-1/2 rounded" />
-            <div className="skeleton-shimmer h-20 w-full rounded" />
-            <div className="skeleton-shimmer h-24 w-full rounded" />
+          <div className="p-5">
+            <div className="mb-2 flex justify-end">
+              <button type="button" onClick={closeDetail} aria-label="關閉" className="text-inkMuted hover:text-ink">✕</button>
+            </div>
+            <div className="flex flex-col gap-3" aria-hidden>
+              <div className="skeleton-shimmer h-4 w-3/4 rounded" />
+              <div className="skeleton-shimmer h-4 w-1/2 rounded" />
+              <div className="skeleton-shimmer h-20 w-full rounded" />
+              <div className="skeleton-shimmer h-24 w-full rounded" />
+            </div>
           </div>
         )}
       </Modal>

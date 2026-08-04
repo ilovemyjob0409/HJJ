@@ -236,9 +236,9 @@ export default function AdminActivitiesPage() {
       render: (a) =>
         a.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 rounded object-cover" />
+          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 max-w-full rounded object-cover" />
         ) : (
-          <div className="bg-stripe mx-auto h-20 w-32 rounded" />
+          <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
         ),
     },
     { header: '標題', render: (a) => a.title },

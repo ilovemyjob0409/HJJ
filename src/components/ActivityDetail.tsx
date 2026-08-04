@@ -106,24 +106,28 @@ export default function ActivityDetail({
     loadImages();
   }, [loadImages]);
 
+  const stepSelected = useCallback(
+    (direction: 1 | -1) => {
+      setSelectedId((prev) => {
+        if (images.length < 2) return prev;
+        const cur = prev === null ? -1 : images.findIndex((i) => i.id === prev);
+        const idx = cur === -1 ? 0 : cur;
+        return images[(idx + direction + images.length) % images.length].id;
+      });
+    },
+    [images]
+  );
+
   useEffect(() => {
     if (!lightboxOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setLightboxOpen(false);
-      if (images.length > 1 && e.key === 'ArrowRight') {
-        const currentIdx = selectedId === null ? -1 : images.findIndex((i) => i.id === selectedId);
-        const idx = currentIdx === -1 ? 0 : currentIdx;
-        setSelectedId(images[(idx + 1) % images.length].id);
-      }
-      if (images.length > 1 && e.key === 'ArrowLeft') {
-        const currentIdx = selectedId === null ? -1 : images.findIndex((i) => i.id === selectedId);
-        const idx = currentIdx === -1 ? 0 : currentIdx;
-        setSelectedId(images[(idx - 1 + images.length) % images.length].id);
-      }
+      if (e.key === 'ArrowRight') stepSelected(1);
+      if (e.key === 'ArrowLeft') stepSelected(-1);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxOpen, images, selectedId]);
+  }, [lightboxOpen, stepSelected]);
 
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -155,14 +159,16 @@ export default function ActivityDetail({
     try {
       const res = await fetch(`/api/activity-images/${imageId}`, { method: 'DELETE' });
       if (res.ok) {
-        const idx = images.findIndex((i) => i.id === imageId);
-        const next = images.filter((i) => i.id !== imageId);
-        setImages((prev) => prev.filter((i) => i.id !== imageId));
-        // 刪除選取中的照片：原位順移下一張、刪到最後退前一張；刪其他張：選取不動。
-        setSelectedId((sel) => {
-          if (sel !== imageId) return sel;
-          if (next.length === 0) return null;
-          return next[Math.min(Math.max(idx, 0), next.length - 1)].id;
+        setImages((prev) => {
+          const idx = prev.findIndex((i) => i.id === imageId);
+          const next = prev.filter((i) => i.id !== imageId);
+          // 刪除選取中的照片：原位順移下一張、刪到最後退前一張；刪其他張：選取不動。
+          setSelectedId((sel) => {
+            if (sel !== imageId) return sel;
+            if (next.length === 0) return null;
+            return next[Math.min(Math.max(idx, 0), next.length - 1)].id;
+          });
+          return next;
         });
         showToast('照片已刪除');
         onImagesChanged?.();
@@ -350,17 +356,21 @@ export default function ActivityDetail({
       )}
       <ImageCropModal files={cropQueue} onDone={handleCroppedPhotos} />
 
-      {lightboxOpen && selected?.url && typeof document !== 'undefined' &&
+      {lightboxOpen && selected && typeof document !== 'undefined' &&
         createPortal(
           <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="照片檢視" onClick={() => setLightboxOpen(false)}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived */}
-            <img src={selected.url} alt="活動照片" className="max-h-[90vh] max-w-[92vw] object-contain" onClick={(e) => e.stopPropagation()} />
+            {selected.url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived
+              <img src={selected.url} alt="活動照片" className="max-h-[90vh] max-w-[92vw] object-contain" onClick={(e) => e.stopPropagation()} />
+            ) : (
+              <div className="bg-stripe max-h-[90vh] h-64 w-96 max-w-[92vw] rounded-lg" aria-label="照片無法載入" onClick={(e) => e.stopPropagation()} />
+            )}
             {images.length > 1 && (
               <>
                 <button
                   type="button"
                   aria-label="上一張"
-                  onClick={(e) => { e.stopPropagation(); setSelectedId(images[(selectedIndex - 1 + images.length) % images.length].id); }}
+                  onClick={(e) => { e.stopPropagation(); stepSelected(-1); }}
                   className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/75"
                 >
                   ‹
@@ -368,7 +378,7 @@ export default function ActivityDetail({
                 <button
                   type="button"
                   aria-label="下一張"
-                  onClick={(e) => { e.stopPropagation(); setSelectedId(images[(selectedIndex + 1) % images.length].id); }}
+                  onClick={(e) => { e.stopPropagation(); stepSelected(1); }}
                   className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/75"
                 >
                   ›
