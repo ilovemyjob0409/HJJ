@@ -21,7 +21,7 @@
 - 表格兩欄：
   - 學生：姓名
   - 堂數進度：`{usedSessions}／{totalSessions} 堂`；`totalSessions === null` 時只顯示 `{usedSessions} 堂`。
-- 快結堂提示：`remaining !== null && remaining <= 2` 的學生，於彈窗表格下方列出
+- 快結堂提示：`remaining !== null && remaining <= LOW_CLASS_QUOTA_THRESHOLD`（＝3，全站共用常數，見 `src/lib/lowQuota.ts`）的學生，於彈窗表格下方列出
   「⚠ {姓名} 剩 {remaining} 堂」（多人逐行，`remaining` 為 0 或負值時照實顯示），
   供老師提醒續報；沒有符合者則不顯示。
 - 名單排序：依姓名（zh-TW locale）。

@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
 import QRCode from 'qrcode';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
 
 interface EnrollmentQuota {
   classId: string;
@@ -589,7 +590,7 @@ function StudentsContent() {
                       if (!enrollment || enrollment.totalSessions === null) {
                         return <span className="text-xs text-inkMuted">未追蹤</span>;
                       }
-                      const low = enrollment.remaining !== null && enrollment.remaining <= 3;
+                      const low = enrollment.remaining !== null && enrollment.remaining <= LOW_CLASS_QUOTA_THRESHOLD;
                       return (
                         <span className={`flex items-center justify-center gap-1 text-xs ${low ? 'font-semibold text-pending' : 'text-inkMuted'}`}>
                           {low && <LowQuotaIcon />}

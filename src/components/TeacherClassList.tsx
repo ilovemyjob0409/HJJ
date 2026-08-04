@@ -5,6 +5,7 @@ import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
+import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
 import type { TeacherClassSummary, TeacherClassStudent } from '@/lib/services/classService';
 
 function timeLabel(c: TeacherClassSummary) {
@@ -28,7 +29,7 @@ export default function TeacherClassList({ classes }: { classes: TeacherClassSum
     },
   ];
 
-  const lowQuota = viewing?.students.filter((s) => s.remaining !== null && s.remaining <= 2) ?? [];
+  const lowQuota = viewing?.students.filter((s) => s.remaining !== null && s.remaining <= LOW_CLASS_QUOTA_THRESHOLD) ?? [];
 
   return (
     <Card className="mb-6">

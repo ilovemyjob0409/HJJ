@@ -463,4 +463,25 @@ describe('listClassesForTeacher', () => {
     const teacher = await createTeacher({ name: '新老師', email: 'tch-new@example.com', password: 'x', subjects: '圍棋' });
     expect(await listClassesForTeacher(teacher.id)).toEqual([]);
   });
+
+  it('counts only non-leave attendance toward usedSessions (ON_LEAVE does not deduct)', async () => {
+    const teacher = await createTeacher({ name: '吳老師', email: 'tch-used-chen@example.com', password: 'x', subjects: '圍棋' });
+    const marker = await prisma.user.create({
+      data: { email: 'tch-used-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const cls = await createClass({ name: '週二班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    const student = await createStudent({ name: '王小明', email: 'tch-used-s1@example.com', password: 'x' });
+    await prisma.classEnrollment.create({ data: { classId: cls.id, studentId: student.id, totalSessions: 24 } });
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-04'), status: 'PRESENT', markedById: marker.id },
+    });
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11'), status: 'ON_LEAVE', markedById: marker.id },
+    });
+
+    const [row] = await listClassesForTeacher(teacher.id);
+
+    expect(row.students).toHaveLength(1);
+    expect(row.students[0]).toMatchObject({ studentId: student.id, totalSessions: 24, usedSessions: 1, remaining: 23 });
+  });
 });

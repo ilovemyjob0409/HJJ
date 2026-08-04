@@ -100,7 +100,7 @@ const TEACHER_CLASS_SELECT = {
   startTime: true,
   endTime: true,
   enrollments: {
-    select: { studentId: true, student: { select: { user: { select: { name: true } } } } },
+    select: { studentId: true, totalSessions: true, student: { select: { user: { select: { name: true } } } } },
     orderBy: { student: { user: { name: 'asc' } } },
   },
 } as const;
@@ -123,29 +123,42 @@ export interface TeacherClassSummary {
 }
 
 // 老師首頁「我的帶班班級」：自己的班＋每位學生的堂數進度。
-// 不帶老師/家長聯絡資訊；quota 語意同 getClassEnrollmentQuota（請假、未報名不扣堂）。
+// 不帶老師/家長聯絡資訊；quota 語意同 getClassEnrollmentQuota（請假、未報名不扣堂），
+// 但改用一次 groupBy（同 listClassQuotaSummaries 的批次寫法）算完所有班級所有學生的
+// usedSessions，避免每位學生各發一次查詢（N+1）。
 export async function listClassesForTeacher(teacherId: string): Promise<TeacherClassSummary[]> {
   const classes = await prisma.class.findMany({
     where: { teacherId },
     select: TEACHER_CLASS_SELECT,
     orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
   });
-  return Promise.all(
-    classes.map(async (c) => ({
-      id: c.id,
-      name: c.name,
-      weekday: c.weekday,
-      startTime: c.startTime,
-      endTime: c.endTime,
-      students: await Promise.all(
-        c.enrollments.map(async (e) => ({
-          studentId: e.studentId,
-          name: e.student.user.name,
-          ...(await getClassEnrollmentQuota(c.id, e.studentId)),
-        }))
-      ),
-    }))
-  );
+  const classIds = classes.map((c) => c.id);
+  const counts = classIds.length === 0 ? [] : await prisma.classAttendance.groupBy({
+    by: ['classId', 'studentId'],
+    // 請假與未報名（報名時聲明不來、未繳該堂費用）都不扣堂。
+    where: { classId: { in: classIds }, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } },
+    _count: { _all: true },
+  });
+  const usedByKey = new Map(counts.map((c) => [`${c.classId}:${c.studentId}`, c._count._all]));
+
+  return classes.map((c) => ({
+    id: c.id,
+    name: c.name,
+    weekday: c.weekday,
+    startTime: c.startTime,
+    endTime: c.endTime,
+    students: c.enrollments.map((e) => {
+      const usedSessions = usedByKey.get(`${c.id}:${e.studentId}`) ?? 0;
+      const { totalSessions } = e;
+      return {
+        studentId: e.studentId,
+        name: e.student.user.name,
+        totalSessions,
+        usedSessions,
+        remaining: totalSessions === null ? null : totalSessions - usedSessions,
+      };
+    }),
+  }));
 }
 
 // See CLASS_BOOKING_SELECT above — used by the STUDENT/TEACHER branch of

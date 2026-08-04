@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { pushLineMessage } from './lineService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
+import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
 
 export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
 
@@ -823,7 +824,7 @@ async function maybeNotifyLowQuota(
   if (!enrollment || enrollment.lowQuotaNotifiedAt !== null) return;
 
   const { remaining } = await getClassEnrollmentQuota(classId, student.id);
-  if (remaining === null || remaining > 3) return;
+  if (remaining === null || remaining > LOW_CLASS_QUOTA_THRESHOLD) return;
 
   await prisma.classEnrollment.update({ where: { id: enrollment.id }, data: { lowQuotaNotifiedAt: new Date() } });
   await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`);
