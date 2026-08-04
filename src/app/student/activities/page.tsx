@@ -135,9 +135,9 @@ export default function StudentActivitiesPage() {
       render: (a) =>
         a.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={a.coverUrl} alt="封面" className="mx-auto h-10 w-10 rounded object-cover" />
+          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 rounded object-cover" />
         ) : (
-          <div className="bg-stripe mx-auto h-10 w-10 rounded" />
+          <div className="bg-stripe mx-auto h-20 w-32 rounded" />
         ),
     },
     { header: '標題', render: (a) => a.title },
@@ -154,9 +154,9 @@ export default function StudentActivitiesPage() {
       render: (r) =>
         r.activity.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={r.activity.coverUrl} alt="封面" className="mx-auto h-10 w-10 rounded object-cover" />
+          <img src={r.activity.coverUrl} alt="封面" className="mx-auto h-20 w-32 rounded object-cover" />
         ) : (
-          <div className="bg-stripe mx-auto h-10 w-10 rounded" />
+          <div className="bg-stripe mx-auto h-20 w-32 rounded" />
         ),
     },
     { header: '標題', render: (r) => r.activity.title },
