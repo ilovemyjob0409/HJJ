@@ -7,6 +7,7 @@ import { getClassRoster } from './attendanceService';
 import {
   createClass,
   listClasses,
+  listClassesForTeacher,
   listClassesBySubjectAndLevel,
   enrollStudent,
   updateClass,
@@ -423,5 +424,43 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
       where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11') } },
     });
     expect(row.status).toBe('NOT_REGISTERED');
+  });
+});
+
+describe('listClassesForTeacher', () => {
+  it('returns only that teacher classes, sorted by weekday then startTime', async () => {
+    const teacher = await createTeacher({ name: '吳老師', email: 'tch-wu@example.com', password: 'x', subjects: '圍棋' });
+    const other = await createTeacher({ name: '別師', email: 'tch-other@example.com', password: 'x', subjects: '圍棋' });
+    await createClass({ name: '週四班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 4, startTime: '16:30', endTime: '18:30' });
+    await createClass({ name: '週二晚班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '18:00', endTime: '20:00' });
+    await createClass({ name: '週二午班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    await createClass({ name: '他師班', subject: '圍棋', level: '基礎', teacherId: other.id, weekday: 1, startTime: '10:00', endTime: '12:00' });
+
+    const rows = await listClassesForTeacher(teacher.id);
+    expect(rows.map((r) => r.name)).toEqual(['週二午班', '週二晚班', '週四班']);
+    expect(rows[0]).toMatchObject({ weekday: 2, startTime: '14:00', endTime: '16:00' });
+  });
+
+  it('includes each student with name and quota fields (incl. unlimited totalSessions)', async () => {
+    const teacher = await createTeacher({ name: '吳老師', email: 'tch-quota@example.com', password: 'x', subjects: '圍棋' });
+    const cls = await createClass({ name: '週二班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '14:00', endTime: '16:00' });
+    const s1 = await createStudent({ name: '王小明', email: 'tch-s1@example.com', password: 'x' });
+    const s2 = await createStudent({ name: '林小華', email: 'tch-s2@example.com', password: 'x' });
+    await prisma.classEnrollment.create({ data: { classId: cls.id, studentId: s1.id, totalSessions: 24 } });
+    await enrollStudent(cls.id, s2.id);
+
+    const [row] = await listClassesForTeacher(teacher.id);
+    expect(row.students).toHaveLength(2);
+    expect(row.students.find((s) => s.name === '王小明')).toMatchObject({
+      studentId: s1.id, totalSessions: 24, usedSessions: 0, remaining: 24,
+    });
+    expect(row.students.find((s) => s.name === '林小華')).toMatchObject({
+      totalSessions: null, usedSessions: 0, remaining: null,
+    });
+  });
+
+  it('returns an empty array for a teacher with no classes', async () => {
+    const teacher = await createTeacher({ name: '新老師', email: 'tch-new@example.com', password: 'x', subjects: '圍棋' });
+    expect(await listClassesForTeacher(teacher.id)).toEqual([]);
   });
 });

@@ -93,6 +93,61 @@ export async function listClasses() {
   });
 }
 
+const TEACHER_CLASS_SELECT = {
+  id: true,
+  name: true,
+  weekday: true,
+  startTime: true,
+  endTime: true,
+  enrollments: {
+    select: { studentId: true, student: { select: { user: { select: { name: true } } } } },
+    orderBy: { student: { user: { name: 'asc' } } },
+  },
+} as const;
+
+export interface TeacherClassStudent {
+  studentId: string;
+  name: string;
+  totalSessions: number | null;
+  usedSessions: number;
+  remaining: number | null;
+}
+
+export interface TeacherClassSummary {
+  id: string;
+  name: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  students: TeacherClassStudent[];
+}
+
+// 老師首頁「我的帶班班級」：自己的班＋每位學生的堂數進度。
+// 不帶老師/家長聯絡資訊；quota 語意同 getClassEnrollmentQuota（請假、未報名不扣堂）。
+export async function listClassesForTeacher(teacherId: string): Promise<TeacherClassSummary[]> {
+  const classes = await prisma.class.findMany({
+    where: { teacherId },
+    select: TEACHER_CLASS_SELECT,
+    orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
+  });
+  return Promise.all(
+    classes.map(async (c) => ({
+      id: c.id,
+      name: c.name,
+      weekday: c.weekday,
+      startTime: c.startTime,
+      endTime: c.endTime,
+      students: await Promise.all(
+        c.enrollments.map(async (e) => ({
+          studentId: e.studentId,
+          name: e.student.user.name,
+          ...(await getClassEnrollmentQuota(c.id, e.studentId)),
+        }))
+      ),
+    }))
+  );
+}
+
 // See CLASS_BOOKING_SELECT above — used by the STUDENT/TEACHER branch of
 // GET /api/classes so the class-picker dropdowns never receive teacher
 // phone/email. ADMIN keeps the full listClasses() projection.
