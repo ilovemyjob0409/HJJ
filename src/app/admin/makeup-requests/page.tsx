@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import ArrangeMakeupForm from './ArrangeMakeupForm';
 import ApprovedMakeupList, { ApprovedMakeupListHandle } from './ApprovedMakeupList';
+import LeaveRequestList from './LeaveRequestList';
 
 interface PendingRow {
   id: string;
@@ -111,6 +112,8 @@ function AdminMakeupRequestsContent() {
       </Card>
 
       <ApprovedMakeupList ref={approvedListRef} />
+
+      <LeaveRequestList />
     </>
   );
 }

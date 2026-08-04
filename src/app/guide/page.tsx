@@ -141,6 +141,8 @@ export default function GuidePage() {
           </Step>
           <Step no="3" title="送出完成，查看紀錄" img="m14-leave-table.png" imgAlt="請假紀錄表格">
             送出後下方「我的請假紀錄」立刻多出這一筆。想幫這次請假安排補課，請看下一章。
+            <br />
+            請錯了？按紀錄右側的<b className="text-ink">撤銷</b>即可取消這筆請假；若已申請補課，補課會一併撤銷。
           </Step>
         </Chapter>
 

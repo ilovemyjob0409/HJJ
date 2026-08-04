@@ -13,6 +13,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import AttendanceHub from '@/components/AttendanceHub';
 import TeacherClassList from '@/components/TeacherClassList';
+import RevokeLeaveButton from '@/components/RevokeLeaveButton';
 import { formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
@@ -38,6 +39,7 @@ interface LeaveRow {
   reason: string;
   student: { user: { name: string } };
   class: { name: string };
+  makeupRequest: { id: string } | null;
 }
 
 interface InsertionRow {
@@ -139,6 +141,10 @@ export default async function TeacherDashboard() {
     { header: '學生', render: (r) => r.student.user.name },
     { header: '班級', render: (r) => r.class.name },
     { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
+    {
+      header: '操作',
+      render: (r) => <RevokeLeaveButton leaveRequestId={r.id} hasMakeup={r.makeupRequest !== null} />,
+    },
   ];
 
   const insertionColumns: Column<InsertionRow>[] = [

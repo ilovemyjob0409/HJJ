@@ -252,7 +252,7 @@ async function createLeaveForArrangeTx(tx: Prisma.TransactionClient, input: Arra
   });
   if (!enrolled) throw new Error('NOT_ENROLLED');
   return tx.leaveRequest.create({
-    data: { studentId: input.studentId, classId: input.classId, date: input.date, reason: input.reason, status: 'APPROVED' },
+    data: { studentId: input.studentId, classId: input.classId, date: input.date, reason: input.reason, status: 'APPROVED', origin: 'ADMIN' },
   });
 }
 

@@ -9,6 +9,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import RevokeLeaveButton from '@/components/RevokeLeaveButton';
 
 interface ClassOption {
   id: string;
@@ -82,6 +83,10 @@ export default function StudentLeaveRequestPage() {
         ) : (
           <span className="text-inkMuted">尚未申請</span>
         ),
+    },
+    {
+      header: '操作',
+      render: (l) => <RevokeLeaveButton leaveRequestId={l.id} hasMakeup={l.makeupRequest !== null} onDone={load} />,
     },
   ];
 

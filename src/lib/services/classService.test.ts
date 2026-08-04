@@ -485,3 +485,32 @@ describe('listClassesForTeacher', () => {
     expect(row.students[0]).toMatchObject({ studentId: student.id, totalSessions: 24, usedSessions: 1, remaining: 23 });
   });
 });
+
+describe('setStudentEnrollments 退班抽離點名', () => {
+  it('退班刪除今天以後的點名，保留過去的出席歷史', async () => {
+    const teacher = await createTeacher({ name: '徐老師', email: 'hsu@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小抽', email: 'chou@example.com', password: 'x' });
+    const cls = await createClass({ name: '圍棋抽離班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const keep = await createClass({ name: '圍棋保留班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await setStudentEnrollments(student.id, [
+      { classId: cls.id, totalSessions: 12 },
+      { classId: keep.id, totalSessions: 12 },
+    ]);
+    const marker = await prisma.user.findFirstOrThrow();
+    const mk = (classId: string, date: Date) =>
+      prisma.classAttendance.create({
+        data: { classId, studentId: student.id, date, status: 'PRESENT', markedById: marker.id },
+      });
+    await mk(cls.id, new Date(2020, 0, 6)); // 過去：保留
+    await mk(cls.id, new Date(2030, 0, 7)); // 未來：刪除
+    await mk(keep.id, new Date(2030, 0, 8)); // 未退的班：不受影響
+
+    await setStudentEnrollments(student.id, [{ classId: keep.id, totalSessions: 12 }]);
+
+    const remaining = await prisma.classAttendance.findMany({ where: { studentId: student.id }, select: { classId: true, date: true } });
+    expect(remaining).toHaveLength(2);
+    expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2020)).toBe(true);
+    expect(remaining.some((r) => r.classId === keep.id)).toBe(true);
+    expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2030)).toBe(false);
+  });
+});

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
-import { createLeaveRequest, listLeaveRequestsForStudent, listLeaveRequestsForTeacherClasses, listAllLeaveRequests } from './leaveRequestService';
+import { createLeaveRequest, listLeaveRequestsForStudent, listLeaveRequestsForTeacherClasses, listAllLeaveRequests, revokeLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest } from './makeupRequestService';
 
 async function setupClassAndStudent() {
@@ -84,5 +84,59 @@ describe('listAllLeaveRequests', () => {
     expect(results[0].class.name).toBe('數學A班');
     expect(results[0].makeupRequest?.type).toBe('INSERTION');
     expect(results[0].makeupRequest?.targetClass?.name).toBe('數學B班');
+  });
+});
+
+describe('origin 標記', () => {
+  it('學生自行申請的請假標記為 STUDENT', async () => {
+    const { student, cls } = await setupClassAndStudent();
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    expect(leave.origin).toBe('STUDENT');
+  });
+});
+
+describe('revokeLeaveRequest', () => {
+  it('沒有補課的請假直接刪除', async () => {
+    const { student, cls } = await setupClassAndStudent();
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+
+    await revokeLeaveRequest(leave.id);
+
+    expect(await prisma.leaveRequest.count({ where: { id: leave.id } })).toBe(0);
+  });
+
+  it('掛有補課的請假：補課與請假一併刪除', async () => {
+    const { student, cls } = await setupClassAndStudent();
+    const teacher2 = await createTeacher({ name: '林老師', email: 'lin2@example.com', password: 'x', subjects: '數學' });
+    const clsB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher2.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(2026, 6, 22) });
+
+    await revokeLeaveRequest(leave.id);
+
+    expect(await prisma.makeupRequest.count({ where: { id: makeup.id } })).toBe(0);
+    expect(await prisma.leaveRequest.count({ where: { id: leave.id } })).toBe(0);
+  });
+
+  it('補課已有點名紀錄時擋下，請假保留', async () => {
+    const { student, cls } = await setupClassAndStudent();
+    const teacher2 = await createTeacher({ name: '吳老師', email: 'wu@example.com', password: 'x', subjects: '數學' });
+    const clsB = await createClass({ name: '數學C班', subject: '數學', level: '國一', teacherId: teacher2.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(2026, 6, 22) });
+    const marker = await prisma.user.findFirstOrThrow();
+    await prisma.classAttendance.create({
+      data: {
+        classId: clsB.id,
+        studentId: student.id,
+        date: new Date(2026, 6, 22),
+        status: 'PRESENT',
+        makeupRequestId: makeup.id,
+        markedById: marker.id,
+      },
+    });
+
+    await expect(revokeLeaveRequest(leave.id)).rejects.toThrow('MAKEUP_HAS_ATTENDANCE');
+    expect(await prisma.leaveRequest.count({ where: { id: leave.id } })).toBe(1);
   });
 });

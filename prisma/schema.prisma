@@ -16,6 +16,12 @@ enum LeaveStatus {
   APPROVED
 }
 
+// 請假建立者：學生自行申請或行政代辦。舊資料為 null（無法回溯）。
+enum LeaveOrigin {
+  STUDENT
+  ADMIN
+}
+
 enum MakeupType {
   INSERTION
   ONE_ON_ONE
@@ -176,6 +182,7 @@ model LeaveRequest {
   date          DateTime
   reason        String
   status        LeaveStatus    @default(APPROVED)
+  origin        LeaveOrigin?
   createdAt     DateTime       @default(now())
   makeupRequest MakeupRequest?
 }

@@ -205,8 +205,20 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
   const toRemove = Array.from(currentIds).filter((id) => !desiredIds.has(id));
   const toUpdate = enrollments.filter((e) => currentIds.has(e.classId));
 
+  // 退班同時抽離該班「今天（含）以後」的點名紀錄：學生端不再看到未來
+  // 場次、重新報名時也不會被舊點名灌堂數。過去的出席歷史保留備查。
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   await prisma.$transaction([
-    ...(toRemove.length > 0 ? [prisma.classEnrollment.deleteMany({ where: { studentId, classId: { in: toRemove } } })] : []),
+    ...(toRemove.length > 0
+      ? [
+          prisma.classAttendance.deleteMany({
+            where: { studentId, classId: { in: toRemove }, date: { gte: today } },
+          }),
+          prisma.classEnrollment.deleteMany({ where: { studentId, classId: { in: toRemove } } }),
+        ]
+      : []),
     ...toAdd.map((e) =>
       prisma.classEnrollment.create({
         data: {
