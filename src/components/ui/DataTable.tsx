@@ -22,6 +22,8 @@ interface DataTableProps<T> {
   // 展開列：expandedKey 對到哪一列，就在該列下方插入一列跨欄內容
   expandedKey?: string | null;
   renderExpanded?: (row: T) => ReactNode;
+  // 無資料時顯示的提示文字；未傳則維持只剩表頭的現狀
+  emptyText?: string;
 }
 
 export default function DataTable<T>({
@@ -35,6 +37,7 @@ export default function DataTable<T>({
   loading,
   expandedKey,
   renderExpanded,
+  emptyText,
 }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto rounded-lg border border-borderSubtle">
@@ -62,6 +65,14 @@ export default function DataTable<T>({
                 ))}
               </tr>
             ))}
+          </tbody>
+        ) : rows.length === 0 && emptyText ? (
+          <tbody>
+            <tr>
+              <td colSpan={columns.length} className="px-4 py-6 text-center text-sm text-inkMuted">
+                {emptyText}
+              </td>
+            </tr>
           </tbody>
         ) : (
           <tbody className="animate-fade-in">

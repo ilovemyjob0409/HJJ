@@ -1,5 +1,17 @@
 export const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'] as const;
 
+const TAIPEI_DAY_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Taipei',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+// 資料庫日期是 UTC 日曆日；「今天」依日期慣例以台北時區判定。
+export function isTodayTaipei(date: Date | string): boolean {
+  return new Date(date).toISOString().slice(0, 10) === TAIPEI_DAY_FMT.format(new Date());
+}
+
 // Default to zh-TW so server-rendered pages don't follow the host's locale
 // (Vercel/Node defaults to en-US and produced M/D/YYYY on the dashboard).
 export function formatDateWithWeekday(date: Date | string, locale: string = 'zh-TW'): string {

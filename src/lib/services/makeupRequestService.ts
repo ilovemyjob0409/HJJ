@@ -410,6 +410,35 @@ export async function listApprovedMakeups() {
 
 // For the teacher dashboard: which students inserted into a class this
 // teacher teaches, and when.
+export function listAssignedOneOnOneForTeacher(teacherId: string) {
+  // 老師首頁「被指派」區塊：只列今天（含）以後；PENDING_ADMIN 也列出，
+  // 因為時段在建立時就已為老師保留（SLOT_CONFLICT 檢查含 PENDING）。
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return prisma.makeupRequest.findMany({
+    where: {
+      type: 'ONE_ON_ONE',
+      teacherId,
+      status: { in: ['PENDING_ADMIN', 'APPROVED'] },
+      slotDate: { gte: today },
+    },
+    select: {
+      id: true,
+      status: true,
+      slotDate: true,
+      slotStartTime: true,
+      slotEndTime: true,
+      leaveRequest: {
+        select: {
+          student: { select: { user: { select: SAFE_USER_SELECT } } },
+          class: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: [{ slotDate: 'asc' }, { slotStartTime: 'asc' }],
+  });
+}
+
 export function listInsertionsForTeacherClasses(teacherId: string) {
   return prisma.makeupRequest.findMany({
     where: { type: 'INSERTION', targetClass: { teacherId } },

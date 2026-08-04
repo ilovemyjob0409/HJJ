@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { listAssignedSubstituteRequestsForTeacher } from '@/lib/services/substituteRequestService';
 import { listLeaveRequestsForTeacherClasses } from '@/lib/services/leaveRequestService';
-import { listInsertionsForTeacherClasses } from '@/lib/services/makeupRequestService';
+import { listInsertionsForTeacherClasses, listAssignedOneOnOneForTeacher } from '@/lib/services/makeupRequestService';
 import { listSessionsForTeacher } from '@/lib/services/goHallService';
 import { listClassesForTeacher } from '@/lib/services/classService';
 import Card from '@/components/ui/Card';
@@ -13,19 +13,23 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import AttendanceHub from '@/components/AttendanceHub';
 import TeacherClassList from '@/components/TeacherClassList';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every teacher until the next deploy.
 export const dynamic = 'force-dynamic';
 
-interface SubstituteRow {
+// 代課與一對一補課合併成單一「被指派」列表，用類型欄位區分。
+interface AssignmentRow {
   id: string;
+  kind: 'SUBSTITUTE' | 'ONE_ON_ONE';
   date: Date;
-  reason: string;
+  startTime: string;
+  endTime: string;
+  className: string;
+  counterpartName: string; // 代課：原老師；一對一：學生
+  substituteReason: string | null;
   status: string;
-  class: { name: string };
-  originalTeacher: { user: { name: string } };
 }
 
 interface LeaveRow {
@@ -48,15 +52,41 @@ export default async function TeacherDashboard() {
   const session = await getServerSession(authOptions);
   const teacher = session ? await prisma.teacher.findUnique({ where: { userId: session.user.id } }) : null;
 
-  const [substitutes, leaves, insertions, goHallSessions, teacherClasses] = teacher
+  const [substitutes, oneOnOnes, leaves, insertions, goHallSessions, teacherClasses] = teacher
     ? await Promise.all([
         listAssignedSubstituteRequestsForTeacher(teacher.id),
+        listAssignedOneOnOneForTeacher(teacher.id),
         listLeaveRequestsForTeacherClasses(teacher.id),
         listInsertionsForTeacherClasses(teacher.id),
         listSessionsForTeacher(teacher.id),
         listClassesForTeacher(teacher.id),
       ])
-    : [[], [], [], [], []];
+    : [[], [], [], [], [], []];
+
+  const assignments: AssignmentRow[] = [
+    ...substitutes.map((s) => ({
+      id: s.id,
+      kind: 'SUBSTITUTE' as const,
+      date: s.date,
+      startTime: s.class.startTime,
+      endTime: s.class.endTime,
+      className: s.class.name,
+      counterpartName: s.originalTeacher.user.name,
+      substituteReason: s.reason,
+      status: s.status,
+    })),
+    ...oneOnOnes.map((m) => ({
+      id: m.id,
+      kind: 'ONE_ON_ONE' as const,
+      date: m.slotDate as Date,
+      startTime: m.slotStartTime as string,
+      endTime: m.slotEndTime as string,
+      className: m.leaveRequest.class.name,
+      counterpartName: m.leaveRequest.student.user.name,
+      substituteReason: null,
+      status: m.status,
+    })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime() || a.startTime.localeCompare(b.startTime));
 
   const goHallRows = goHallSessions.map((s) => ({
     id: s.id,
@@ -65,11 +95,43 @@ export default async function TeacherDashboard() {
     registeredCount: s._count.registrations,
   }));
 
-  const substituteColumns: Column<SubstituteRow>[] = [
-    { header: '班級', render: (r) => r.class.name },
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
-    { header: '原老師', render: (r) => r.originalTeacher.user.name },
-    { header: '原因', render: (r) => r.reason },
+  const assignmentColumns: Column<AssignmentRow>[] = [
+    {
+      header: '類型',
+      render: (r) =>
+        r.kind === 'SUBSTITUTE' ? (
+          <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">代課</span>
+        ) : (
+          <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">一對一補課</span>
+        ),
+    },
+    {
+      header: '日期',
+      render: (r) => (
+        <>
+          {formatDateWithWeekday(r.date)}
+          {isTodayTaipei(r.date) && (
+            <span className="ml-1.5 inline-block whitespace-nowrap rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-brandInk">
+              今天
+            </span>
+          )}
+        </>
+      ),
+    },
+    { header: '時間', render: (r) => `${r.startTime}-${r.endTime}` },
+    { header: '班級', render: (r) => r.className },
+    {
+      header: '對象',
+      render: (r) =>
+        r.kind === 'SUBSTITUTE' ? (
+          <>
+            {r.counterpartName}
+            <span className="ml-1 text-xs text-inkMuted">（原老師{r.substituteReason ? `・${r.substituteReason}` : ''}）</span>
+          </>
+        ) : (
+          r.counterpartName
+        ),
+    },
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
   ];
 
@@ -104,9 +166,14 @@ export default async function TeacherDashboard() {
       <h2 className="mb-2 font-bold text-ink">我的帶班班級</h2>
       <TeacherClassList classes={teacherClasses} />
 
-      <h2 className="mb-2 font-bold text-ink">被指派代課</h2>
+      <h2 className="mb-2 font-bold text-ink">被指派代課／一對一補課</h2>
       <Card className="mb-6">
-        <DataTable columns={substituteColumns} rows={substitutes} keyField={(r) => r.id} />
+        <DataTable
+          columns={assignmentColumns}
+          rows={assignments}
+          keyField={(r) => `${r.kind}-${r.id}`}
+          emptyText="目前沒有被指派的工作"
+        />
       </Card>
 
       <h2 className="mb-2 font-bold text-ink">今日點名</h2>

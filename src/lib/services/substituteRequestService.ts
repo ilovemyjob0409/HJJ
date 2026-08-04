@@ -53,16 +53,19 @@ export function assignSubstituteTeacher(id: string, substituteTeacherId: string)
 
 // For the teacher dashboard: substitute duties assigned to this teacher.
 export function listAssignedSubstituteRequestsForTeacher(teacherId: string) {
+  // 老師首頁「被指派」區塊只列今天（含）以後，沿用全站 upcoming 邊界。
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   return prisma.substituteRequest.findMany({
-    where: { substituteTeacherId: teacherId },
+    where: { substituteTeacherId: teacherId, date: { gte: today } },
     select: {
       id: true,
       date: true,
       reason: true,
       status: true,
-      class: { select: { name: true } },
+      class: { select: { name: true, startTime: true, endTime: true } },
       originalTeacher: { select: { user: { select: SAFE_USER_SELECT } } },
     },
-    orderBy: { date: 'desc' },
+    orderBy: { date: 'asc' },
   });
 }
