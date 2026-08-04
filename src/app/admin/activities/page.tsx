@@ -9,7 +9,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
-import ActivityAlbum from '@/components/ActivityAlbum';
+import ActivityDetail from '@/components/ActivityDetail';
 import ImageCropModal from '@/components/ImageCropModal';
 import { compressImage } from '@/lib/imageCompression';
 import { uploadCompressedImage } from '@/lib/uploadActivityImage';
@@ -422,32 +422,25 @@ export default function AdminActivitiesPage() {
         />
       </Card>
 
-      <Modal open={viewing !== null} onClose={() => setViewing(null)} title="活動名單">
+      <Modal open={viewing !== null} onClose={() => setViewing(null)} flush maxWidthClassName="max-w-xl">
         {viewing && (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-inkMuted">
-              {viewing.category.name} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
-              {viewing.teachers.map((t) => t.teacher.user.name).join('、')} · {viewing.registrations.length}/{viewing.capacity}
-            </p>
-            {viewing.registrations.length === 0 ? (
-              <p className="text-sm text-inkMuted">尚無學生報名</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {viewing.registrations.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between text-sm text-ink">
-                    {r.student.user.name}
-                    <button type="button" className="text-rejected hover:underline" onClick={() => handleRemoveRegistration(r.id)}>
-                      移除
-                    </button>
-                  </li>
-                ))}
-              </ul>
+          <ActivityDetail
+            key={viewing.id}
+            activity={viewing}
+            onClose={() => setViewing(null)}
+            canManageAlbum
+            onImagesChanged={load}
+            rosterItemAction={(r) => (
+              <button type="button" aria-label="移除報名" className="text-rejected hover:underline" onClick={() => handleRemoveRegistration(r.id)}>
+                ✕
+              </button>
             )}
-            <button type="button" className="mt-2 text-left text-sm text-rejected hover:underline" onClick={handleDeleteActivity}>
-              刪除此活動
-            </button>
-            <ActivityAlbum activityId={viewing.id} canManage onImagesChanged={load} />
-          </div>
+            footer={
+              <button type="button" className="text-left text-sm text-rejected hover:underline" onClick={handleDeleteActivity}>
+                刪除此活動
+              </button>
+            }
+          />
         )}
       </Modal>
     </>
