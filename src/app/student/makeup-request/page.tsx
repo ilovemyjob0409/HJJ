@@ -5,9 +5,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface LeaveRow {
   id: string;
@@ -248,7 +246,7 @@ export default function MakeupRequestPage() {
                 <option value="">選擇班級</option>
                 {eligibleClasses.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}（週{WEEKDAYS[c.weekday]} {c.startTime}-{c.endTime}，目前 {c.enrollments.length} 人）
+                    {c.name}（週{WEEKDAY_LABELS[c.weekday]} {c.startTime}-{c.endTime}，目前 {c.enrollments.length} 人）
                   </option>
                 ))}
               </Select>
@@ -283,7 +281,7 @@ export default function MakeupRequestPage() {
                     ? '尚未設定'
                     : availability.map((w, i) => (
                         <span key={i}>
-                          週{WEEKDAYS[w.weekday]} {w.startTime}-{w.endTime}
+                          週{WEEKDAY_LABELS[w.weekday]} {w.startTime}-{w.endTime}
                           {i < availability.length - 1 ? '、' : ''}
                         </span>
                       ))}

@@ -10,8 +10,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import TimetableModal from './TimetableModal';
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface TeacherOption {
   id: string;
@@ -171,7 +170,7 @@ export default function ClassesPage() {
     { header: '班名', render: (c) => c.name },
     { header: '科目/等級', render: (c) => `${c.subject} / ${c.level}` },
     { header: '老師', render: (c) => c.teacher.user.name },
-    { header: '時間', render: (c) => `週${WEEKDAYS[c.weekday]} ${c.startTime}-${c.endTime}` },
+    { header: '時間', render: (c) => `週${WEEKDAY_LABELS[c.weekday]} ${c.startTime}-${c.endTime}` },
     { header: '人數', render: (c) => c.enrollments.length },
     {
       header: '操作',
@@ -219,7 +218,7 @@ export default function ClassesPage() {
               ))}
             </Select>
             <Select value={form.weekday} onChange={(e) => setForm({ ...form, weekday: e.target.value })}>
-              {WEEKDAYS.map((w, i) => (
+              {WEEKDAY_LABELS.map((w, i) => (
                 <option key={i} value={i}>
                   週{w}
                 </option>
@@ -249,7 +248,7 @@ export default function ClassesPage() {
             <div className="min-w-0">
               <p className="truncate font-medium text-ink">{editing.name}</p>
               <p className="truncate text-xs text-inkMuted">
-                {editing.subject} / {editing.level} · {editing.teacher.user.name} · 週{WEEKDAYS[editing.weekday]} {editing.startTime}-
+                {editing.subject} / {editing.level} · {editing.teacher.user.name} · 週{WEEKDAY_LABELS[editing.weekday]} {editing.startTime}-
                 {editing.endTime}
               </p>
             </div>
@@ -276,7 +275,7 @@ export default function ClassesPage() {
               ))}
             </Select>
             <Select value={editForm.weekday} onChange={(e) => setEditForm({ ...editForm, weekday: e.target.value })}>
-              {WEEKDAYS.map((w, i) => (
+              {WEEKDAY_LABELS.map((w, i) => (
                 <option key={i} value={i}>
                   週{w}
                 </option>

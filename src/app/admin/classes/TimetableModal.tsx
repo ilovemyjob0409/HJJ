@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { stripWeekday, levelColor, UNSET_SUBJECT_COLOR, MORANDI_PALETTE } from '@/lib/timetable';
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface TimetableClass {
   id: string;
@@ -121,7 +120,7 @@ export default function TimetableModal({ open, onClose, classes, onClassClick }:
 
       <div className="overflow-x-auto">
         <div className="grid min-w-[840px] grid-cols-7 bg-card p-2">
-          {WEEKDAYS.map((w) => (
+          {WEEKDAY_LABELS.map((w) => (
             <div key={w} className="flex justify-center pb-2">
               <span className="flex h-6 min-w-[40px] items-center justify-center rounded-full bg-brand px-2.5 text-xs font-bold text-brandInk">
                 {w}

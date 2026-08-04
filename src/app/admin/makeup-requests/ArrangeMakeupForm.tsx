@@ -6,8 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface StudentRow {
   id: string;
@@ -281,7 +280,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
                         ? '尚未設定'
                         : availability.map((w, i) => (
                             <span key={i}>
-                              週{WEEKDAYS[w.weekday]} {w.startTime}-{w.endTime}
+                              週{WEEKDAY_LABELS[w.weekday]} {w.startTime}-{w.endTime}
                               {i < availability.length - 1 ? '、' : ''}
                             </span>
                           ))}

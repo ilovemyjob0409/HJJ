@@ -12,13 +12,11 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import CancelMakeupButton from './CancelMakeupButton';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every student until the next deploy.
 export const dynamic = 'force-dynamic';
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 interface LeaveRow {
   id: string;
@@ -112,7 +110,7 @@ export default async function StudentDashboard() {
                     </span>
                   </div>
                   <p className="text-xs text-inkMuted">
-                    每週{WEEKDAYS[c.weekday]} {c.startTime}-{c.endTime}・{c.teacher.user.name}
+                    每週{WEEKDAY_LABELS[c.weekday]} {c.startTime}-{c.endTime}・{c.teacher.user.name}
                   </p>
                   {c.quota.totalSessions !== null && c.quota.totalSessions > 0 && (
                     <div className="h-1 overflow-hidden rounded-full bg-stripe">

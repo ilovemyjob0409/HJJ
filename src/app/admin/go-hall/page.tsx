@@ -11,11 +11,9 @@ import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { previewSessionDates } from '@/lib/goHallDates';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 import { matchesSessionSearch } from './sessionSearch';
 import TicketManager, { QUALIFICATION_LABEL } from './TicketManager';
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 function defaultMonth(): string {
   const now = new Date();
@@ -195,7 +193,7 @@ function AdminGoHallContent() {
           {!previewDates ? (
             <form onSubmit={handlePreview} className="flex flex-col gap-2">
               <Select value={form.weekday} onChange={(e) => setForm({ ...form, weekday: e.target.value })}>
-                {WEEKDAYS.map((w, i) => (
+                {WEEKDAY_LABELS.map((w, i) => (
                   <option key={i} value={i}>
                     每週{w}
                   </option>

@@ -6,8 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface Window {
   weekday: number;
@@ -60,7 +59,7 @@ export default function AvailabilityPage() {
           {windows.map((w, i) => (
             <div key={i} className="flex items-center gap-2">
               <Select value={w.weekday} onChange={(e) => updateWindow(i, { weekday: Number(e.target.value) })}>
-                {WEEKDAYS.map((label, idx) => (
+                {WEEKDAY_LABELS.map((label, idx) => (
                   <option key={idx} value={idx}>
                     週{label}
                   </option>
