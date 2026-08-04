@@ -6,11 +6,13 @@ import { listAssignedSubstituteRequestsForTeacher } from '@/lib/services/substit
 import { listLeaveRequestsForTeacherClasses } from '@/lib/services/leaveRequestService';
 import { listInsertionsForTeacherClasses } from '@/lib/services/makeupRequestService';
 import { listSessionsForTeacher } from '@/lib/services/goHallService';
+import { listClassesForTeacher } from '@/lib/services/classService';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import AttendanceHub from '@/components/AttendanceHub';
+import TeacherClassList from '@/components/TeacherClassList';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
@@ -46,14 +48,15 @@ export default async function TeacherDashboard() {
   const session = await getServerSession(authOptions);
   const teacher = session ? await prisma.teacher.findUnique({ where: { userId: session.user.id } }) : null;
 
-  const [substitutes, leaves, insertions, goHallSessions] = teacher
+  const [substitutes, leaves, insertions, goHallSessions, teacherClasses] = teacher
     ? await Promise.all([
         listAssignedSubstituteRequestsForTeacher(teacher.id),
         listLeaveRequestsForTeacherClasses(teacher.id),
         listInsertionsForTeacherClasses(teacher.id),
         listSessionsForTeacher(teacher.id),
+        listClassesForTeacher(teacher.id),
       ])
-    : [[], [], [], []];
+    : [[], [], [], [], []];
 
   const goHallRows = goHallSessions.map((s) => ({
     id: s.id,
@@ -97,6 +100,9 @@ export default async function TeacherDashboard() {
           <Card className="text-ink transition-shadow hover:shadow-md">點名</Card>
         </Link>
       </div>
+
+      <h2 className="mb-2 font-bold text-ink">我的帶班班級</h2>
+      <TeacherClassList classes={teacherClasses} />
 
       <h2 className="mb-2 font-bold text-ink">被指派代課</h2>
       <Card className="mb-6">

@@ -1,4 +1,4 @@
-const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+export const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
 // Default to zh-TW so server-rendered pages don't follow the host's locale
 // (Vercel/Node defaults to en-US and produced M/D/YYYY on the dashboard).
