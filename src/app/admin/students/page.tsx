@@ -87,7 +87,7 @@ function HintButton({
         type="button"
         aria-label={label}
         onClick={onToggle}
-        className="flex h-5 w-5 items-center justify-center rounded-full border border-borderStrong text-xs text-inkMuted hover:bg-stripe"
+        className="flex h-5 w-5 items-center justify-center rounded-full bg-borderStrong text-xs font-semibold text-ink hover:opacity-80"
       >
         ?
       </button>
