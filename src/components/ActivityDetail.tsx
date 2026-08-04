@@ -1,154 +1,3 @@
-# 活動封面放大＋詳情彈窗改版 Implementation Plan
-
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** 活動列表封面改 128×80 橫式；三端活動詳情彈窗改為版本甲（相簿主圖貼頂＋縮圖列＋燈箱＋圖示資訊列＋名單籤片）。
-
-**Architecture:** `Modal` 加 `flush` 模式（無內建標題列與內距）；新共用元件 `ActivityDetail` 吸收 `ActivityAlbum` 全部邏輯（自行 fetch 相簿、選圖、燈箱、上傳／刪除）並渲染整個彈窗內容；三端頁面改傳資料與動作 slot，最後刪除 `ActivityAlbum.tsx`。無 API／schema 變更。
-
-**Tech Stack:** Next.js App Router client components、Tailwind、既有 `Modal`／`Button`／`ImageCropModal`／`uploadActivityImageFile`。
-
-**Spec:** `docs/superpowers/specs/2026-08-04-activity-cover-size-and-album-redesign.md`
-
-## Global Constraints
-
-- UI 文案一律繁體中文；commit message 用中文、結尾加 `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`。
-- 不新增任何 npm 依賴（icon 用內建 inline SVG）、不新增 API endpoint、不改 Prisma schema。
-- 動效只用既有 `animate-fade-in`／`animate-modal-in`／`skeleton-shimmer`，不另創動畫。
-- 專案慣例不寫 UI 元件測試；驗證＝`npx tsc --noEmit` 乾淨＋既有全套測試維持全綠。
-- **不要在本機跑 `npm run build`**（別的 session 的 dev server 在此資料夾運行）；Vercel push 後自行 build。
-- 三端詳情彈窗統一 `maxWidthClassName="max-w-xl"`。
-
----
-
-### Task 1: Modal `flush` 模式＋列表封面 128×80
-
-**Files:**
-- Modify: `src/components/ui/Modal.tsx`
-- Modify: `src/app/student/activities/page.tsx:138,140,157,159`（封面 img 與佔位）
-- Modify: `src/app/admin/activities/page.tsx`（封面欄，約 239 行的 img 與其下佔位 div）
-- Modify: `src/app/teacher/activities/page.tsx:49,51`
-
-**Interfaces:**
-- Consumes: 無（獨立改動）。
-- Produces: `Modal` 新 props——`title` 改為可選、新增 `flush?: boolean`。`flush` 為 true 時不渲染內建標題列、容器不加 `p-5`（捲動、backdrop 關閉、動畫不變）。Task 3 依賴此介面。
-
-- [ ] **Step 1: Modal 加 flush**
-
-`src/components/ui/Modal.tsx` 全檔改為：
-
-```tsx
-'use client';
-
-import { ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-
-interface ModalProps {
-  open: boolean;
-  onClose: () => void;
-  title?: string;
-  children: ReactNode;
-  maxWidthClassName?: string;
-  // flush：內容自理內距與標題列（活動詳情等滿版版面用）。
-  flush?: boolean;
-}
-
-export default function Modal({ open, onClose, title, children, maxWidthClassName = 'max-w-md', flush = false }: ModalProps) {
-  if (!open) return null;
-  if (typeof document === 'undefined') return null;
-  return createPortal(
-    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div
-        className={`animate-modal-in max-h-[90vh] w-full ${maxWidthClassName} overflow-y-auto rounded-xl bg-card ${flush ? '' : 'p-5'} shadow-lg`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {!flush && (
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="min-w-0 truncate text-lg font-bold text-ink">{title}</h2>
-            <button onClick={onClose} className="shrink-0 text-inkMuted hover:text-ink" aria-label="關閉">
-              ✕
-            </button>
-          </div>
-        )}
-        {children}
-      </div>
-    </div>,
-    document.body
-  );
-}
-```
-
-- [ ] **Step 2: 封面尺寸四處改 128×80**
-
-四個檔案的封面欄，把 `h-10 w-10` 改成 `h-20 w-32`（img 與 `bg-stripe` 佔位 div 都要改，其餘 class 不動）。改完後的樣子（以學生頁活動列表為例，其餘三處相同 pattern）：
-
-```tsx
-a.coverUrl ? (
-  // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-  <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 rounded object-cover" />
-) : (
-  <div className="bg-stripe mx-auto h-20 w-32 rounded" />
-)
-```
-
-四處：學生頁活動列表（~138、140）、學生頁我的報名紀錄（~157、159）、行政頁（~239 與佔位）、老師頁（49、51）。
-
-- [ ] **Step 3: 驗證**
-
-Run: `npx tsc --noEmit` → 無錯誤。
-Run: `grep -rn "h-10 w-10" src/app/student/activities src/app/admin/activities src/app/teacher/activities` → 無輸出（封面已全改）。
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add src/components/ui/Modal.tsx src/app/student/activities/page.tsx src/app/admin/activities/page.tsx src/app/teacher/activities/page.tsx
-git commit -m "feat: 活動列表封面改 128×80 橫式＋Modal 支援 flush 滿版模式
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
-```
-
----
-
-### Task 2: 新共用元件 `ActivityDetail`
-
-**Files:**
-- Create: `src/components/ActivityDetail.tsx`
-
-**Interfaces:**
-- Consumes: Task 1 的 `Modal flush`（本任務不直接用，但版面按 flush 前提設計：容器無外距，內距自理）；
-  既有 `ImageCropModal`（props `files`/`onDone`）、`uploadActivityImageFile(activityId, blob)`、
-  `useToast`、`formatActivityDateRange(start, end, 'zh-TW')`、`Button`。
-- Produces（Task 3 依賴，名稱型別須完全一致）：
-
-  ```ts
-  export interface ActivityDetailData {
-    id: string;
-    title: string;
-    description: string;
-    category: { name: string };
-    location: string | null;
-    startDate: string;
-    endDate: string;
-    capacity: number;
-    teachers: { teacher: { user: { name: string } } }[];
-    registrations: { id: string; student: { user: { name: string } } }[];
-  }
-  interface ActivityDetailProps {
-    activity: ActivityDetailData;
-    onClose: () => void;
-    canManageAlbum?: boolean;        // default false
-    onImagesChanged?: () => void;
-    rosterItemAction?: (r: ActivityDetailData['registrations'][number]) => ReactNode;
-    footer?: ReactNode;              // 各端動作區；無則不渲染 footer 分隔線
-  }
-  export default function ActivityDetail(props: ActivityDetailProps): JSX.Element
-  ```
-
-- [ ] **Step 1: 建立 `src/components/ActivityDetail.tsx`**
-
-完整內容：
-
-```tsx
 'use client';
 
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
@@ -235,7 +84,7 @@ export default function ActivityDetail({
   const { showToast } = useToast();
   const [images, setImages] = useState<AlbumImage[]>([]);
   const [albumLoading, setAlbumLoading] = useState(true);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | null>(null);
@@ -257,22 +106,28 @@ export default function ActivityDetail({
     loadImages();
   }, [loadImages]);
 
-  // 陣列縮短（刪除、重載）時把選取索引收斂回合法範圍；
-  // 刪除選取中的照片＝原索引順移下一張、刪到最後退前一張。
-  useEffect(() => {
-    setSelectedIndex((i) => Math.min(i, Math.max(images.length - 1, 0)));
-  }, [images.length]);
+  const stepSelected = useCallback(
+    (direction: 1 | -1) => {
+      setSelectedId((prev) => {
+        if (images.length < 2) return prev;
+        const cur = prev === null ? -1 : images.findIndex((i) => i.id === prev);
+        const idx = cur === -1 ? 0 : cur;
+        return images[(idx + direction + images.length) % images.length].id;
+      });
+    },
+    [images]
+  );
 
   useEffect(() => {
     if (!lightboxOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setLightboxOpen(false);
-      if (e.key === 'ArrowRight') setSelectedIndex((i) => (i + 1) % images.length);
-      if (e.key === 'ArrowLeft') setSelectedIndex((i) => (i - 1 + images.length) % images.length);
+      if (e.key === 'ArrowRight') stepSelected(1);
+      if (e.key === 'ArrowLeft') stepSelected(-1);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxOpen, images.length]);
+  }, [lightboxOpen, stepSelected]);
 
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -304,8 +159,17 @@ export default function ActivityDetail({
     try {
       const res = await fetch(`/api/activity-images/${imageId}`, { method: 'DELETE' });
       if (res.ok) {
-        // functional update：即使兩張照片的刪除請求交錯完成，也不會用到過期陣列
-        setImages((prev) => prev.filter((i) => i.id !== imageId));
+        setImages((prev) => {
+          const idx = prev.findIndex((i) => i.id === imageId);
+          const next = prev.filter((i) => i.id !== imageId);
+          // 刪除選取中的照片：原位順移下一張、刪到最後退前一張；刪其他張：選取不動。
+          setSelectedId((sel) => {
+            if (sel !== imageId) return sel;
+            if (next.length === 0) return null;
+            return next[Math.min(Math.max(idx, 0), next.length - 1)].id;
+          });
+          return next;
+        });
         showToast('照片已刪除');
         onImagesChanged?.();
       }
@@ -314,6 +178,8 @@ export default function ActivityDetail({
     }
   }
 
+  const selectedIndexRaw = selectedId === null ? -1 : images.findIndex((i) => i.id === selectedId);
+  const selectedIndex = selectedIndexRaw === -1 ? 0 : selectedIndexRaw;
   const selected = images[selectedIndex];
   const hasPhotos = !albumLoading && images.length > 0;
 
@@ -361,8 +227,9 @@ export default function ActivityDetail({
                 {img.url ? (
                   <button
                     type="button"
-                    onClick={() => setSelectedIndex(i)}
+                    onClick={() => setSelectedId(img.id)}
                     aria-label={`第 ${i + 1} 張照片`}
+                    aria-current={i === selectedIndex ? 'true' : undefined}
                     className={`block h-14 w-14 overflow-hidden rounded-lg ${i === selectedIndex ? 'outline outline-2 outline-brandDark' : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived */}
@@ -374,7 +241,7 @@ export default function ActivityDetail({
                 {canManageAlbum && (
                   <button
                     type="button"
-                    aria-label="刪除照片"
+                    aria-label={`刪除第 ${i + 1} 張照片`}
                     disabled={pendingImageId === img.id}
                     onClick={() => handleDeleteImage(img.id)}
                     className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[10px] text-white hover:bg-black/80 disabled:opacity-50"
@@ -489,17 +356,21 @@ export default function ActivityDetail({
       )}
       <ImageCropModal files={cropQueue} onDone={handleCroppedPhotos} />
 
-      {lightboxOpen && selected?.url && typeof document !== 'undefined' &&
+      {lightboxOpen && selected && typeof document !== 'undefined' &&
         createPortal(
-          <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" onClick={() => setLightboxOpen(false)}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived */}
-            <img src={selected.url} alt="活動照片" className="max-h-[90vh] max-w-[92vw] object-contain" onClick={(e) => e.stopPropagation()} />
+          <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="照片檢視" onClick={() => setLightboxOpen(false)}>
+            {selected.url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived
+              <img src={selected.url} alt="活動照片" className="max-h-[90vh] max-w-[92vw] object-contain" onClick={(e) => e.stopPropagation()} />
+            ) : (
+              <div className="bg-stripe max-h-[90vh] h-64 w-96 max-w-[92vw] rounded-lg" aria-label="照片無法載入" onClick={(e) => e.stopPropagation()} />
+            )}
             {images.length > 1 && (
               <>
                 <button
                   type="button"
                   aria-label="上一張"
-                  onClick={(e) => { e.stopPropagation(); setSelectedIndex((i) => (i - 1 + images.length) % images.length); }}
+                  onClick={(e) => { e.stopPropagation(); stepSelected(-1); }}
                   className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/75"
                 >
                   ‹
@@ -507,7 +378,7 @@ export default function ActivityDetail({
                 <button
                   type="button"
                   aria-label="下一張"
-                  onClick={(e) => { e.stopPropagation(); setSelectedIndex((i) => (i + 1) % images.length); }}
+                  onClick={(e) => { e.stopPropagation(); stepSelected(1); }}
                   className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/75"
                 >
                   ›
@@ -528,159 +399,3 @@ export default function ActivityDetail({
     </div>
   );
 }
-```
-
-- [ ] **Step 2: 驗證**
-
-Run: `npx tsc --noEmit` → 無錯誤（元件尚未被引用，僅型別把關）。
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/components/ActivityDetail.tsx
-git commit -m "feat: 活動詳情共用元件 ActivityDetail（主圖縮圖列＋燈箱＋圖示資訊列＋名單籤片）
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
-```
-
----
-
-### Task 3: 三端接線＋刪除 `ActivityAlbum`
-
-**Files:**
-- Modify: `src/app/student/activities/page.tsx`
-- Modify: `src/app/admin/activities/page.tsx`
-- Modify: `src/app/teacher/activities/page.tsx`
-- Delete: `src/components/ActivityAlbum.tsx`
-
-**Interfaces:**
-- Consumes: Task 1 `Modal flush`、Task 2 `ActivityDetail`／`ActivityDetailData`。
-- Produces: 無（終端接線）。
-
-- [ ] **Step 1: 學生端**
-
-`src/app/student/activities/page.tsx`：import 把 `ActivityAlbum` 換成 `ActivityDetail`（`import ActivityDetail from '@/components/ActivityDetail';`——注意本檔已有同名 `interface ActivityDetail`，把該 interface 改名為 `ActivityDetailPayload`，兩個使用處同步改：`interface ViewingDetail extends ActivityDetailPayload` 與 `openDetail` 內的 `const data: ActivityDetailPayload = await res.json();`）。詳情 Modal 區塊（原 195-267 行）整段換成：
-
-```tsx
-<Modal open={viewing !== null || detailLoading} onClose={closeDetail} flush maxWidthClassName="max-w-xl">
-  {viewing ? (
-    <ActivityDetail
-      key={viewing.id}
-      activity={viewing}
-      onClose={closeDetail}
-      footer={
-        <div className="flex justify-end">
-          {viewing.registrationId ? (
-            isBeforeToday(viewing.endDate) ? (
-              <span className="text-sm text-inkMuted">活動已結束</span>
-            ) : (
-              <Button
-                variant="secondary"
-                className="border-rejected text-rejected hover:bg-rejectedBg"
-                onClick={() => handleCancel(viewing.registrationId as string)}
-                loading={pendingId === viewing.registrationId}
-              >
-                取消報名
-              </Button>
-            )
-          ) : (
-            <Button
-              disabled={viewing._count.registrations >= viewing.capacity}
-              onClick={() => handleRegister(viewing.id)}
-              loading={pendingId === viewing.id}
-            >
-              {viewing._count.registrations >= viewing.capacity ? '已額滿' : '報名'}
-            </Button>
-          )}
-        </div>
-      }
-    />
-  ) : (
-    <div className="flex flex-col gap-3 p-5" aria-hidden>
-      <div className="skeleton-shimmer h-4 w-3/4 rounded" />
-      <div className="skeleton-shimmer h-4 w-1/2 rounded" />
-      <div className="skeleton-shimmer h-20 w-full rounded" />
-      <div className="skeleton-shimmer h-24 w-full rounded" />
-    </div>
-  )}
-</Modal>
-```
-
-- [ ] **Step 2: 行政端**
-
-`src/app/admin/activities/page.tsx`：import 把 `ActivityAlbum` 換成 `ActivityDetail`。詳情 Modal（原 425-452 行）整段換成：
-
-```tsx
-<Modal open={viewing !== null} onClose={() => setViewing(null)} flush maxWidthClassName="max-w-xl">
-  {viewing && (
-    <ActivityDetail
-      key={viewing.id}
-      activity={viewing}
-      onClose={() => setViewing(null)}
-      canManageAlbum
-      onImagesChanged={load}
-      rosterItemAction={(r) => (
-        <button type="button" aria-label="移除報名" className="text-rejected hover:underline" onClick={() => handleRemoveRegistration(r.id)}>
-          ✕
-        </button>
-      )}
-      footer={
-        <button type="button" className="text-left text-sm text-rejected hover:underline" onClick={handleDeleteActivity}>
-          刪除此活動
-        </button>
-      }
-    />
-  )}
-</Modal>
-```
-
-- [ ] **Step 3: 老師端**
-
-`src/app/teacher/activities/page.tsx`：import 把 `ActivityAlbum` 換成 `ActivityDetail`。詳情 Modal（原 75-96 行）整段換成：
-
-```tsx
-<Modal open={viewing !== null} onClose={() => setViewing(null)} flush maxWidthClassName="max-w-xl">
-  {viewing && <ActivityDetail key={viewing.id} activity={viewing} onClose={() => setViewing(null)} />}
-</Modal>
-```
-
-- [ ] **Step 4: 刪除舊元件**
-
-```bash
-git rm src/components/ActivityAlbum.tsx
-grep -rn "ActivityAlbum" src || echo "OK 無殘留引用"
-```
-
-Expected: `OK 無殘留引用`。
-
-- [ ] **Step 5: 驗證**
-
-Run: `npx tsc --noEmit` → 無錯誤。
-Run: `npx vitest run src/lib/services/activityService.test.ts` → PASS（UI 改版不應動到 service）。
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add -A src/app/student/activities src/app/admin/activities src/app/teacher/activities src/components
-git commit -m "feat: 三端活動詳情彈窗改版（版本甲）並移除 ActivityAlbum
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
-```
-
----
-
-### Task 4: 整體驗證＋部署
-
-**Files:** 無新檔；驗證與 push。
-
-**Interfaces:**
-- Consumes: Task 1–3 全部產出。
-- Produces: 部署到 Vercel 正式站（無 schema 變更，**不需** production SQL）。
-
-- [ ] **Step 1: 全套測試**
-
-Run: `npm test` → 全部 PASS。
-
-- [ ] **Step 2: Push 部署**
-
-合併回 main 後 `git push origin main`，以 `npx vercel ls` 確認最新 Production deployment Ready。

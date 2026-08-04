@@ -5,7 +5,7 @@ import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
-import ActivityAlbum from '@/components/ActivityAlbum';
+import ActivityDetail from '@/components/ActivityDetail';
 
 interface RosterEntry {
   id: string;
@@ -46,9 +46,9 @@ export default function TeacherActivitiesPage() {
       render: (a) =>
         a.coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={a.coverUrl} alt="封面" className="mx-auto h-10 w-10 rounded object-cover" />
+          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 max-w-full rounded object-cover" />
         ) : (
-          <div className="bg-stripe mx-auto h-10 w-10 rounded" />
+          <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
         ),
     },
     { header: '標題', render: (a) => a.title },
@@ -72,27 +72,8 @@ export default function TeacherActivitiesPage() {
         />
       </Card>
 
-      <Modal open={viewing !== null} onClose={() => setViewing(null)} title="活動名單">
-        {viewing && (
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-inkMuted">
-              {viewing.category.name} · {formatActivityDateRange(viewing.startDate, viewing.endDate, 'zh-TW')} ·{' '}
-              {viewing.teachers.map((t) => t.teacher.user.name).join('、')} · {viewing.registrations.length}/{viewing.capacity}
-            </p>
-            {viewing.registrations.length === 0 ? (
-              <p className="text-sm text-inkMuted">尚無學生報名</p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {viewing.registrations.map((r) => (
-                  <li key={r.id} className="text-sm text-ink">
-                    {r.student.user.name}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <ActivityAlbum activityId={viewing.id} canManage={false} />
-          </div>
-        )}
+      <Modal open={viewing !== null} onClose={() => setViewing(null)} flush maxWidthClassName="max-w-xl">
+        {viewing && <ActivityDetail key={viewing.id} activity={viewing} onClose={() => setViewing(null)} />}
       </Modal>
     </>
   );
