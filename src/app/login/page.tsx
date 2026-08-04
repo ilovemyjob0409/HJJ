@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
@@ -60,6 +61,12 @@ export default function LoginPage() {
               登入
             </Button>
           </form>
+          <p className="mt-4 text-center text-sm text-inkMuted">
+            第一次使用？
+            <Link href="/guide" className="font-semibold text-brandDark hover:underline">
+              查看使用教學
+            </Link>
+          </p>
         </Card>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { listFaqItems } from '@/lib/services/faqService';
 import Card from '@/components/ui/Card';
 
@@ -11,6 +12,19 @@ export default async function StudentFaqPage() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">常見問題</h1>
+
+      <Link href="/guide">
+        <Card className="mb-4 transition-shadow hover:shadow-md">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="font-semibold text-ink">系統使用教學</p>
+              <p className="mt-0.5 text-sm text-inkMuted">請假、補課、集點、報名的完整圖文步驟說明</p>
+            </div>
+            <span className="shrink-0 text-inkMuted">→</span>
+          </div>
+        </Card>
+      </Link>
+
       {items.length === 0 ? (
         <Card>
           <p className="text-sm text-inkMuted">尚未新增常見問題</p>
