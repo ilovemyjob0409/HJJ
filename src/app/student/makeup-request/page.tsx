@@ -169,17 +169,40 @@ export default function MakeupRequestPage() {
         </Card>
       )}
 
-      <Select className="mb-4" value={selectedLeaveId} onChange={(e) => setSelectedLeaveId(e.target.value)}>
-        <option value="">選擇要補課的請假紀錄</option>
-        {leavesWithoutMakeup.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.class.name} - {formatDateWithWeekday(l.date)}
-          </option>
-        ))}
-      </Select>
+      <Card className="mb-6 max-w-md">
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-brandInk">
+            1
+          </span>
+          <span className="text-sm font-bold text-ink">選擇要補課的請假紀錄</span>
+        </div>
+        <Select className="w-full" value={selectedLeaveId} onChange={(e) => setSelectedLeaveId(e.target.value)}>
+          <option value="">請選擇請假紀錄</option>
+          {leavesWithoutMakeup.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.class.name} - {formatDateWithWeekday(l.date)}
+            </option>
+          ))}
+        </Select>
+
+        {!selectedLeaveId && (
+          <div className="mt-4 flex items-center gap-2.5 border-t border-dashed border-borderSubtle pt-4 opacity-50">
+            <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-stripe text-xs font-bold text-inkMuted">
+              2
+            </span>
+            <span className="text-sm font-semibold text-inkMuted">選擇補課方式</span>
+          </div>
+        )}
+      </Card>
 
       {selectedLeaveId && (
         <Card className="max-w-md">
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-brandInk">
+              2
+            </span>
+            <span className="text-sm font-bold text-ink">選擇補課方式</span>
+          </div>
           {quota?.oneOnOneAvailable ? (
             <div className="mb-4 flex flex-col gap-3 text-sm text-ink">
               <div className="flex gap-6">
