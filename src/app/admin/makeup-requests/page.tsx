@@ -66,13 +66,28 @@ function AdminMakeupRequestsContent() {
   const columns: Column<PendingRow>[] = [
     { header: '學生', render: (r) => r.leaveRequest.student.user.name },
     { header: '原班級', render: (r) => r.leaveRequest.class.name },
-    { header: '類型', render: (r) => (r.type === 'INSERTION' ? '插班' : '一對一') },
+    {
+      header: '類型',
+      render: (r) =>
+        r.type === 'INSERTION' ? (
+          <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
+        ) : (
+          <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
+        ),
+    },
     {
       header: '目標',
       render: (r) =>
-        r.type === 'INSERTION'
-          ? `${r.targetClass?.name} @ ${r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}`
-          : `${r.teacher?.user.name} @ ${r.slotDate ? formatDateWithWeekday(r.slotDate) : ''} ${r.slotStartTime}-${r.slotEndTime}`,
+        r.type === 'INSERTION' ? (
+          <span>
+            {r.targetClass?.name}・{r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}
+          </span>
+        ) : (
+          <span>
+            {r.teacher?.user.name}・{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}{' '}
+            <span className="whitespace-nowrap">{r.slotStartTime}-{r.slotEndTime}</span>
+          </span>
+        ),
     },
     { header: '狀態', render: () => <StatusBadge status="PENDING_ADMIN" /> },
     {
