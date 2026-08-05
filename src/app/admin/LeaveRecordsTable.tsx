@@ -22,6 +22,10 @@ interface LeaveRow {
     status: string;
     targetDate: Date | null;
     targetClass: { name: string } | null;
+    slotDate: Date | null;
+    slotStartTime: string | null;
+    slotEndTime: string | null;
+    teacher: { user: { name: string } } | null;
   } | null;
 }
 
@@ -35,15 +39,30 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
     { header: '請假班級', render: (r) => r.class.name },
     { header: '請假日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
     {
-      header: '插班班級',
-      render: (r) => (r.makeupRequest?.type === 'INSERTION' ? (r.makeupRequest.targetClass?.name ?? '-') : '-'),
-    },
-    {
-      header: '插班日期',
-      render: (r) =>
-        r.makeupRequest?.type === 'INSERTION' && r.makeupRequest.targetDate
-          ? formatDateWithWeekday(r.makeupRequest.targetDate, 'zh-TW')
-          : '-',
+      header: '補課安排',
+      render: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return <span className="text-inkMuted">—</span>;
+        if (m.type === 'INSERTION') {
+          return (
+            <div className="flex flex-col items-center gap-1">
+              <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
+              <span>
+                {m.targetClass?.name ?? '-'}・{m.targetDate ? formatDateWithWeekday(m.targetDate, 'zh-TW') : '-'}
+              </span>
+            </div>
+          );
+        }
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
+            <span>
+              {m.teacher?.user.name ?? '-'}・{m.slotDate ? formatDateWithWeekday(m.slotDate, 'zh-TW') : '-'}{' '}
+              <span className="whitespace-nowrap">{m.slotStartTime}-{m.slotEndTime}</span>
+            </span>
+          </div>
+        );
+      },
     },
     {
       header: '補課狀態',
