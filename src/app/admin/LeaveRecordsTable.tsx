@@ -47,21 +47,17 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
           return (
             <div className="flex flex-col items-center gap-1">
               <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
-              <span>
-                <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>・
-                <span className="whitespace-nowrap">{m.targetDate ? formatDateWithWeekday(m.targetDate, 'zh-TW') : '-'}</span>
-              </span>
+              <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>
+              <span className="whitespace-nowrap">{m.targetDate ? formatDateWithWeekday(m.targetDate, 'zh-TW') : '-'}</span>
             </div>
           );
         }
         return (
           <div className="flex flex-col items-center gap-1">
             <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
-            <span>
-              {m.teacher?.user.name ?? '-'}・
-              <span className="whitespace-nowrap">{m.slotDate ? formatDateWithWeekday(m.slotDate, 'zh-TW') : '-'}</span>{' '}
-              <span className="whitespace-nowrap">{m.slotStartTime}-{m.slotEndTime}</span>
-            </span>
+            <span className="whitespace-nowrap">{m.teacher?.user.name ?? '-'}</span>
+            <span className="whitespace-nowrap">{m.slotDate ? formatDateWithWeekday(m.slotDate, 'zh-TW') : '-'}</span>
+            <span className="whitespace-nowrap">{m.slotStartTime}-{m.slotEndTime}</span>
           </div>
         );
       },

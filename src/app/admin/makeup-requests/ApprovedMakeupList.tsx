@@ -103,16 +103,16 @@ const ApprovedMakeupList = forwardRef<ApprovedMakeupListHandle>(function Approve
       header: '補課時間',
       render: (r) =>
         r.type === 'INSERTION' ? (
-          <span>
-            <span className="whitespace-nowrap">{r.targetClass?.name}</span>・
+          <div className="flex flex-col items-center">
+            <span className="whitespace-nowrap">{r.targetClass?.name}</span>
             <span className="whitespace-nowrap">{r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}</span>
-          </span>
+          </div>
         ) : (
-          <span>
-            {r.teacher?.user.name}・
-            <span className="whitespace-nowrap">{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}</span>{' '}
+          <div className="flex flex-col items-center">
+            <span className="whitespace-nowrap">{r.teacher?.user.name}</span>
+            <span className="whitespace-nowrap">{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}</span>
             <span className="whitespace-nowrap">{r.slotStartTime}-{r.slotEndTime}</span>
-          </span>
+          </div>
         ),
     },
     {
