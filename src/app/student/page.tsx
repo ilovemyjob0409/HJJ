@@ -8,30 +8,13 @@ import { listStudentEnrolledClasses } from '@/lib/services/classService';
 import { getMyTickets } from '@/lib/services/goHallTicketService';
 import { getPointBalances } from '@/lib/services/pointService';
 import Card from '@/components/ui/Card';
-import { Column } from '@/components/ui/DataTable';
-import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
-import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
-import CancelMakeupButton from './CancelMakeupButton';
+import LeaveHistoryTable from './LeaveHistoryTable';
 import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every student until the next deploy.
 export const dynamic = 'force-dynamic';
-
-interface LeaveRow {
-  id: string;
-  date: Date;
-  reason: string;
-  class: { name: string };
-  makeupRequest: {
-    id: string;
-    type: string;
-    status: string;
-    targetDate: Date | null;
-    cancelRequestedAt: Date | null;
-  } | null;
-}
 
 export default async function StudentDashboard() {
   const session = await getServerSession(authOptions);
@@ -52,35 +35,6 @@ export default async function StudentDashboard() {
     capacity: r.session.capacity,
     registeredCount: r.session._count.registrations,
   }));
-
-  const leaveColumns: Column<LeaveRow>[] = [
-    { header: '請假班級', render: (r) => r.class.name },
-    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
-    {
-      header: '插班日期',
-      render: (r) =>
-        r.makeupRequest?.type === 'INSERTION' && r.makeupRequest.targetDate
-          ? formatDateWithWeekday(r.makeupRequest.targetDate)
-          : '-',
-    },
-    {
-      header: '補課狀態',
-      render: (r) => {
-        if (!r.makeupRequest) return <span className="text-inkMuted">尚未申請</span>;
-        return (
-          <div className="flex flex-col items-center gap-1">
-            <StatusBadge status={r.makeupRequest.status} />
-            {r.makeupRequest.status === 'APPROVED' &&
-              (r.makeupRequest.cancelRequestedAt ? (
-                <span className="text-xs text-pending">撤銷申請中</span>
-              ) : (
-                <CancelMakeupButton makeupRequestId={r.makeupRequest.id} />
-              ))}
-          </div>
-        );
-      },
-    },
-  ];
 
   return (
     <>
@@ -179,13 +133,7 @@ export default async function StudentDashboard() {
 
       <h2 className="mb-2 font-bold text-ink">我的請假與插班紀錄</h2>
       <Card>
-        <CollapsibleDataTable
-          columns={leaveColumns}
-          rows={leaves}
-          keyField={(r) => r.id}
-          maxRows={3}
-          emptyText="目前沒有請假與插班紀錄"
-        />
+        <LeaveHistoryTable rows={leaves} />
       </Card>
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳報名紀錄</h2>
