@@ -70,7 +70,7 @@ function RevokeChoiceButton({ row, onDone }: { row: LeaveRow; onDone: () => void
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-xs text-inkMuted underline hover:text-rejected"
+        className="rounded-lg border border-pending px-3 py-1 text-xs font-semibold text-pending transition-colors hover:bg-pendingBg"
       >
         撤銷
       </button>
@@ -166,7 +166,11 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
       header: '補課類型',
       render: (r) =>
         r.makeupRequest ? (
-          <span className="text-xs text-inkMuted">{r.makeupRequest.type === 'INSERTION' ? '插班' : '一對一'}</span>
+          r.makeupRequest.type === 'INSERTION' ? (
+            <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
+          ) : (
+            <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
+          )
         ) : (
           <span className="text-inkMuted">無</span>
         ),

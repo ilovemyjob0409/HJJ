@@ -73,13 +73,23 @@ export default function StudentLeaveRequestPage() {
     { header: '原因', render: (l) => l.reason },
     { header: '狀態', render: (l) => <StatusBadge status={l.status} /> },
     {
+      header: '補課類型',
+      render: (l) =>
+        l.makeupRequest ? (
+          l.makeupRequest.type === 'INSERTION' ? (
+            <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
+          ) : (
+            <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
+          )
+        ) : (
+          <span className="text-inkMuted">無</span>
+        ),
+    },
+    {
       header: '補課狀態',
       render: (l) =>
         l.makeupRequest ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-inkMuted">{l.makeupRequest.type === 'INSERTION' ? '插班' : '一對一'}</span>
-            <StatusBadge status={l.makeupRequest.status} />
-          </div>
+          <StatusBadge status={l.makeupRequest.status} />
         ) : (
           <span className="text-inkMuted">尚未申請</span>
         ),

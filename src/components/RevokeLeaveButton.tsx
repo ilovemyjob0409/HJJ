@@ -45,7 +45,7 @@ export default function RevokeLeaveButton({
       type="button"
       onClick={handleClick}
       disabled={busy}
-      className="text-xs text-inkMuted underline hover:text-rejected disabled:opacity-50"
+      className="rounded-lg border border-pending px-3 py-1 text-xs font-semibold text-pending transition-colors hover:bg-pendingBg disabled:cursor-not-allowed disabled:opacity-50"
     >
       撤銷
     </button>
