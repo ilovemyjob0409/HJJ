@@ -17,7 +17,18 @@ interface LeaveRow {
   origin: 'STUDENT' | 'ADMIN' | null;
   student: { user: { name: string } };
   class: { name: string };
-  makeupRequest: { id: string; type: 'INSERTION' | 'ONE_ON_ONE'; status: string; cancelRequestedAt: string | null } | null;
+  makeupRequest: {
+    id: string;
+    type: 'INSERTION' | 'ONE_ON_ONE';
+    status: string;
+    cancelRequestedAt: string | null;
+    targetDate: string | null;
+    targetClass: { name: string } | null;
+    slotDate: string | null;
+    slotStartTime: string | null;
+    slotEndTime: string | null;
+    teacher: { user: { name: string } } | null;
+  } | null;
 }
 
 export interface LeaveRequestListHandle {
@@ -163,17 +174,35 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
         ),
     },
     {
-      header: '補課類型',
-      render: (r) =>
-        r.makeupRequest ? (
-          r.makeupRequest.type === 'INSERTION' ? (
-            <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
-          ) : (
+      header: '補課日期',
+      render: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return <span className="text-inkMuted">—</span>;
+        const d = m.type === 'INSERTION' ? m.targetDate : m.slotDate;
+        return <span className="whitespace-nowrap">{d ? formatDateWithWeekday(d) : '-'}</span>;
+      },
+    },
+    {
+      header: '補課安排',
+      render: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return <span className="text-inkMuted">—</span>;
+        if (m.type === 'INSERTION') {
+          return (
+            <div className="flex flex-col items-center gap-1">
+              <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
+              <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>
+            </div>
+          );
+        }
+        return (
+          <div className="flex flex-col items-center gap-1">
             <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
-          )
-        ) : (
-          <span className="text-inkMuted">無</span>
-        ),
+            <span className="whitespace-nowrap">{m.teacher?.user.name ?? '-'}</span>
+            <span className="whitespace-nowrap">{m.slotStartTime}-{m.slotEndTime}</span>
+          </div>
+        );
+      },
     },
     {
       header: '狀態',

@@ -69,23 +69,26 @@ function AdminMakeupRequestsContent() {
       header: '類型',
       render: (r) =>
         r.type === 'INSERTION' ? (
-          <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
+          <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
         ) : (
           <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
         ),
     },
     {
+      header: '補課日期',
+      render: (r) => {
+        const d = r.type === 'INSERTION' ? r.targetDate : r.slotDate;
+        return <span className="whitespace-nowrap">{d ? formatDateWithWeekday(d) : '-'}</span>;
+      },
+    },
+    {
       header: '目標',
       render: (r) =>
         r.type === 'INSERTION' ? (
-          <div className="flex flex-col items-center">
-            <span className="whitespace-nowrap">{r.targetClass?.name}</span>
-            <span className="whitespace-nowrap">{r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}</span>
-          </div>
+          <span className="whitespace-nowrap">{r.targetClass?.name}</span>
         ) : (
           <div className="flex flex-col items-center">
             <span className="whitespace-nowrap">{r.teacher?.user.name}</span>
-            <span className="whitespace-nowrap">{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}</span>
             <span className="whitespace-nowrap">{r.slotStartTime}-{r.slotEndTime}</span>
           </div>
         ),

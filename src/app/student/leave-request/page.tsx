@@ -82,6 +82,15 @@ export default function StudentLeaveRequestPage() {
     { header: '原因', render: (l) => l.reason },
     { header: '狀態', render: (l) => <StatusBadge status={l.status} /> },
     {
+      header: '補課日期',
+      render: (l) => {
+        const m = l.makeupRequest;
+        if (!m) return <span className="text-inkMuted">—</span>;
+        const d = m.type === 'INSERTION' ? m.targetDate : m.slotDate;
+        return <span className="whitespace-nowrap">{d ? formatDateWithWeekday(d) : '-'}</span>;
+      },
+    },
+    {
       header: '補課安排',
       render: (l) => {
         const m = l.makeupRequest;
@@ -89,9 +98,8 @@ export default function StudentLeaveRequestPage() {
         if (m.type === 'INSERTION') {
           return (
             <div className="flex flex-col items-center gap-1">
-              <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
+              <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
               <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>
-              <span className="whitespace-nowrap">{m.targetDate ? formatDateWithWeekday(m.targetDate) : '-'}</span>
             </div>
           );
         }
@@ -99,7 +107,6 @@ export default function StudentLeaveRequestPage() {
           <div className="flex flex-col items-center gap-1">
             <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
             <span className="whitespace-nowrap">{m.teacher?.user.name ?? '-'}</span>
-            <span className="whitespace-nowrap">{m.slotDate ? formatDateWithWeekday(m.slotDate) : '-'}</span>
             <span className="whitespace-nowrap">{m.slotStartTime}-{m.slotEndTime}</span>
           </div>
         );

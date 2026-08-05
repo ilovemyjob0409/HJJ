@@ -31,6 +31,8 @@ const config: Config = {
         rejectedBg: "#FDECEC",
         assigned: "#2C5FBB",
         assignedBg: "#EAF2FF",
+        insertion: "#7C3AED",
+        insertionBg: "#F1E8FA",
       },
     },
   },
