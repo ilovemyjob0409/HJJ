@@ -74,7 +74,14 @@ export function listAssignedSubstituteRequestsForTeacher(teacherId: string) {
       date: true,
       reason: true,
       status: true,
-      class: { select: { name: true, startTime: true, endTime: true } },
+      class: {
+        select: {
+          name: true,
+          startTime: true,
+          endTime: true,
+          enrollments: { select: { student: { select: { id: true, user: { select: SAFE_USER_SELECT } } } } },
+        },
+      },
       originalTeacher: { select: { user: { select: SAFE_USER_SELECT } } },
     },
     orderBy: { date: 'asc' },

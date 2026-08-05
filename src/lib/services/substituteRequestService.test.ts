@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTeacher } from './teacherService';
-import { createClass } from './classService';
+import { createStudent } from './studentService';
+import { createClass, enrollStudent } from './classService';
 import {
   createSubstituteRequest,
   listPendingSubstituteRequests,
@@ -44,6 +45,8 @@ describe('listAssignedSubstituteRequestsForTeacher', () => {
     const substitute = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '數學' });
     const otherSubstitute = await createTeacher({ name: '王老師', email: 'wang@example.com', password: 'x', subjects: '數學' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const student = await createStudent({ name: '小明', email: 'ming-sub@example.com', password: 'x' });
+    await enrollStudent(cls.id, student.id);
 
     const later = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 14), reason: '進修' });
     await assignSubstituteTeacher(later.id, substitute.id);
@@ -65,6 +68,7 @@ describe('listAssignedSubstituteRequestsForTeacher', () => {
     expect(results[0].class.startTime).toBe('19:00');
     expect(results[0].class.endTime).toBe('21:00');
     expect(results[0].originalTeacher.user.name).toBe('陳老師');
+    expect(results[0].class.enrollments.map((e) => e.student.user.name)).toEqual(['小明']);
   });
 });
 

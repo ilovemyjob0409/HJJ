@@ -14,24 +14,12 @@ import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import AttendanceHub from '@/components/AttendanceHub';
 import TeacherClassList from '@/components/TeacherClassList';
 import RevokeLeaveButton from '@/components/RevokeLeaveButton';
-import { formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
+import AssignmentsTable, { AssignmentRow } from '@/components/AssignmentsTable';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every teacher until the next deploy.
 export const dynamic = 'force-dynamic';
-
-// 代課與一對一補課合併成單一「被指派」列表，用類型欄位區分。
-interface AssignmentRow {
-  id: string;
-  kind: 'SUBSTITUTE' | 'ONE_ON_ONE';
-  date: Date;
-  startTime: string;
-  endTime: string;
-  className: string;
-  counterpartName: string; // 代課：原老師；一對一：學生
-  substituteReason: string | null;
-  status: string;
-}
 
 interface LeaveRow {
   id: string;
@@ -76,6 +64,7 @@ export default async function TeacherDashboard() {
       counterpartName: s.originalTeacher.user.name,
       substituteReason: s.reason,
       status: s.status,
+      students: s.class.enrollments.map((e) => ({ id: e.student.id, name: e.student.user.name })),
     })),
     ...oneOnOnes.map((m) => ({
       id: m.id,
@@ -87,6 +76,7 @@ export default async function TeacherDashboard() {
       counterpartName: m.leaveRequest.student.user.name,
       substituteReason: null,
       status: m.status,
+      students: [],
     })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime() || a.startTime.localeCompare(b.startTime));
 
@@ -96,46 +86,6 @@ export default async function TeacherDashboard() {
     capacity: s.capacity,
     registeredCount: s._count.registrations,
   }));
-
-  const assignmentColumns: Column<AssignmentRow>[] = [
-    {
-      header: '類型',
-      render: (r) =>
-        r.kind === 'SUBSTITUTE' ? (
-          <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">代課</span>
-        ) : (
-          <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">一對一補課</span>
-        ),
-    },
-    {
-      header: '日期',
-      render: (r) => (
-        <>
-          <span className="whitespace-nowrap">{formatDateWithWeekday(r.date)}</span>
-          {isTodayTaipei(r.date) && (
-            <span className="ml-1.5 inline-block whitespace-nowrap rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-brandInk">
-              今天
-            </span>
-          )}
-        </>
-      ),
-    },
-    { header: '時間', render: (r) => <span className="whitespace-nowrap">{`${r.startTime}-${r.endTime}`}</span> },
-    { header: '班級', render: (r) => <span className="whitespace-nowrap">{r.className}</span> },
-    {
-      header: '對象',
-      render: (r) =>
-        r.kind === 'SUBSTITUTE' ? (
-          <>
-            {r.counterpartName}
-            <span className="ml-1 text-xs text-inkMuted">（原老師{r.substituteReason ? `・${r.substituteReason}` : ''}）</span>
-          </>
-        ) : (
-          r.counterpartName
-        ),
-    },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
-  ];
 
   const leaveColumns: Column<LeaveRow>[] = [
     { header: '學生', render: (r) => r.student.user.name },
@@ -173,14 +123,7 @@ export default async function TeacherDashboard() {
       <TeacherClassList classes={teacherClasses} />
 
       <h2 className="mb-2 font-bold text-ink">被指派代課／一對一補課</h2>
-      <Card className="mb-6">
-        <DataTable
-          columns={assignmentColumns}
-          rows={assignments}
-          keyField={(r) => `${r.kind}-${r.id}`}
-          emptyText="目前沒有被指派的工作"
-        />
-      </Card>
+      <AssignmentsTable rows={assignments} />
 
       <h2 className="mb-2 font-bold text-ink">今日點名</h2>
       <div className="mb-6">
