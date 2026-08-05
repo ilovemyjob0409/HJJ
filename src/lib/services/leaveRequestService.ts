@@ -83,6 +83,7 @@ export function listAllLeaveRequests() {
           slotDate: true,
           slotStartTime: true,
           slotEndTime: true,
+          cancelRequestedAt: true,
           teacher: { select: { user: { select: SAFE_USER_SELECT } } },
         },
       },

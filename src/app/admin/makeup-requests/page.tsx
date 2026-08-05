@@ -9,8 +9,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import ArrangeMakeupForm from './ArrangeMakeupForm';
-import ApprovedMakeupList, { ApprovedMakeupListHandle } from './ApprovedMakeupList';
-import LeaveRequestList from './LeaveRequestList';
+import LeaveRequestList, { LeaveRequestListHandle } from './LeaveRequestList';
 
 interface PendingRow {
   id: string;
@@ -31,7 +30,7 @@ function AdminMakeupRequestsContent() {
   const [rows, setRows] = useState<PendingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const approvedListRef = useRef<ApprovedMakeupListHandle>(null);
+  const leaveListRef = useRef<LeaveRequestListHandle>(null);
 
   async function load() {
     try {
@@ -57,7 +56,7 @@ function AdminMakeupRequestsContent() {
       await fetch(`/api/makeup-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
       showToast(decision === 'APPROVED' ? '已核准' : '已拒絕');
       load();
-      approvedListRef.current?.reload();
+      leaveListRef.current?.reload();
     } finally {
       setPendingId(null);
     }
@@ -115,7 +114,7 @@ function AdminMakeupRequestsContent() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">請假管理</h1>
-      <ArrangeMakeupForm onArranged={() => approvedListRef.current?.reload()} />
+      <ArrangeMakeupForm onArranged={() => leaveListRef.current?.reload()} />
 
       <h2 className="mb-2 font-bold text-ink">待確認補課申請</h2>
       <Card>
@@ -128,9 +127,7 @@ function AdminMakeupRequestsContent() {
         />
       </Card>
 
-      <ApprovedMakeupList ref={approvedListRef} />
-
-      <LeaveRequestList />
+      <LeaveRequestList ref={leaveListRef} />
     </>
   );
 }

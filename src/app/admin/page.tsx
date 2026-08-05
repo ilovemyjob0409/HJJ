@@ -50,7 +50,7 @@ export default async function AdminDashboard() {
         </Link>
       </div>
 
-      <LeaveRecordsTable title="學生請假與插班紀錄" rows={allLeaves} />
+      <LeaveRecordsTable title="學生請假與補課紀錄" rows={allLeaves} />
 
       <div className="mt-6">
         <SubstituteHistoryTable title="安排代課紀錄" rows={allSubstitutes} />

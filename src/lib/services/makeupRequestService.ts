@@ -375,42 +375,6 @@ export async function revokeMakeup(makeupRequestId: string) {
   await notifyMakeup(makeup, 'REVOKED');
 }
 
-// 行政補課申請頁的「已核准補課」清單：只列未來場次（今天含以後），
-// 有撤銷申請者排最前，其餘依補課日期近到遠。
-export async function listApprovedMakeups() {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const rows = await prisma.makeupRequest.findMany({
-    where: {
-      status: 'APPROVED',
-      OR: [{ targetDate: { gte: todayStart } }, { slotDate: { gte: todayStart } }],
-    },
-    select: {
-      id: true,
-      type: true,
-      targetDate: true,
-      slotDate: true,
-      slotStartTime: true,
-      slotEndTime: true,
-      cancelRequestedAt: true,
-      leaveRequest: {
-        select: {
-          date: true,
-          student: { select: { user: { select: { name: true } } } },
-          class: { select: { name: true } },
-        },
-      },
-      targetClass: { select: { name: true } },
-      teacher: { select: { user: { select: { name: true } } } },
-    },
-  });
-  const when = (r: (typeof rows)[number]) => (r.targetDate ?? r.slotDate ?? new Date(0)).getTime();
-  return rows.sort((a, b) => {
-    if (!!a.cancelRequestedAt !== !!b.cancelRequestedAt) return a.cancelRequestedAt ? -1 : 1;
-    return when(a) - when(b);
-  });
-}
-
 // For the teacher dashboard: which students inserted into a class this
 // teacher teaches, and when.
 export interface OneOnOneSlotOption {
