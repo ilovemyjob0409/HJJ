@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
-import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
+import { ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
 
 interface LeaveRow {
   id: string;
@@ -46,6 +46,12 @@ interface NoticeItem {
   content: string;
 }
 
+interface SlotOption {
+  startTime: string;
+  endTime: string;
+  available: boolean;
+}
+
 export default function MakeupRequestPage() {
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [selectedLeaveId, setSelectedLeaveId] = useState('');
@@ -58,7 +64,32 @@ export default function MakeupRequestPage() {
   const [notices, setNotices] = useState<NoticeItem[]>([]);
 
   const [insertionForm, setInsertionForm] = useState({ targetClassId: '', targetDate: '' });
-  const [oneOnOneForm, setOneOnOneForm] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00' });
+  const [oneOnOneForm, setOneOnOneForm] = useState({ teacherId: '', slotDate: '', slotStartTime: '' });
+  const [slotOptions, setSlotOptions] = useState<SlotOption[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+
+  // 老師或日期一變就重抓可預約起點，並清掉已選的時間
+  useEffect(() => {
+    setOneOnOneForm((f) => ({ ...f, slotStartTime: '' }));
+    if (!oneOnOneForm.teacherId || !oneOnOneForm.slotDate) {
+      setSlotOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    fetch(`/api/one-on-one-slots?teacherId=${oneOnOneForm.teacherId}&date=${oneOnOneForm.slotDate}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setSlotOptions(Array.isArray(data) ? data : []);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oneOnOneForm.teacherId, oneOnOneForm.slotDate]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -293,17 +324,41 @@ export default function MakeupRequestPage() {
                 onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotDate: e.target.value })}
                 required
               />
-              <div className="flex items-center gap-2">
-                <Input
-                  type="time"
-                  value={oneOnOneForm.slotStartTime}
-                  onChange={(e) => setOneOnOneForm({ ...oneOnOneForm, slotStartTime: e.target.value })}
-                />
-                <span className="whitespace-nowrap text-sm text-inkMuted">
-                  至 {oneOnOneEndTime(oneOnOneForm.slotStartTime)}（固定 {ONE_ON_ONE_DURATION_MINUTES} 分鐘）
-                </span>
-              </div>
-              <Button type="submit" loading={submitting}>送出一對一申請</Button>
+              {oneOnOneForm.teacherId && oneOnOneForm.slotDate && (
+                <div>
+                  <p className="mb-1.5 text-sm text-inkMuted">
+                    選擇開始時間（每次固定 {ONE_ON_ONE_DURATION_MINUTES} 分鐘，灰色代表已被預約）
+                  </p>
+                  {slotsLoading ? (
+                    <div className="skeleton-shimmer h-9 w-full rounded-lg" />
+                  ) : slotOptions.length === 0 ? (
+                    <p className="text-sm text-inkMuted">這一天不在老師的可補課時段，請換個日期。</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {slotOptions.map((s) => (
+                        <button
+                          key={s.startTime}
+                          type="button"
+                          disabled={!s.available}
+                          onClick={() => setOneOnOneForm({ ...oneOnOneForm, slotStartTime: s.startTime })}
+                          className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${
+                            oneOnOneForm.slotStartTime === s.startTime
+                              ? 'border-brand bg-brand text-brandInk'
+                              : s.available
+                                ? 'border-borderStrong bg-card text-ink hover:bg-stripe'
+                                : 'cursor-not-allowed border-borderSubtle bg-stripe text-inkMuted line-through opacity-60'
+                          }`}
+                        >
+                          {s.startTime}-{s.endTime}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <Button type="submit" loading={submitting} disabled={!oneOnOneForm.slotStartTime}>
+                送出一對一申請
+              </Button>
             </form>
           )}
         </Card>

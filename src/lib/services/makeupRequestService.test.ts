@@ -18,6 +18,7 @@ import {
   arrangeOneOnOneMakeup,
   arrangeLeaveOnly,
   listAssignedOneOnOneForTeacher,
+  listOneOnOneSlotOptions,
   requestMakeupCancellation,
   rejectMakeupCancellation,
   revokeMakeup,
@@ -876,5 +877,67 @@ describe('listAssignedOneOnOneForTeacher', () => {
     expect(results[0].leaveRequest.class.name).toBe('圍棋A班');
     expect(results[0].slotStartTime).toBe('16:00');
     expect(results[0].slotEndTime).toBe('16:40');
+  });
+});
+
+describe('listOneOnOneSlotOptions', () => {
+  it('依可補課時段切 40 分鐘格，被預約的起點標記為不可選', async () => {
+    const { teacher, student, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    // 佔住 16:40-17:20（跨到第二格）
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-07-15'),
+      slotStartTime: '16:40',
+    });
+
+    const options = await listOneOnOneSlotOptions(teacher.id, new Date('2026-07-15'));
+
+    // 16:00-18:00 → 三格：16:00／16:40／17:20；16:40 被佔
+    expect(options).toEqual([
+      { startTime: '16:00', endTime: '16:40', available: true },
+      { startTime: '16:40', endTime: '17:20', available: false },
+      { startTime: '17:20', endTime: '18:00', available: true },
+    ]);
+  });
+
+  it('非可補課日回傳空陣列；不同日期的預約不影響', async () => {
+    const { teacher, student, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date('2026-07-15'),
+      slotStartTime: '16:00',
+    });
+
+    // 7/16 是週四：不在可補課時段
+    expect(await listOneOnOneSlotOptions(teacher.id, new Date('2026-07-16'))).toEqual([]);
+    // 下週三：7/15 的預約不影響
+    const nextWeek = await listOneOnOneSlotOptions(teacher.id, new Date('2026-07-22'));
+    expect(nextWeek.every((o) => o.available)).toBe(true);
+  });
+
+  it('舊的非對齊預約（60 分鐘）會蓋掉重疊到的所有格', async () => {
+    const { teacher, leave } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    // 直接寫入一筆舊制 16:30-17:30（模擬 40 分鐘制之前的資料）
+    await prisma.makeupRequest.create({
+      data: {
+        leaveRequestId: leave.id,
+        type: 'ONE_ON_ONE',
+        status: 'APPROVED',
+        teacherId: teacher.id,
+        slotDate: new Date('2026-07-15'),
+        slotStartTime: '16:30',
+        slotEndTime: '17:30',
+      },
+    });
+
+    const options = await listOneOnOneSlotOptions(teacher.id, new Date('2026-07-15'));
+    expect(options.map((o) => o.available)).toEqual([false, false, false]);
   });
 });

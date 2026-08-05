@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
-import { oneOnOneEndTime } from '@/lib/oneOnOneSlot';
+import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
 import { listTeacherAvailability } from './availabilityService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { pushLineMessage } from './lineService';
@@ -413,6 +413,42 @@ export async function listApprovedMakeups() {
 
 // For the teacher dashboard: which students inserted into a class this
 // teacher teaches, and when.
+export interface OneOnOneSlotOption {
+  startTime: string;
+  endTime: string;
+  available: boolean;
+}
+
+// 指定老師＋日期的一對一可預約起點：依可補課時段切成 40 分鐘格
+// （從時段起點對齊，避免零碎空檔），已被 PENDING／APPROVED 佔用的標記
+// 為不可選。給學生表單與行政代排共用；不洩漏預約者身分，只回時間。
+export async function listOneOnOneSlotOptions(teacherId: string, slotDate: Date): Promise<OneOnOneSlotOption[]> {
+  const weekday = slotDate.getUTCDay();
+  const [availabilities, taken] = await Promise.all([
+    listTeacherAvailability(teacherId),
+    prisma.makeupRequest.findMany({
+      where: { type: 'ONE_ON_ONE', teacherId, slotDate, status: { in: ['PENDING_ADMIN', 'APPROVED'] } },
+      select: { slotStartTime: true, slotEndTime: true },
+    }),
+  ]);
+
+  const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const toTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+  const options: OneOnOneSlotOption[] = [];
+  for (const win of availabilities.filter((a) => a.weekday === weekday)) {
+    const winStart = toMinutes(win.startTime);
+    const winEnd = toMinutes(win.endTime);
+    for (let start = winStart; start + ONE_ON_ONE_DURATION_MINUTES <= winEnd; start += ONE_ON_ONE_DURATION_MINUTES) {
+      const startTime = toTime(start);
+      const endTime = toTime(start + ONE_ON_ONE_DURATION_MINUTES);
+      const conflict = taken.some((t) => slotsOverlap({ startTime, endTime }, { startTime: t.slotStartTime!, endTime: t.slotEndTime! }));
+      options.push({ startTime, endTime, available: !conflict });
+    }
+  }
+  return options.sort((a, b) => a.startTime.localeCompare(b.startTime));
+}
+
 export function listAssignedOneOnOneForTeacher(teacherId: string) {
   // 老師首頁「被指派」區塊：只列今天（含）以後；PENDING_ADMIN 也列出，
   // 因為時段在建立時就已為老師保留（SLOT_CONFLICT 檢查含 PENDING）。

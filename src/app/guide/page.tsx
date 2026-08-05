@@ -161,9 +161,10 @@ export default function GuidePage() {
             <b className="text-ink">送出插班申請</b>（紅框處）。
           </Step>
           <Step no="3" title="一對一補課：選老師與開始時間" img="m18-makeup-oneonone-filled.png" imgAlt="一對一補課表單">
-            點選「一對一補課」（會顯示本期剩餘次數），選擇<b className="text-ink">老師</b>後畫面會列出該老師的
-            <b className="text-ink">可補課時段</b>，在時段內選日期與<b className="text-ink">開始時間</b>即可——每次一對一固定
-            40 分鐘，系統會自動保留到結束時間。按<b className="text-ink">送出一對一申請</b>完成。
+            點選「一對一補課」（會顯示本期剩餘次數），選擇<b className="text-ink">老師</b>與<b className="text-ink">日期</b>
+            後，畫面會列出當天所有可預約的<b className="text-ink">開始時間</b>（每次固定 40
+            分鐘）——<b className="text-ink">灰色代表已被其他同學預約</b>，點選想要的時段再按
+            <b className="text-ink">送出一對一申請</b>即可。
           </Step>
           <Step no="4" title="等待行政確認" img="m17-makeup-insertion-success.png" imgAlt="送出後待行政確認">
             送出後會顯示「待行政確認」。教室確認後，首頁的補課狀態會從「待確認」變成「已核准」。

@@ -7,7 +7,13 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
-import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
+import { ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
+
+interface SlotOption {
+  startTime: string;
+  endTime: string;
+  available: boolean;
+}
 
 interface StudentRow {
   id: string;
@@ -66,8 +72,33 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
   const [type, setType] = useState<'INSERTION' | 'ONE_ON_ONE'>('INSERTION');
   const [targetClassId, setTargetClassId] = useState('');
   const [targetDate, setTargetDate] = useState('');
-  const [oneOnOne, setOneOnOne] = useState({ teacherId: '', slotDate: '', slotStartTime: '16:00' });
+  const [oneOnOne, setOneOnOne] = useState({ teacherId: '', slotDate: '', slotStartTime: '' });
+  const [slotOptions, setSlotOptions] = useState<SlotOption[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // 老師或日期一變就重抓可預約起點，並清掉已選的時間
+  useEffect(() => {
+    setOneOnOne((f) => ({ ...f, slotStartTime: '' }));
+    if (!oneOnOne.teacherId || !oneOnOne.slotDate) {
+      setSlotOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setSlotsLoading(true);
+    fetch(`/api/one-on-one-slots?teacherId=${oneOnOne.teacherId}&date=${oneOnOne.slotDate}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setSlotOptions(Array.isArray(data) ? data : []);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oneOnOne.teacherId, oneOnOne.slotDate]);
 
   useEffect(() => {
     if (!expanded || students.length > 0) return;
@@ -138,11 +169,15 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
     setType('INSERTION');
     setTargetClassId('');
     setTargetDate('');
-    setOneOnOne({ teacherId: '', slotDate: '', slotStartTime: '16:00' });
+    setOneOnOne({ teacherId: '', slotDate: '', slotStartTime: '' });
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (withMakeup && type === 'ONE_ON_ONE' && !oneOnOne.slotStartTime) {
+      showToast('請先選擇一對一補課的開始時間');
+      return;
+    }
     setSubmitting(true);
     try {
       const body = !withMakeup
@@ -293,16 +328,38 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
                     onChange={(e) => setOneOnOne({ ...oneOnOne, slotDate: e.target.value })}
                     required
                   />
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="time"
-                      value={oneOnOne.slotStartTime}
-                      onChange={(e) => setOneOnOne({ ...oneOnOne, slotStartTime: e.target.value })}
-                    />
-                    <span className="whitespace-nowrap text-sm text-inkMuted">
-                      至 {oneOnOneEndTime(oneOnOne.slotStartTime)}（固定 {ONE_ON_ONE_DURATION_MINUTES} 分鐘）
-                    </span>
-                  </div>
+                  {oneOnOne.teacherId && oneOnOne.slotDate && (
+                    <div>
+                      <p className="mb-1.5 text-sm text-inkMuted">
+                        選擇開始時間（每次固定 {ONE_ON_ONE_DURATION_MINUTES} 分鐘，灰色代表已被預約）
+                      </p>
+                      {slotsLoading ? (
+                        <div className="skeleton-shimmer h-9 w-full rounded-lg" />
+                      ) : slotOptions.length === 0 ? (
+                        <p className="text-sm text-inkMuted">這一天不在老師的可補課時段，請換個日期。</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {slotOptions.map((s) => (
+                            <button
+                              key={s.startTime}
+                              type="button"
+                              disabled={!s.available}
+                              onClick={() => setOneOnOne({ ...oneOnOne, slotStartTime: s.startTime })}
+                              className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${
+                                oneOnOne.slotStartTime === s.startTime
+                                  ? 'border-brand bg-brand text-brandInk'
+                                  : s.available
+                                    ? 'border-borderStrong bg-card text-ink hover:bg-stripe'
+                                    : 'cursor-not-allowed border-borderSubtle bg-stripe text-inkMuted line-through opacity-60'
+                              }`}
+                            >
+                              {s.startTime}-{s.endTime}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
               </>
