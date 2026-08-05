@@ -37,7 +37,15 @@ export async function revokeLeaveRequest(leaveRequestId: string) {
 export function listLeaveRequestsForStudent(studentId: string) {
   return prisma.leaveRequest.findMany({
     where: { studentId },
-    include: { class: true, makeupRequest: true },
+    include: {
+      class: true,
+      makeupRequest: {
+        include: {
+          targetClass: { select: { name: true } },
+          teacher: { select: { user: { select: SAFE_USER_SELECT } } },
+        },
+      },
+    },
     orderBy: { date: 'desc' },
   });
 }

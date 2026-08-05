@@ -22,7 +22,16 @@ interface LeaveRow {
   reason: string;
   status: string;
   class: { name: string };
-  makeupRequest: { type: string; status: string } | null;
+  makeupRequest: {
+    type: 'INSERTION' | 'ONE_ON_ONE';
+    status: string;
+    targetDate: string | null;
+    targetClass: { name: string } | null;
+    slotDate: string | null;
+    slotStartTime: string | null;
+    slotEndTime: string | null;
+    teacher: { user: { name: string } } | null;
+  } | null;
 }
 
 export default function StudentLeaveRequestPage() {
@@ -73,17 +82,28 @@ export default function StudentLeaveRequestPage() {
     { header: '原因', render: (l) => l.reason },
     { header: '狀態', render: (l) => <StatusBadge status={l.status} /> },
     {
-      header: '補課類型',
-      render: (l) =>
-        l.makeupRequest ? (
-          l.makeupRequest.type === 'INSERTION' ? (
-            <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
-          ) : (
+      header: '補課安排',
+      render: (l) => {
+        const m = l.makeupRequest;
+        if (!m) return <span className="text-inkMuted">—</span>;
+        if (m.type === 'INSERTION') {
+          return (
+            <div className="flex flex-col items-center gap-1">
+              <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
+              <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>
+              <span className="whitespace-nowrap">{m.targetDate ? formatDateWithWeekday(m.targetDate) : '-'}</span>
+            </div>
+          );
+        }
+        return (
+          <div className="flex flex-col items-center gap-1">
             <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
-          )
-        ) : (
-          <span className="text-inkMuted">無</span>
-        ),
+            <span className="whitespace-nowrap">{m.teacher?.user.name ?? '-'}</span>
+            <span className="whitespace-nowrap">{m.slotDate ? formatDateWithWeekday(m.slotDate) : '-'}</span>
+            <span className="whitespace-nowrap">{m.slotStartTime}-{m.slotEndTime}</span>
+          </div>
+        );
+      },
     },
     {
       header: '補課狀態',
