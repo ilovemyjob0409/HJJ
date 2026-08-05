@@ -3,6 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import RevokeLeaveButton from '@/components/RevokeLeaveButton';
@@ -23,9 +24,74 @@ export interface LeaveRequestListHandle {
   reload: () => void;
 }
 
+// 已核准補課（無撤銷申請中）點「撤銷」時，用彈窗讓行政選擇撤銷範圍：
+// 連補課一起撤銷、或只撤銷補課保留請假可重排。
+function RevokeChoiceButton({ row, onDone }: { row: LeaveRow; onDone: () => void }) {
+  const { showToast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<'leave' | 'makeup' | null>(null);
+
+  async function revokeLeave() {
+    setBusy('leave');
+    try {
+      const res = await fetch(`/api/leave-requests/${row.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast(data?.error === 'MAKEUP_HAS_ATTENDANCE' ? '補課已有點名紀錄，無法撤銷' : '撤銷失敗，請稍後再試');
+        return;
+      }
+      showToast('已撤銷請假');
+      setOpen(false);
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function revokeMakeupOnly() {
+    setBusy('makeup');
+    try {
+      const res = await fetch(`/api/makeup-requests/${row.makeupRequest!.id}/revoke`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error === 'MAKEUP_HAS_ATTENDANCE' ? '此補課已有點名紀錄，無法撤銷' : '撤銷失敗，請稍後再試');
+        return;
+      }
+      showToast('已撤銷補課');
+      setOpen(false);
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs text-inkMuted underline hover:text-rejected"
+      >
+        撤銷
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title={`撤銷「${row.student.user.name}」的請假`}>
+        <p className="mb-4 text-sm text-inkMuted">這筆請假已安排補課，請選擇要撤銷的範圍：</p>
+        <div className="flex flex-col gap-2">
+          <Button onClick={revokeLeave} loading={busy === 'leave'} disabled={busy === 'makeup'}>
+            撤銷請假（連補課一起撤銷）
+          </Button>
+          <Button variant="secondary" onClick={revokeMakeupOnly} loading={busy === 'makeup'} disabled={busy === 'leave'}>
+            只撤銷補課（保留請假）
+          </Button>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 // 請假申請總表：學生自請＋行政代辦都在這裡，操作者欄區分。已核准補課
-// 的撤銷分兩種——撤銷請假（連補課一起刪）與只撤銷補課（保留請假，
-// 可重新安排）；家長申請撤銷中則改顯示同意撤銷／駁回。
+// 點「撤銷」由 RevokeChoiceButton 彈窗二選一；家長申請撤銷中則改顯示
+// 同意撤銷／駁回，回應的是家長的撤銷申請，不走選擇彈窗。
 const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveRequestList(_props, ref) {
   const { showToast } = useToast();
   const [rows, setRows] = useState<LeaveRow[]>([]);
@@ -47,9 +113,8 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
 
   useImperativeHandle(ref, () => ({ reload: load }));
 
-  async function revokeMakeupOnly(row: LeaveRow, viaRequest: boolean) {
+  async function approveCancellation(row: LeaveRow) {
     const makeupId = row.makeupRequest!.id;
-    if (!viaRequest && !confirm(`確定只撤銷「${row.student.user.name}」的這筆補課嗎？請假本身會保留，之後可重新安排補課。`)) return;
     setBusyId(makeupId);
     try {
       const res = await fetch(`/api/makeup-requests/${makeupId}/revoke`, { method: 'POST' });
@@ -98,7 +163,7 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
         ),
     },
     {
-      header: '類型',
+      header: '補課類型',
       render: (r) =>
         r.makeupRequest ? (
           <span className="text-xs text-inkMuted">{r.makeupRequest.type === 'INSERTION' ? '插班' : '一對一'}</span>
@@ -124,7 +189,7 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
         if (m?.status === 'APPROVED' && m.cancelRequestedAt) {
           return (
             <div className="flex flex-col items-center gap-1.5">
-              <Button className="px-3 py-1 text-xs" onClick={() => revokeMakeupOnly(r, true)} loading={busyId === m.id}>
+              <Button className="px-3 py-1 text-xs" onClick={() => approveCancellation(r)} loading={busyId === m.id}>
                 同意撤銷
               </Button>
               <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => rejectCancellation(r)} loading={busyId === m.id}>
@@ -133,21 +198,10 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
             </div>
           );
         }
-        return (
-          <div className="flex flex-col items-center gap-1.5">
-            <RevokeLeaveButton leaveRequestId={r.id} hasMakeup={m !== null} onDone={load} />
-            {m?.status === 'APPROVED' && (
-              <button
-                type="button"
-                onClick={() => revokeMakeupOnly(r, false)}
-                disabled={busyId === m.id}
-                className="text-xs text-inkMuted underline hover:text-rejected disabled:opacity-50"
-              >
-                只撤銷補課
-              </button>
-            )}
-          </div>
-        );
+        if (m?.status === 'APPROVED') {
+          return <RevokeChoiceButton row={r} onDone={load} />;
+        }
+        return <RevokeLeaveButton leaveRequestId={r.id} hasMakeup={m !== null} onDone={load} />;
       },
     },
   ];
