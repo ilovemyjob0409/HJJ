@@ -449,10 +449,23 @@ export async function listAttendanceSessionsForDate(
   const dayStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const nextDayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
+  // 代課老師當天被指派的班級也要能點名，不只是原班導師。
+  const substituteClassIds = teacherId
+    ? (
+        await prisma.substituteRequest.findMany({
+          where: { substituteTeacherId: teacherId, date, status: 'ASSIGNED' },
+          select: { classId: true },
+        })
+      ).map((r) => r.classId)
+    : [];
+
   const [classes, oneOnOnes, goHallSessions, activities] = await Promise.all([
     prisma.class.findMany({
-      where: { weekday, ...(teacherId ? { teacherId } : {}) },
-      select: { id: true, name: true, startTime: true, endTime: true, _count: { select: { enrollments: true } } },
+      where: {
+        weekday,
+        ...(teacherId ? { OR: [{ teacherId }, { id: { in: substituteClassIds } }] } : {}),
+      },
+      select: { id: true, name: true, startTime: true, endTime: true, teacherId: true, _count: { select: { enrollments: true } } },
     }),
     prisma.makeupRequest.findMany({
       where: { type: 'ONE_ON_ONE', status: 'APPROVED', slotDate: date, ...(teacherId ? { teacherId } : {}) },
@@ -481,10 +494,11 @@ export async function listAttendanceSessionsForDate(
           where: { type: 'INSERTION', status: 'APPROVED', targetClassId: c.id, targetDate: date },
         }),
       ]);
+      const isSubstituting = teacherId !== null && c.teacherId !== teacherId && substituteClassIds.includes(c.id);
       return {
         type: 'CLASS' as const,
         id: c.id,
-        title: c.name,
+        title: isSubstituting ? `${c.name}（代課）` : c.name,
         timeLabel: `${c.startTime}-${c.endTime}`,
         markedCount,
         totalCount: c._count.enrollments + insertionCount,

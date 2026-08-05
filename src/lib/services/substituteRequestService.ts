@@ -1,5 +1,16 @@
 import { prisma } from '@/lib/db';
 
+// 點名等處的班級歸屬檢查：原班導師，或當天已指派的代課老師，皆可存取。
+export async function teacherCanAccessClass(teacherId: string, classId: string, date: Date): Promise<boolean> {
+  const cls = await prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { teacherId: true } });
+  if (cls.teacherId === teacherId) return true;
+  const sub = await prisma.substituteRequest.findFirst({
+    where: { substituteTeacherId: teacherId, classId, date, status: 'ASSIGNED' },
+    select: { id: true },
+  });
+  return sub !== null;
+}
+
 export interface CreateSubstituteRequestInput {
   classId: string;
   originalTeacherId: string;

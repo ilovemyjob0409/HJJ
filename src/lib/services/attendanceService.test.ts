@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
+import { createSubstituteRequest, assignSubstituteTeacher } from './substituteRequestService';
 import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
@@ -974,5 +975,36 @@ describe('listClassQuotaSummaries', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].totalSessions).toBeNull();
     expect(rows[0].remaining).toBeNull();
+  });
+});
+
+describe('listAttendanceSessionsForDate — 代課老師', () => {
+  it('代課老師當天被指派的班級會出現在列表，標題加註「（代課）」；原班導師仍照常看得到（不加註）', async () => {
+    const { teacher, cls } = await setupClassWithStudent();
+    const substitute = await createTeacher({ name: '林代課老師', email: 'sub1@example.com', password: 'x', subjects: '圍棋' });
+    const date = new Date('2026-08-04'); // 週二，符合 setupClassWithStudent 的 weekday: 2
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date, reason: '出差' });
+    await assignSubstituteTeacher(req.id, substitute.id);
+
+    const subSessions = await listAttendanceSessionsForDate(date, substitute.id);
+    const subRow = subSessions.find((s) => s.type === 'CLASS' && s.id === cls.id);
+    expect(subRow).toBeDefined();
+    expect(subRow!.title).toContain('（代課）');
+
+    const ownerSessions = await listAttendanceSessionsForDate(date, teacher.id);
+    const ownerRow = ownerSessions.find((s) => s.type === 'CLASS' && s.id === cls.id);
+    expect(ownerRow).toBeDefined();
+    expect(ownerRow!.title).not.toContain('（代課）');
+  });
+
+  it('代課指派限定當天日期，其他日期代課老師看不到這個班級', async () => {
+    const { teacher, cls } = await setupClassWithStudent();
+    const substitute = await createTeacher({ name: '林代課老師2', email: 'sub2@example.com', password: 'x', subjects: '圍棋' });
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date('2026-08-04'), reason: '出差' });
+    await assignSubstituteTeacher(req.id, substitute.id);
+
+    // 班級每週二上課，下週二（8/11）代課老師沒有被指派，不應出現
+    const sessions = await listAttendanceSessionsForDate(new Date('2026-08-11'), substitute.id);
+    expect(sessions.find((s) => s.type === 'CLASS' && s.id === cls.id)).toBeUndefined();
   });
 });

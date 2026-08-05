@@ -6,6 +6,7 @@ import {
   listPendingSubstituteRequests,
   assignSubstituteTeacher,
   listAssignedSubstituteRequestsForTeacher,
+  teacherCanAccessClass,
 } from './substituteRequestService';
 
 describe('createSubstituteRequest / listPendingSubstituteRequests', () => {
@@ -64,5 +65,43 @@ describe('listAssignedSubstituteRequestsForTeacher', () => {
     expect(results[0].class.startTime).toBe('19:00');
     expect(results[0].class.endTime).toBe('21:00');
     expect(results[0].originalTeacher.user.name).toBe('陳老師');
+  });
+});
+
+describe('teacherCanAccessClass', () => {
+  it('allows the class\'s own regular teacher', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen2@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    expect(await teacherCanAccessClass(teacher.id, cls.id, new Date(2030, 0, 7))).toBe(true);
+  });
+
+  it('allows an ASSIGNED substitute on the assigned date, but not other dates', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen3@example.com', password: 'x', subjects: '數學' });
+    const substitute = await createTeacher({ name: '林老師', email: 'lin3@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 7), reason: '出差' });
+    await assignSubstituteTeacher(req.id, substitute.id);
+
+    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(2030, 0, 7))).toBe(true);
+    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(2030, 0, 14))).toBe(false);
+  });
+
+  it('denies an unrelated teacher', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen4@example.com', password: 'x', subjects: '數學' });
+    const other = await createTeacher({ name: '王老師', email: 'wang4@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    expect(await teacherCanAccessClass(other.id, cls.id, new Date(2030, 0, 7))).toBe(false);
+  });
+
+  it('denies a substitute whose request is still PENDING_ASSIGNMENT', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen5@example.com', password: 'x', subjects: '數學' });
+    const substitute = await createTeacher({ name: '林老師', email: 'lin5@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    // 建立請求但不指派——substitute 對此請求沒有 substituteTeacherId 關聯
+    await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 7), reason: '出差' });
+
+    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(2030, 0, 7))).toBe(false);
   });
 });
