@@ -63,11 +63,13 @@ export function assignSubstituteTeacher(id: string, substituteTeacherId: string)
 }
 
 // For the teacher dashboard: substitute duties assigned to this teacher.
-export function listAssignedSubstituteRequestsForTeacher(teacherId: string) {
+// 學生名單附堂數進度，算法與 listClassesForTeacher 一致（單一批次
+// groupBy 掃所有相關班級，避免逐生查詢；正式站 pg pool max:1）。
+export async function listAssignedSubstituteRequestsForTeacher(teacherId: string) {
   // 老師首頁「被指派」區塊只列今天（含）以後，沿用全站 upcoming 邊界。
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return prisma.substituteRequest.findMany({
+  const requests = await prisma.substituteRequest.findMany({
     where: { substituteTeacherId: teacherId, date: { gte: today } },
     select: {
       id: true,
@@ -76,14 +78,46 @@ export function listAssignedSubstituteRequestsForTeacher(teacherId: string) {
       status: true,
       class: {
         select: {
+          id: true,
           name: true,
           startTime: true,
           endTime: true,
-          enrollments: { select: { student: { select: { id: true, user: { select: SAFE_USER_SELECT } } } } },
+          enrollments: {
+            select: { totalSessions: true, student: { select: { id: true, user: { select: SAFE_USER_SELECT } } } },
+          },
         },
       },
       originalTeacher: { select: { user: { select: SAFE_USER_SELECT } } },
     },
     orderBy: { date: 'asc' },
   });
+
+  const classIds = Array.from(new Set(requests.map((r) => r.class.id)));
+  const counts =
+    classIds.length === 0
+      ? []
+      : await prisma.classAttendance.groupBy({
+          by: ['classId', 'studentId'],
+          // 請假與未報名（報名時聲明不來、未繳該堂費用）都不扣堂。
+          where: { classId: { in: classIds }, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } },
+          _count: { _all: true },
+        });
+  const usedByKey = new Map(counts.map((c) => [`${c.classId}:${c.studentId}`, c._count._all]));
+
+  return requests.map((r) => ({
+    ...r,
+    class: {
+      ...r.class,
+      students: r.class.enrollments.map((e) => {
+        const usedSessions = usedByKey.get(`${r.class.id}:${e.student.id}`) ?? 0;
+        return {
+          studentId: e.student.id,
+          name: e.student.user.name,
+          totalSessions: e.totalSessions,
+          usedSessions,
+          remaining: e.totalSessions === null ? null : e.totalSessions - usedSessions,
+        };
+      }),
+    },
+  }));
 }

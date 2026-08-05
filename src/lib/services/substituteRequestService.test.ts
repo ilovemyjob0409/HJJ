@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createClass, enrollStudent } from './classService';
+import { createClass, enrollStudent, setStudentEnrollments } from './classService';
 import {
   createSubstituteRequest,
   listPendingSubstituteRequests,
@@ -68,7 +69,10 @@ describe('listAssignedSubstituteRequestsForTeacher', () => {
     expect(results[0].class.startTime).toBe('19:00');
     expect(results[0].class.endTime).toBe('21:00');
     expect(results[0].originalTeacher.user.name).toBe('陳老師');
-    expect(results[0].class.enrollments.map((e) => e.student.user.name)).toEqual(['小明']);
+    expect(results[0].class.students.map((s) => s.name)).toEqual(['小明']);
+    expect(results[0].class.students[0].usedSessions).toBe(0);
+    expect(results[0].class.students[0].totalSessions).toBeNull();
+    expect(results[0].class.students[0].remaining).toBeNull();
   });
 });
 
@@ -107,5 +111,28 @@ describe('teacherCanAccessClass', () => {
     await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 7), reason: '出差' });
 
     expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(2030, 0, 7))).toBe(false);
+  });
+});
+
+describe('listAssignedSubstituteRequestsForTeacher — 學生堂數進度', () => {
+  it('批次計算已上堂數與剩餘堂數（比照 listClassesForTeacher 的算法）', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen6@example.com', password: 'x', subjects: '圍棋' });
+    const substitute = await createTeacher({ name: '林老師', email: 'lin6@example.com', password: 'x', subjects: '圍棋' });
+    const cls = await createClass({ name: '圍棋A班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const student = await createStudent({ name: '小華', email: 'hua6@example.com', password: 'x' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 10 }]);
+    const marker = await prisma.user.findFirstOrThrow();
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date(2030, 0, 7), status: 'PRESENT', markedById: marker.id },
+    });
+
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 14), reason: '出差' });
+    await assignSubstituteTeacher(req.id, substitute.id);
+
+    const results = await listAssignedSubstituteRequestsForTeacher(substitute.id);
+
+    expect(results[0].class.students).toEqual([
+      { studentId: student.id, name: '小華', totalSessions: 10, usedSessions: 1, remaining: 9 },
+    ]);
   });
 });

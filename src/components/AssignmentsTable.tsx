@@ -6,6 +6,15 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
+import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
+
+interface AssignmentStudent {
+  studentId: string;
+  name: string;
+  totalSessions: number | null;
+  usedSessions: number;
+  remaining: number | null;
+}
 
 // 代課與一對一補課合併成單一「被指派」列表，用類型欄位區分。
 export interface AssignmentRow {
@@ -18,12 +27,20 @@ export interface AssignmentRow {
   counterpartName: string; // 代課：原老師；一對一：學生
   substituteReason: string | null;
   status: string;
-  // 代課的整班名單；一對一只有單一學生（已在 counterpartName 顯示），固定空陣列。
-  students: { id: string; name: string }[];
+  // 代課的整班名單＋堂數進度；一對一只有單一學生（已在 counterpartName 顯示），固定空陣列。
+  students: AssignmentStudent[];
 }
 
-// 代課點列開整班名單（比照「我的帶班班級」）；一對一補課的對象已顯示在
-// 「對象」欄，點列不需要再開名單，不套用可點擊樣式。
+const studentColumns: Column<AssignmentStudent>[] = [
+  { header: '學生', render: (s) => s.name },
+  {
+    header: '堂數進度',
+    render: (s) => (s.totalSessions === null ? `${s.usedSessions} 堂` : `${s.usedSessions}／${s.totalSessions} 堂`),
+  },
+];
+
+// 代課點列開整班名單（比照「我的帶班班級」，含堂數進度與快結堂提示）；
+// 一對一補課的對象已顯示在「對象」欄，點列不需要再開名單，不套用可點擊樣式。
 export default function AssignmentsTable({ rows }: { rows: AssignmentRow[] }) {
   const [viewing, setViewing] = useState<AssignmentRow | null>(null);
 
@@ -67,6 +84,8 @@ export default function AssignmentsTable({ rows }: { rows: AssignmentRow[] }) {
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
   ];
 
+  const lowQuota = viewing?.students.filter((s) => s.remaining !== null && s.remaining <= LOW_CLASS_QUOTA_THRESHOLD) ?? [];
+
   return (
     <Card className="mb-6">
       <DataTable
@@ -89,13 +108,16 @@ export default function AssignmentsTable({ rows }: { rows: AssignmentRow[] }) {
             {viewing.students.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生</p>
             ) : (
-              <ul className="flex flex-col gap-1">
-                {viewing.students.map((s) => (
-                  <li key={s.id} className="text-sm text-ink">
-                    {s.name}
-                  </li>
+              <DataTable columns={studentColumns} rows={viewing.students} keyField={(s) => s.studentId} />
+            )}
+            {lowQuota.length > 0 && (
+              <div className="mt-3 flex flex-col gap-1">
+                {lowQuota.map((s) => (
+                  <p key={s.studentId} className="text-sm text-pending">
+                    ⚠ {s.name} 剩 {s.remaining} 堂
+                  </p>
                 ))}
-              </ul>
+              </div>
             )}
           </>
         )}

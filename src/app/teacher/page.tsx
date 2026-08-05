@@ -64,7 +64,7 @@ export default async function TeacherDashboard() {
       counterpartName: s.originalTeacher.user.name,
       substituteReason: s.reason,
       status: s.status,
-      students: s.class.enrollments.map((e) => ({ id: e.student.id, name: e.student.user.name })),
+      students: s.class.students,
     })),
     ...oneOnOnes.map((m) => ({
       id: m.id,
