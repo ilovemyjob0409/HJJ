@@ -54,14 +54,7 @@ export default function LeaveRequestList() {
     {
       header: '補課',
       render: (r) =>
-        r.makeupRequest ? (
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-xs text-inkMuted">{r.makeupRequest.type === 'INSERTION' ? '插班' : '一對一'}</span>
-            <StatusBadge status={r.makeupRequest.status} />
-          </div>
-        ) : (
-          <span className="text-inkMuted">無</span>
-        ),
+        r.makeupRequest ? <StatusBadge status={r.makeupRequest.status} /> : <span className="text-inkMuted">無</span>,
     },
     {
       header: '操作',
