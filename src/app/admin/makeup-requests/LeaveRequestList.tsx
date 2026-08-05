@@ -52,9 +52,18 @@ export default function LeaveRequestList() {
         ),
     },
     {
-      header: '補課',
+      header: '類型',
       render: (r) =>
-        r.makeupRequest ? <StatusBadge status={r.makeupRequest.status} /> : <span className="text-inkMuted">無</span>,
+        r.makeupRequest ? (
+          <span className="text-xs text-inkMuted">{r.makeupRequest.type === 'INSERTION' ? '插班' : '一對一'}</span>
+        ) : (
+          <span className="text-inkMuted">無</span>
+        ),
+    },
+    {
+      header: '狀態',
+      render: (r) =>
+        r.makeupRequest ? <StatusBadge status={r.makeupRequest.status} /> : <span className="text-inkMuted">—</span>,
     },
     {
       header: '操作',
