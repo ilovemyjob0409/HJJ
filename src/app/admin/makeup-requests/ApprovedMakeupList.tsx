@@ -83,7 +83,12 @@ const ApprovedMakeupList = forwardRef<ApprovedMakeupListHandle>(function Approve
     { header: '學生', render: (r) => r.leaveRequest.student.user.name },
     {
       header: '原班級（請假日）',
-      render: (r) => `${r.leaveRequest.class.name}（${formatDateWithWeekday(r.leaveRequest.date)}）`,
+      render: (r) => (
+        <span>
+          <span className="whitespace-nowrap">{r.leaveRequest.class.name}</span>
+          <span className="whitespace-nowrap">（{formatDateWithWeekday(r.leaveRequest.date)}）</span>
+        </span>
+      ),
     },
     {
       header: '類型',
@@ -99,11 +104,13 @@ const ApprovedMakeupList = forwardRef<ApprovedMakeupListHandle>(function Approve
       render: (r) =>
         r.type === 'INSERTION' ? (
           <span>
-            {r.targetClass?.name}・{r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}
+            <span className="whitespace-nowrap">{r.targetClass?.name}</span>・
+            <span className="whitespace-nowrap">{r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}</span>
           </span>
         ) : (
           <span>
-            {r.teacher?.user.name}・{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}{' '}
+            {r.teacher?.user.name}・
+            <span className="whitespace-nowrap">{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}</span>{' '}
             <span className="whitespace-nowrap">{r.slotStartTime}-{r.slotEndTime}</span>
           </span>
         ),

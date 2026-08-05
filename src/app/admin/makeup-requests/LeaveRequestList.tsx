@@ -37,7 +37,7 @@ export default function LeaveRequestList() {
 
   const columns: Column<LeaveRow>[] = [
     { header: '學生', render: (r) => r.student.user.name },
-    { header: '班級', render: (r) => r.class.name },
+    { header: '班級', render: (r) => <span className="whitespace-nowrap">{r.class.name}</span> },
     { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
     { header: '原因', render: (r) => r.reason },
     {

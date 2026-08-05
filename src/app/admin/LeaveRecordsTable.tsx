@@ -36,7 +36,7 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
 
   const columns: Column<LeaveRow>[] = [
     { header: '學生', render: (r) => r.student.user.name },
-    { header: '請假班級', render: (r) => r.class.name },
+    { header: '請假班級', render: (r) => <span className="whitespace-nowrap">{r.class.name}</span> },
     { header: '請假日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
     {
       header: '補課安排',
@@ -48,7 +48,8 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
             <div className="flex flex-col items-center gap-1">
               <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">插班</span>
               <span>
-                {m.targetClass?.name ?? '-'}・{m.targetDate ? formatDateWithWeekday(m.targetDate, 'zh-TW') : '-'}
+                <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>・
+                <span className="whitespace-nowrap">{m.targetDate ? formatDateWithWeekday(m.targetDate, 'zh-TW') : '-'}</span>
               </span>
             </div>
           );
@@ -57,7 +58,8 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
           <div className="flex flex-col items-center gap-1">
             <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
             <span>
-              {m.teacher?.user.name ?? '-'}・{m.slotDate ? formatDateWithWeekday(m.slotDate, 'zh-TW') : '-'}{' '}
+              {m.teacher?.user.name ?? '-'}・
+              <span className="whitespace-nowrap">{m.slotDate ? formatDateWithWeekday(m.slotDate, 'zh-TW') : '-'}</span>{' '}
               <span className="whitespace-nowrap">{m.slotStartTime}-{m.slotEndTime}</span>
             </span>
           </div>

@@ -111,7 +111,7 @@ export default async function TeacherDashboard() {
       header: '日期',
       render: (r) => (
         <>
-          {formatDateWithWeekday(r.date)}
+          <span className="whitespace-nowrap">{formatDateWithWeekday(r.date)}</span>
           {isTodayTaipei(r.date) && (
             <span className="ml-1.5 inline-block whitespace-nowrap rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-brandInk">
               今天
@@ -120,8 +120,8 @@ export default async function TeacherDashboard() {
         </>
       ),
     },
-    { header: '時間', render: (r) => `${r.startTime}-${r.endTime}` },
-    { header: '班級', render: (r) => r.className },
+    { header: '時間', render: (r) => <span className="whitespace-nowrap">{`${r.startTime}-${r.endTime}`}</span> },
+    { header: '班級', render: (r) => <span className="whitespace-nowrap">{r.className}</span> },
     {
       header: '對象',
       render: (r) =>

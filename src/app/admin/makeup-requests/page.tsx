@@ -65,7 +65,7 @@ function AdminMakeupRequestsContent() {
 
   const columns: Column<PendingRow>[] = [
     { header: '學生', render: (r) => r.leaveRequest.student.user.name },
-    { header: '原班級', render: (r) => r.leaveRequest.class.name },
+    { header: '原班級', render: (r) => <span className="whitespace-nowrap">{r.leaveRequest.class.name}</span> },
     {
       header: '類型',
       render: (r) =>
@@ -80,11 +80,13 @@ function AdminMakeupRequestsContent() {
       render: (r) =>
         r.type === 'INSERTION' ? (
           <span>
-            {r.targetClass?.name}・{r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}
+            <span className="whitespace-nowrap">{r.targetClass?.name}</span>・
+            <span className="whitespace-nowrap">{r.targetDate ? formatDateWithWeekday(r.targetDate) : ''}</span>
           </span>
         ) : (
           <span>
-            {r.teacher?.user.name}・{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}{' '}
+            {r.teacher?.user.name}・
+            <span className="whitespace-nowrap">{r.slotDate ? formatDateWithWeekday(r.slotDate) : ''}</span>{' '}
             <span className="whitespace-nowrap">{r.slotStartTime}-{r.slotEndTime}</span>
           </span>
         ),
