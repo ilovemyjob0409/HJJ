@@ -450,7 +450,13 @@ export function listInsertionsForTeacherClasses(teacherId: string) {
       status: true,
       targetDate: true,
       targetClass: { select: { name: true } },
-      leaveRequest: { select: { student: { select: { user: { select: SAFE_USER_SELECT } } } } },
+      leaveRequest: {
+        select: {
+          date: true,
+          class: { select: { name: true } },
+          student: { select: { user: { select: SAFE_USER_SELECT } } },
+        },
+      },
     },
     orderBy: { targetDate: 'desc' },
   });

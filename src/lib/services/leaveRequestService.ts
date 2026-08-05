@@ -63,7 +63,19 @@ export function listLeaveRequestsForTeacherClasses(teacherId: string) {
       reason: true,
       student: { select: { user: { select: SAFE_USER_SELECT } } },
       class: { select: { name: true } },
-      makeupRequest: { select: { id: true } },
+      makeupRequest: {
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          targetDate: true,
+          targetClass: { select: { name: true } },
+          slotDate: true,
+          slotStartTime: true,
+          slotEndTime: true,
+          teacher: { select: { user: { select: SAFE_USER_SELECT } } },
+        },
+      },
     },
     orderBy: { date: 'desc' },
   });

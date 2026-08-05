@@ -21,21 +21,23 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 // serves that frozen snapshot to every teacher until the next deploy.
 export const dynamic = 'force-dynamic';
 
-interface LeaveRow {
+// 合併「我的學生請假」與「別班插班進我班」兩種方向，用 direction 欄位區分：
+// MY_STUDENT 的原班級是我自己的班（學生從這裡請假）；INCOMING 的原班級是
+// 學生的本班（別班，插班進我班補課）。操作（撤銷請假）只對我自己的學生開放。
+interface TeacherLeaveRow {
   id: string;
+  direction: 'MY_STUDENT' | 'INCOMING';
+  studentName: string;
+  originClassName: string;
   date: Date;
-  reason: string;
-  student: { user: { name: string } };
-  class: { name: string };
-  makeupRequest: { id: string } | null;
-}
-
-interface InsertionRow {
-  id: string;
-  status: string;
-  targetDate: Date | null;
-  targetClass: { name: string } | null;
-  leaveRequest: { student: { user: { name: string } } };
+  makeupDate: Date | null;
+  makeupType: 'INSERTION' | 'ONE_ON_ONE' | null;
+  destinationClassName: string | null;
+  teacherName: string | null;
+  slotStartTime: string | null;
+  slotEndTime: string | null;
+  status: string | null;
+  makeupRequestId: string | null;
 }
 
 export default async function TeacherDashboard() {
@@ -87,21 +89,90 @@ export default async function TeacherDashboard() {
     registeredCount: s._count.registrations,
   }));
 
-  const leaveColumns: Column<LeaveRow>[] = [
-    { header: '學生', render: (r) => r.student.user.name },
-    { header: '班級', render: (r) => r.class.name },
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
+  const teacherLeaveRows: TeacherLeaveRow[] = [
+    ...leaves.map((r) => {
+      const m = r.makeupRequest;
+      return {
+        id: r.id,
+        direction: 'MY_STUDENT' as const,
+        studentName: r.student.user.name,
+        originClassName: r.class.name,
+        date: r.date,
+        makeupDate: m ? (m.type === 'INSERTION' ? m.targetDate : m.slotDate) : null,
+        makeupType: m?.type ?? null,
+        destinationClassName: m?.type === 'INSERTION' ? (m.targetClass?.name ?? null) : null,
+        teacherName: m?.type === 'ONE_ON_ONE' ? (m.teacher?.user.name ?? null) : null,
+        slotStartTime: m?.type === 'ONE_ON_ONE' ? m.slotStartTime : null,
+        slotEndTime: m?.type === 'ONE_ON_ONE' ? m.slotEndTime : null,
+        status: m?.status ?? null,
+        makeupRequestId: m?.id ?? null,
+      };
+    }),
+    ...insertions.map((r) => ({
+      id: r.id,
+      direction: 'INCOMING' as const,
+      studentName: r.leaveRequest.student.user.name,
+      originClassName: r.leaveRequest.class.name,
+      date: r.leaveRequest.date,
+      makeupDate: r.targetDate,
+      makeupType: 'INSERTION' as const,
+      destinationClassName: r.targetClass?.name ?? null,
+      teacherName: null,
+      slotStartTime: null,
+      slotEndTime: null,
+      status: r.status,
+      makeupRequestId: null,
+    })),
+  ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  const teacherLeaveColumns: Column<TeacherLeaveRow>[] = [
+    { header: '學生', render: (r) => r.studentName },
+    {
+      header: '方向',
+      render: (r) =>
+        r.direction === 'MY_STUDENT' ? (
+          <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">我的學生請假</span>
+        ) : (
+          <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班進我班</span>
+        ),
+    },
+    { header: '原班級', render: (r) => <span className="whitespace-nowrap">{r.originClassName}</span> },
+    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
+    { header: '補課日期', render: (r) => (r.makeupDate ? formatDateWithWeekday(r.makeupDate) : <span className="text-inkMuted">—</span>) },
+    {
+      header: '補課去向',
+      render: (r) => {
+        if (!r.makeupType) return <span className="text-inkMuted">—</span>;
+        if (r.makeupType === 'INSERTION') {
+          return (
+            <div className="flex flex-col items-center gap-1">
+              <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
+              <span className="whitespace-nowrap">{r.destinationClassName ?? '-'}</span>
+            </div>
+          );
+        }
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
+            <span className="whitespace-nowrap">{r.teacherName ?? '-'}</span>
+            <span className="whitespace-nowrap">{r.slotStartTime}-{r.slotEndTime}</span>
+          </div>
+        );
+      },
+    },
+    {
+      header: '狀態',
+      render: (r) => (r.status ? <StatusBadge status={r.status} /> : <span className="text-inkMuted">尚未申請</span>),
+    },
     {
       header: '操作',
-      render: (r) => <RevokeLeaveButton leaveRequestId={r.id} hasMakeup={r.makeupRequest !== null} />,
+      render: (r) =>
+        r.direction === 'MY_STUDENT' ? (
+          <RevokeLeaveButton leaveRequestId={r.id} hasMakeup={r.makeupRequestId !== null} />
+        ) : (
+          <span className="text-inkMuted">—</span>
+        ),
     },
-  ];
-
-  const insertionColumns: Column<InsertionRow>[] = [
-    { header: '學生', render: (r) => r.leaveRequest.student.user.name },
-    { header: '插班班級', render: (r) => r.targetClass?.name ?? '-' },
-    { header: '插班日期', render: (r) => (r.targetDate ? formatDateWithWeekday(r.targetDate) : '-') },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
   ];
 
   return (
@@ -130,14 +201,14 @@ export default async function TeacherDashboard() {
         <AttendanceHub hideDatePicker />
       </div>
 
-      <h2 className="mb-2 font-bold text-ink">學生請假紀錄</h2>
-      <Card className="mb-6">
-        <DataTable columns={leaveColumns} rows={leaves} keyField={(r) => r.id} />
-      </Card>
-
-      <h2 className="mb-2 font-bold text-ink">學生插班紀錄</h2>
+      <h2 className="mb-2 font-bold text-ink">學生請假與補課紀錄</h2>
       <Card>
-        <DataTable columns={insertionColumns} rows={insertions} keyField={(r) => r.id} />
+        <DataTable
+          columns={teacherLeaveColumns}
+          rows={teacherLeaveRows}
+          keyField={(r) => `${r.direction}-${r.id}`}
+          emptyText="目前沒有相關紀錄"
+        />
       </Card>
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳管理</h2>
