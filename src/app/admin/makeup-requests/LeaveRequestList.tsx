@@ -100,7 +100,7 @@ function RevokeChoiceButton({ row, onDone }: { row: LeaveRow; onDone: () => void
   );
 }
 
-// 請假申請總表：學生自請＋行政代辦都在這裡，操作者欄區分。已核准補課
+// 請假申請總表：學生自請＋行政代辦都在這裡。已核准補課
 // 點「撤銷」由 RevokeChoiceButton 彈窗二選一；家長申請撤銷中則改顯示
 // 同意撤銷／駁回，回應的是家長的撤銷申請，不走選擇彈窗。
 const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveRequestList(_props, ref) {
@@ -163,17 +163,6 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
     { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
     { header: '原因', render: (r) => r.reason },
     {
-      header: '操作者',
-      render: (r) =>
-        r.origin === 'ADMIN' ? (
-          <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">行政代辦</span>
-        ) : r.origin === 'STUDENT' ? (
-          <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">學生</span>
-        ) : (
-          <span className="text-inkMuted">—</span>
-        ),
-    },
-    {
       header: '補課日期',
       render: (r) => {
         const m = r.makeupRequest;
@@ -190,7 +179,7 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
         if (m.type === 'INSERTION') {
           return (
             <div className="flex flex-col items-center gap-1">
-              <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
+              <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班</span>
               <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>
             </div>
           );

@@ -133,7 +133,7 @@ export default async function TeacherDashboard() {
         r.direction === 'MY_STUDENT' ? (
           <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">我的學生請假</span>
         ) : (
-          <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班進我班</span>
+          <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班進我班</span>
         ),
     },
     { header: '原班級', render: (r) => <span className="whitespace-nowrap">{r.originClassName}</span> },
@@ -146,7 +146,7 @@ export default async function TeacherDashboard() {
         if (r.makeupType === 'INSERTION') {
           return (
             <div className="flex flex-col items-center gap-1">
-              <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
+              <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班</span>
               <span className="whitespace-nowrap">{r.destinationClassName ?? '-'}</span>
             </div>
           );

@@ -69,7 +69,7 @@ function AdminMakeupRequestsContent() {
       header: '類型',
       render: (r) =>
         r.type === 'INSERTION' ? (
-          <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
+          <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班</span>
         ) : (
           <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
         ),

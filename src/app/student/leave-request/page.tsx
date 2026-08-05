@@ -98,7 +98,7 @@ export default function StudentLeaveRequestPage() {
         if (m.type === 'INSERTION') {
           return (
             <div className="flex flex-col items-center gap-1">
-              <span className="whitespace-nowrap rounded-full bg-insertionBg px-2.5 py-0.5 text-xs font-bold text-insertion">插班</span>
+              <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班</span>
               <span className="whitespace-nowrap">{m.targetClass?.name ?? '-'}</span>
             </div>
           );

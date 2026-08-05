@@ -8,6 +8,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import SubstituteHistoryTable from '../SubstituteHistoryTable';
 
 interface TeacherOption {
   id: string;
@@ -22,9 +23,20 @@ interface PendingRow {
   originalTeacher: { user: { name: string } };
 }
 
+interface HistoryRow {
+  id: string;
+  date: Date;
+  reason: string;
+  status: string;
+  class: { name: string };
+  originalTeacher: { user: { name: string } };
+  substituteTeacher: { user: { name: string } } | null;
+}
+
 export default function AdminSubstituteRequestsPage() {
   const { showToast } = useToast();
   const [rows, setRows] = useState<PendingRow[]>([]);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -32,9 +44,14 @@ export default function AdminSubstituteRequestsPage() {
 
   async function load() {
     try {
-      const [reqRes, teacherRes] = await Promise.all([fetch('/api/substitute-requests'), fetch('/api/teachers')]);
+      const [reqRes, teacherRes, historyRes] = await Promise.all([
+        fetch('/api/substitute-requests'),
+        fetch('/api/teachers'),
+        fetch('/api/substitute-requests/all'),
+      ]);
       setRows(await reqRes.json());
       setTeachers(await teacherRes.json());
+      setHistory(await historyRes.json());
     } finally {
       setLoading(false);
     }
@@ -86,9 +103,11 @@ export default function AdminSubstituteRequestsPage() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">待安排代課</h1>
-      <Card>
+      <Card className="mb-6">
         <DataTable columns={columns} rows={rows} keyField={(r) => r.id} loading={loading} />
       </Card>
+
+      <SubstituteHistoryTable title="安排代課紀錄" rows={history} />
     </>
   );
 }
