@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Button from '@/components/ui/Button';
 import ImageCropModal from '@/components/ImageCropModal';
 import { useToast } from '@/components/ui/Toast';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useDialogA11y } from '@/components/ui/useDialogA11y';
 import { uploadActivityImageFile } from '@/lib/uploadActivityImage';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
@@ -83,6 +84,7 @@ export default function ActivityDetail({
   footer,
 }: ActivityDetailProps) {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [images, setImages] = useState<AlbumImage[]>([]);
   const [albumLoading, setAlbumLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -157,7 +159,7 @@ export default function ActivityDetail({
   }
 
   async function handleDeleteImage(imageId: string) {
-    if (!confirm('確定要刪除這張照片嗎？')) return;
+    if (!(await confirm('確定要刪除這張照片嗎？', { danger: true }))) return;
     setPendingImageId(imageId);
     try {
       const res = await fetch(`/api/activity-images/${imageId}`, { method: 'DELETE' });
@@ -407,6 +409,7 @@ export default function ActivityDetail({
           </div>,
           document.body
         )}
+      {ConfirmDialog}
     </div>
   );
 }

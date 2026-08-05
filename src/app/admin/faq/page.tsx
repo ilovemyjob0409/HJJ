@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 
 interface FaqItemRow {
@@ -17,6 +18,7 @@ interface FaqItemRow {
 
 export default function AdminFaqPage() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [items, setItems] = useState<FaqItemRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -86,7 +88,7 @@ export default function AdminFaqPage() {
 
   async function handleDelete() {
     if (!editing) return;
-    if (!confirm(`確定要刪除「${editing.question}」嗎？此操作無法復原。`)) return;
+    if (!(await confirm(`確定要刪除「${editing.question}」嗎？此操作無法復原。`, { danger: true }))) return;
     await fetch(`/api/faq/${editing.id}`, { method: 'DELETE' });
     setEditing(null);
     showToast('已刪除');
@@ -191,6 +193,7 @@ export default function AdminFaqPage() {
           rows={items}
           keyField={(item) => item.id}
           loading={loading}
+          emptyText="目前沒有常見問題"
           onRowClick={openEdit}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
         />
@@ -218,6 +221,7 @@ export default function AdminFaqPage() {
           刪除此問題
         </button>
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

@@ -5,7 +5,10 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
+import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
@@ -52,6 +55,7 @@ interface TicketDetail {
 
 export default function TicketManager() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [summaries, setSummaries] = useState<SummaryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -141,7 +145,7 @@ export default function TicketManager() {
   }
 
   async function handleDeletePass(id: string) {
-    if (!confirm('確定要刪除這筆季票嗎？')) return;
+    if (!(await confirm('確定要刪除這筆季票嗎？', { danger: true }))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/go-hall-season-passes/${id}`, { method: 'DELETE' });
@@ -206,6 +210,16 @@ export default function TicketManager() {
     },
   ];
 
+  const historyExportColumns = [
+    { header: '日期', value: (h: HistoryRow) => formatDateWithWeekday(h.createdAt, 'zh-TW') },
+    { header: '類型', value: (h: HistoryRow) => KIND_LABELS[h.kind] ?? h.kind },
+    { header: '堂數', value: (h: HistoryRow) => (h.amount > 0 ? `+${h.amount}` : `${h.amount}`) },
+    {
+      header: '備註',
+      value: (h: HistoryRow) => h.reason ?? (h.sessionDate ? `場次 ${formatDateWithWeekday(h.sessionDate, 'zh-TW')}` : ''),
+    },
+  ];
+
   return (
     <>
       <h2 className="mb-2 font-bold text-ink">票券管理</h2>
@@ -213,7 +227,7 @@ export default function TicketManager() {
         <div className="mb-3">
           <Input placeholder="搜尋姓名或學號" value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
         </div>
-        <DataTable columns={columns} rows={filtered} keyField={(s) => s.id} loading={loading} />
+        <DataTable columns={columns} rows={filtered} keyField={(s) => s.id} loading={loading} emptyText="找不到符合的學生" />
       </Card>
 
       <Modal open={managing !== null} onClose={() => setManaging(null)} title={managing ? `票券管理 - ${managing.name}` : ''} maxWidthClassName="max-w-2xl">
@@ -288,14 +302,29 @@ export default function TicketManager() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <h3 className="text-sm font-bold text-ink">異動紀錄</h3>
-                  <DataTable columns={historyColumns} rows={detail.history} keyField={(h) => h.id} />
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-bold text-ink">異動紀錄</h3>
+                    <ExportCsvButton
+                      rows={detail.history}
+                      columns={historyExportColumns}
+                      filename={`${managing.name}_弈廳異動紀錄`}
+                      className="ml-auto shrink-0"
+                    />
+                  </div>
+                  <CollapsibleDataTable
+                    columns={historyColumns}
+                    rows={detail.history}
+                    keyField={(h) => h.id}
+                    maxRows={3}
+                    emptyText="尚無異動紀錄"
+                  />
                 </div>
               </>
             )}
           </div>
         )}
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

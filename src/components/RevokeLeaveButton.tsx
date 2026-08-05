@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 
 // 撤銷請假（學生／老師／行政共用）。掛有補課時警告會一併撤銷；
 // 補課已點名則後端會擋下（MAKEUP_HAS_ATTENDANCE）。
@@ -17,13 +18,14 @@ export default function RevokeLeaveButton({
 }) {
   const router = useRouter();
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [busy, setBusy] = useState(false);
 
   async function handleClick() {
     const warning = hasMakeup
       ? '確定要撤銷這筆請假嗎？此請假的補課申請將一併撤銷。'
       : '確定要撤銷這筆請假嗎？';
-    if (!confirm(warning)) return;
+    if (!(await confirm(warning, { danger: true }))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/leave-requests/${leaveRequestId}`, { method: 'DELETE' });
@@ -41,13 +43,16 @@ export default function RevokeLeaveButton({
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={busy}
-      className="rounded-lg border border-pending px-3 py-1 text-xs font-semibold text-pending transition-colors hover:bg-pendingBg disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      撤銷
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={busy}
+        className="rounded-lg border border-pending px-3 py-1 text-xs font-semibold text-pending transition-colors hover:bg-pendingBg disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        撤銷
+      </button>
+      {ConfirmDialog}
+    </>
   );
 }

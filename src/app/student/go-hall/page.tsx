@@ -5,7 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
@@ -42,6 +44,7 @@ interface MyTickets {
 
 function StudentGoHallContent() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
 
@@ -84,7 +87,7 @@ function StudentGoHallContent() {
   }, [highlightId, myRegistrations]);
 
   async function handleRegister(sessionId: string) {
-    if (!confirm('確定要報名這場嗎？')) return;
+    if (!(await confirm('確定要報名這場嗎？'))) return;
     setPendingId(sessionId);
     try {
       const res = await fetch('/api/go-hall-registrations', { method: 'POST', body: JSON.stringify({ sessionId }) });
@@ -101,7 +104,7 @@ function StudentGoHallContent() {
   }
 
   async function handleCancel(registrationId: string) {
-    if (!confirm('確定要取消這場報名嗎？')) return;
+    if (!(await confirm('確定要取消這場報名嗎？'))) return;
     const res = await fetch(`/api/go-hall-registrations/${registrationId}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
@@ -200,12 +203,13 @@ function StudentGoHallContent() {
           onRowClick={(s) => openRoster(s.id)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
           loading={loading}
+          emptyText="目前沒有開放中的場次"
         />
       </Card>
 
       <h2 className="mb-2 font-bold text-ink">我的報名紀錄</h2>
       <Card>
-        <DataTable
+        <CollapsibleDataTable
           columns={myColumns}
           rows={myRegistrations}
           keyField={(r) => r.id}
@@ -215,6 +219,8 @@ function StudentGoHallContent() {
             if (r.id === highlightId) setHighlightDismissed(true);
           }}
           loading={loading}
+          maxRows={3}
+          emptyText="目前沒有報名紀錄"
         />
       </Card>
 
@@ -238,6 +244,7 @@ function StudentGoHallContent() {
           </div>
         )}
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

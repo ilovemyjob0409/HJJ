@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import TimetableModal from './TimetableModal';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
@@ -41,6 +42,7 @@ interface ClassRow {
 export default function ClassesPage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [search, setSearch] = useState('');
@@ -142,7 +144,7 @@ export default function ClassesPage() {
 
   async function handleDelete() {
     if (!editing) return;
-    if (!confirm(`確定要刪除班級「${editing.name}」嗎？此操作無法復原。`)) return;
+    if (!(await confirm(`確定要刪除班級「${editing.name}」嗎？此操作無法復原。`, { danger: true }))) return;
     setEditError('');
     const res = await fetch(`/api/classes/${editing.id}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -237,6 +239,7 @@ export default function ClassesPage() {
           rows={filteredClasses}
           keyField={(c) => c.id}
           loading={loading}
+          emptyText="目前沒有班級"
           onRowClick={openEdit}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
         />
@@ -348,6 +351,7 @@ export default function ClassesPage() {
           openEdit(c);
         }}
       />
+      {ConfirmDialog}
     </>
   );
 }

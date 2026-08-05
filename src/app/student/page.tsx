@@ -8,7 +8,8 @@ import { listStudentEnrolledClasses } from '@/lib/services/classService';
 import { getMyTickets } from '@/lib/services/goHallTicketService';
 import { getPointBalances } from '@/lib/services/pointService';
 import Card from '@/components/ui/Card';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import CancelMakeupButton from './CancelMakeupButton';
@@ -178,7 +179,13 @@ export default async function StudentDashboard() {
 
       <h2 className="mb-2 font-bold text-ink">我的請假與插班紀錄</h2>
       <Card>
-        <DataTable columns={leaveColumns} rows={leaves} keyField={(r) => r.id} />
+        <CollapsibleDataTable
+          columns={leaveColumns}
+          rows={leaves}
+          keyField={(r) => r.id}
+          maxRows={3}
+          emptyText="目前沒有請假與插班紀錄"
+        />
       </Card>
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳報名紀錄</h2>

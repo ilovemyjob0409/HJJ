@@ -60,7 +60,8 @@ export default function GoHallSummaryTable({
           keyField={(r) => r.id}
           onRowClick={(r) => router.push(`${basePath}?highlight=${r.id}`)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
-          maxRows={searchable ? (search.trim() ? undefined : 3) : undefined}
+          maxRows={searchable && search.trim() ? undefined : 3}
+          emptyText="目前沒有相關紀錄"
         />
       </Card>
     </>

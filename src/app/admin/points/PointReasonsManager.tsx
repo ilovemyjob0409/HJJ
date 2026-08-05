@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 
 interface ReasonRow {
@@ -16,6 +17,7 @@ interface ReasonRow {
 
 export default function PointReasonsManager() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [items, setItems] = useState<ReasonRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -85,7 +87,7 @@ export default function PointReasonsManager() {
 
   async function handleDelete() {
     if (!editing) return;
-    if (!confirm(`確定要刪除理由「${editing.label}」嗎？不影響已加分的歷史紀錄。`)) return;
+    if (!(await confirm(`確定要刪除理由「${editing.label}」嗎？不影響已加分的歷史紀錄。`, { danger: true }))) return;
     await fetch(`/api/point-reasons/${editing.id}`, { method: 'DELETE' });
     setEditing(null);
     showToast('已刪除');
@@ -169,6 +171,7 @@ export default function PointReasonsManager() {
           rows={items}
           keyField={(item) => item.id}
           loading={loading}
+          emptyText="目前沒有加分理由"
           onRowClick={openEdit}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
         />
@@ -183,6 +186,7 @@ export default function PointReasonsManager() {
           刪除此理由
         </button>
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

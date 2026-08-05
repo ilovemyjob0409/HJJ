@@ -68,6 +68,7 @@ export default function TeacherActivitiesPage() {
           rows={activities}
           loading={loading}
           keyField={(a) => a.id}
+          emptyText="目前沒有帶領的活動"
           onRowClick={(a) => setViewing(a)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
         />

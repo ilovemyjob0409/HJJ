@@ -127,6 +127,7 @@ function AdminMakeupRequestsContent() {
           keyField={(r) => r.id}
           rowClassName={(r) => (r.id === highlightId ? 'bg-pendingBg' : '')}
           loading={loading}
+          emptyText="目前沒有待確認的補課申請"
         />
       </Card>
 

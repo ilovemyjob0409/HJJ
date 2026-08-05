@@ -4,7 +4,8 @@ import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import RevokeLeaveButton from '@/components/RevokeLeaveButton';
 import { useToast } from '@/components/ui/Toast';
@@ -232,11 +233,12 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
     <>
       <h2 className="mb-2 mt-6 font-bold text-ink">請假申請紀錄</h2>
       <Card>
-        <DataTable
+        <CollapsibleDataTable
           columns={columns}
           rows={rows}
           keyField={(r) => r.id}
           loading={loading}
+          maxRows={3}
           emptyText="目前沒有請假紀錄"
           rowClassName={(r) => (r.makeupRequest?.cancelRequestedAt ? 'bg-pendingBg/40' : '')}
         />

@@ -6,7 +6,10 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
+import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import AwardRowsForm from '@/components/AwardRowsForm';
@@ -47,6 +50,7 @@ interface PointsData {
 
 export default function AdminPointsPage() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [summaries, setSummaries] = useState<SummaryRow[]>([]);
   const [summariesLoading, setSummariesLoading] = useState(true);
   const [classFilter, setClassFilter] = useState('');
@@ -149,7 +153,7 @@ export default function AdminPointsPage() {
 
   async function handleRedeem(e: React.FormEvent) {
     e.preventDefault();
-    if (!confirm(`確定為「${selectedStudent?.name}」兌換「${redeemDescription}」（扣 ${Number(redeemPoints)} 點）嗎？`)) return;
+    if (!(await confirm(`確定為「${selectedStudent?.name}」兌換「${redeemDescription}」（扣 ${Number(redeemPoints)} 點）嗎？`))) return;
     const ok = await post(
       '/api/points/redeem',
       { studentId: selectedId, points: Number(redeemPoints), description: redeemDescription },
@@ -225,6 +229,14 @@ export default function AdminPointsPage() {
         </button>
       ),
     },
+  ];
+
+  const summaryExportColumns = [
+    { header: '姓名', value: (s: SummaryRow) => s.name },
+    { header: '學號', value: (s: SummaryRow) => s.studentNumber ?? '' },
+    { header: '班級', value: (s: SummaryRow) => s.classes.map((c) => c.name).join('、') },
+    { header: '一般點數', value: (s: SummaryRow) => s.regular },
+    { header: '兌換專用', value: (s: SummaryRow) => s.redeemOnly },
   ];
 
   // 展開列內容：三個操作卡片（按鈕底部對齊）＋該生點數紀錄
@@ -318,7 +330,7 @@ export default function AdminPointsPage() {
           {data.history.length === 0 ? (
             <p className="text-sm text-inkMuted">尚無點數紀錄</p>
           ) : (
-            <DataTable columns={historyColumns} rows={data.history} keyField={(r) => r.id} />
+            <CollapsibleDataTable columns={historyColumns} rows={data.history} keyField={(r) => r.id} maxRows={3} />
           )}
         </div>
       </div>
@@ -360,7 +372,8 @@ export default function AdminPointsPage() {
             onChange={(e) => setNameQuery(e.target.value)}
             className="w-56"
           />
-          <div className="ml-auto flex gap-3 text-xs">
+          <ExportCsvButton rows={filtered} columns={summaryExportColumns} filename="學生點數總表" className="ml-auto" />
+          <div className="flex gap-3 text-xs">
             <button
               type="button"
               className="text-brandDark hover:underline"
@@ -379,6 +392,7 @@ export default function AdminPointsPage() {
           rows={filtered}
           keyField={(s) => s.id}
           loading={summariesLoading}
+          emptyText="找不到符合的學生"
           onRowClick={(s) => setSelectedId((prev) => (prev === s.id ? '' : s.id))}
           rowClassName={(s) => (checked[s.id] ? 'bg-stripe cursor-pointer' : 'cursor-pointer hover:bg-stripe')}
           expandedKey={selectedId}
@@ -420,6 +434,7 @@ export default function AdminPointsPage() {
       </Modal>
 
       <PointReasonsManager />
+      {ConfirmDialog}
     </>
   );
 }

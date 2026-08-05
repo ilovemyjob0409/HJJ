@@ -13,6 +13,7 @@ interface CollapsibleDataTableProps<T> {
   onRowMouseLeave?: (row: T) => void;
   maxRows?: number;
   loading?: boolean;
+  emptyText?: string;
 }
 
 export default function CollapsibleDataTable<T>({
@@ -24,6 +25,7 @@ export default function CollapsibleDataTable<T>({
   onRowMouseLeave,
   maxRows,
   loading,
+  emptyText,
 }: CollapsibleDataTableProps<T>) {
   const [expanded, setExpanded] = useState(false);
   const visibleRows = getVisibleRows(rows, maxRows, expanded);
@@ -38,6 +40,7 @@ export default function CollapsibleDataTable<T>({
       rowClassName={rowClassName}
       onRowMouseLeave={onRowMouseLeave}
       loading={loading}
+      emptyText={emptyText}
       footer={
         showFooter ? (
           <button

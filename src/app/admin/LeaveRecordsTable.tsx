@@ -6,7 +6,8 @@ import Card from '@/components/ui/Card';
 import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
-import StatusBadge from '@/components/ui/StatusBadge';
+import StatusBadge, { getStatusBadgeConfig } from '@/components/ui/StatusBadge';
+import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { matchesLeaveSearch } from './leaveSearch';
 
@@ -75,6 +76,33 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
     },
   ];
 
+  function makeupArrangementText(r: LeaveRow): string {
+    const m = r.makeupRequest;
+    if (!m) return '';
+    if (m.type === 'INSERTION') return `插班・${m.targetClass?.name ?? '-'}`;
+    return `一對一・${m.teacher?.user.name ?? '-'}・${m.slotStartTime}-${m.slotEndTime}`;
+  }
+
+  const exportColumns = [
+    { header: '學生', value: (r: LeaveRow) => r.student.user.name },
+    { header: '請假班級', value: (r: LeaveRow) => r.class.name },
+    { header: '請假日期', value: (r: LeaveRow) => formatDateWithWeekday(r.date, 'zh-TW') },
+    {
+      header: '補課日期',
+      value: (r: LeaveRow) => {
+        const m = r.makeupRequest;
+        if (!m) return '';
+        const d = m.type === 'INSERTION' ? m.targetDate : m.slotDate;
+        return d ? formatDateWithWeekday(d, 'zh-TW') : '';
+      },
+    },
+    { header: '補課安排', value: makeupArrangementText },
+    {
+      header: '補課狀態',
+      value: (r: LeaveRow) => (r.makeupRequest ? getStatusBadgeConfig(r.makeupRequest.status).label : '尚未申請'),
+    },
+  ];
+
   function handleRowClick(r: LeaveRow) {
     if (r.makeupRequest?.status === 'PENDING_ADMIN') {
       router.push(`/admin/makeup-requests?highlight=${r.makeupRequest.id}`);
@@ -86,12 +114,14 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
       <div className="mb-2 flex items-center gap-3">
         <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">{title}</h2>
         <CollapsibleSearchInput placeholder="搜尋學生、班級或補課狀態" value={search} onChange={setSearch} />
+        <ExportCsvButton rows={filteredRows} columns={exportColumns} filename="請假補課紀錄" className="ml-auto shrink-0" />
       </div>
       <Card>
         <CollapsibleDataTable
           columns={columns}
           rows={filteredRows}
           keyField={(r) => r.id}
+          emptyText="目前沒有請假／補課紀錄"
           onRowClick={handleRowClick}
           rowClassName={(r) => (r.makeupRequest?.status === 'PENDING_ADMIN' ? 'cursor-pointer hover:bg-stripe' : '')}
           maxRows={search.trim() ? undefined : 3}

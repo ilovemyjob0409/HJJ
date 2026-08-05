@@ -5,6 +5,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 
 interface NoticeRow {
@@ -18,6 +19,7 @@ const TEXTAREA_CLASS =
 
 export default function AdminMakeupNoticesPage() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [items, setItems] = useState<NoticeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -87,7 +89,7 @@ export default function AdminMakeupNoticesPage() {
 
   async function handleDelete() {
     if (!editing) return;
-    if (!confirm('確定要刪除這條補課須知嗎？此操作無法復原。')) return;
+    if (!(await confirm('確定要刪除這條補課須知嗎？此操作無法復原。', { danger: true }))) return;
     await fetch(`/api/makeup-notices/${editing.id}`, { method: 'DELETE' });
     setEditing(null);
     showToast('已刪除');
@@ -192,6 +194,7 @@ export default function AdminMakeupNoticesPage() {
           rows={items}
           keyField={(item) => item.id}
           loading={loading}
+          emptyText="目前沒有補課須知"
           onRowClick={openEdit}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
         />
@@ -213,6 +216,7 @@ export default function AdminMakeupNoticesPage() {
           刪除此須知
         </button>
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

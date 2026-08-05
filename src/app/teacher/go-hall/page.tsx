@@ -77,6 +77,7 @@ function TeacherGoHallContent() {
           rows={sessions}
           loading={loading}
           keyField={(s) => s.id}
+          emptyText="目前沒有被指派的弈廳場次"
           onRowClick={(s) => openRoster(s.id)}
           rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-stripe')}
           onRowMouseLeave={(s) => {

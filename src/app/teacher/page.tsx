@@ -8,7 +8,8 @@ import { listInsertionsForTeacherClasses, listAssignedOneOnOneForTeacher } from 
 import { listSessionsForTeacher } from '@/lib/services/goHallService';
 import { listClassesForTeacher } from '@/lib/services/classService';
 import Card from '@/components/ui/Card';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import AttendanceHub from '@/components/AttendanceHub';
@@ -203,11 +204,12 @@ export default async function TeacherDashboard() {
 
       <h2 className="mb-2 font-bold text-ink">學生請假與補課紀錄</h2>
       <Card>
-        <DataTable
+        <CollapsibleDataTable
           columns={teacherLeaveColumns}
           rows={teacherLeaveRows}
           keyField={(r) => `${r.direction}-${r.id}`}
           emptyText="目前沒有相關紀錄"
+          maxRows={3}
         />
       </Card>
 

@@ -7,6 +7,8 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
+import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
 import QRCode from 'qrcode';
@@ -105,6 +107,7 @@ function StudentsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [search, setSearch] = useState('');
@@ -336,7 +339,7 @@ function StudentsContent() {
 
   async function handleDelete() {
     if (!editing) return;
-    if (!confirm(`確定要刪除學生「${editing.user.name}」嗎？此操作無法復原。`)) return;
+    if (!(await confirm(`確定要刪除學生「${editing.user.name}」嗎？此操作無法復原。`, { danger: true }))) return;
     setEditError('');
     const res = await fetch(`/api/students/${editing.id}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -383,7 +386,7 @@ function StudentsContent() {
 
   async function handleLineUnbind() {
     if (!editing) return;
-    if (!confirm('確定要解除這位學生的 LINE 綁定嗎？')) return;
+    if (!(await confirm('確定要解除這位學生的 LINE 綁定嗎？', { danger: true }))) return;
     const res = await fetch(`/api/students/${editing.id}/line-unbind`, { method: 'POST' });
     if (!res.ok) {
       showToast('解除綁定失敗');
@@ -419,6 +422,18 @@ function StudentsContent() {
     },
   ];
 
+  const classNameById = new Map(classes.map((c) => [c.id, c.name]));
+  const exportColumns = [
+    { header: '姓名', value: (s: StudentRow) => s.user.name },
+    { header: '學號', value: (s: StudentRow) => s.studentNumber ?? '' },
+    { header: '帳號', value: (s: StudentRow) => s.user.email },
+    { header: '家長電話', value: (s: StudentRow) => s.parentPhone ?? '' },
+    {
+      header: '所屬班級',
+      value: (s: StudentRow) => s.enrollments.map((e) => classNameById.get(e.classId) ?? '').filter(Boolean).join('、'),
+    },
+  ];
+
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">學生名單</h1>
@@ -429,6 +444,7 @@ function StudentsContent() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
         />
+        <ExportCsvButton rows={filteredStudents} columns={exportColumns} filename="學生名單" />
         {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增學生</Button>}
       </div>
       {showAddForm && (
@@ -498,6 +514,7 @@ function StudentsContent() {
                     return c.name.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q);
                   })}
                   keyField={(c) => c.id}
+                  emptyText="找不到符合的班級"
                 />
               </div>
             </div>
@@ -515,6 +532,7 @@ function StudentsContent() {
           loading={loading}
           onRowClick={openEdit}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+          emptyText="目前沒有學生"
         />
       </Card>
 
@@ -813,6 +831,7 @@ function StudentsContent() {
           </form>
         )}
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

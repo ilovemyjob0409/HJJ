@@ -9,6 +9,7 @@ import Select from '@/components/ui/Select';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { previewSessionDates } from '@/lib/goHallDates';
 import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
@@ -48,6 +49,7 @@ interface SessionDetail extends SessionRow {
 
 function AdminGoHallContent() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
 
@@ -133,7 +135,7 @@ function AdminGoHallContent() {
       viewing.registrations.length > 0
         ? `此場次已有 ${viewing.registrations.length} 人報名，刪除將一併取消他們的報名，確定嗎？`
         : '確定要刪除此場次嗎？';
-    if (!confirm(confirmMessage)) return;
+    if (!(await confirm(confirmMessage, { danger: true }))) return;
     await fetch(`/api/go-hall-sessions/${viewing.id}`, { method: 'DELETE' });
     setViewing(null);
     showToast('已刪除');
@@ -287,6 +289,7 @@ function AdminGoHallContent() {
           }}
           maxRows={search.trim() || highlightId ? undefined : 3}
           loading={loading}
+          emptyText="目前沒有場次"
         />
       </Card>
 
@@ -324,6 +327,7 @@ function AdminGoHallContent() {
       </Modal>
 
       <TicketManager />
+      {ConfirmDialog}
     </>
   );
 }

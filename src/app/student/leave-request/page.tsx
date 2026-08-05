@@ -5,7 +5,8 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
@@ -149,7 +150,14 @@ export default function StudentLeaveRequestPage() {
 
       <h2 className="mb-2 font-bold text-ink">我的請假紀錄</h2>
       <Card>
-        <DataTable columns={columns} rows={leaves} keyField={(l) => l.id} loading={loading} />
+        <CollapsibleDataTable
+          columns={columns}
+          rows={leaves}
+          keyField={(l) => l.id}
+          loading={loading}
+          maxRows={3}
+          emptyText="目前沒有請假紀錄"
+        />
       </Card>
     </>
   );

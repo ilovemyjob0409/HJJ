@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 import ActivityDetail from '@/components/ActivityDetail';
@@ -58,6 +59,7 @@ function startOfToday(): Date {
 
 export default function AdminActivitiesPage() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -214,7 +216,7 @@ export default function AdminActivitiesPage() {
       viewing.registrations.length > 0
         ? `已有 ${viewing.registrations.length} 人報名，刪除將一併取消他們的報名，確定嗎？`
         : '確定要刪除此活動嗎？';
-    if (!confirm(confirmMessage)) return;
+    if (!(await confirm(confirmMessage, { danger: true }))) return;
     await fetch(`/api/activities/${viewing.id}`, { method: 'DELETE' });
     setViewing(null);
     showToast('已刪除');
@@ -420,6 +422,7 @@ export default function AdminActivitiesPage() {
           onRowClick={(a) => setViewing(a)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
           loading={loading}
+          emptyText="目前沒有活動"
         />
       </Card>
 
@@ -444,6 +447,7 @@ export default function AdminActivitiesPage() {
           />
         )}
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

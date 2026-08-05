@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
@@ -49,7 +50,7 @@ export default function StudentAttendancePage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">我的出席紀錄</h1>
       <Card>
-        <DataTable columns={columns} rows={rows} loading={loading} keyField={(r) => r.id} />
+        <CollapsibleDataTable columns={columns} rows={rows} loading={loading} keyField={(r) => r.id} maxRows={3} />
       </Card>
     </>
   );

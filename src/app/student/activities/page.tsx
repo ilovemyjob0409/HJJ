@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 import { isBeforeToday } from '@/lib/pastDate';
@@ -45,6 +47,7 @@ interface ViewingDetail extends ActivityDetailPayload {
 
 export default function StudentActivitiesPage() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [openActivities, setOpenActivities] = useState<ActivityStudentRow[]>([]);
   const [myRegistrations, setMyRegistrations] = useState<RegistrationRow[]>([]);
   const [viewing, setViewing] = useState<ViewingDetail | null>(null);
@@ -68,7 +71,7 @@ export default function StudentActivitiesPage() {
   }, []);
 
   async function handleRegister(activityId: string) {
-    if (!confirm('確定要報名這個活動嗎？')) return;
+    if (!(await confirm('確定要報名這個活動嗎？'))) return;
     setPendingId(activityId);
     try {
       const res = await fetch('/api/activity-registrations', { method: 'POST', body: JSON.stringify({ activityId }) });
@@ -88,7 +91,7 @@ export default function StudentActivitiesPage() {
   }
 
   async function handleCancel(registrationId: string) {
-    if (!confirm('確定要取消這個活動的報名嗎？')) return;
+    if (!(await confirm('確定要取消這個活動的報名嗎？'))) return;
     setPendingId(registrationId);
     try {
       const res = await fetch(`/api/activity-registrations/${registrationId}`, { method: 'DELETE' });
@@ -179,18 +182,21 @@ export default function StudentActivitiesPage() {
           onRowClick={(a) => openDetail(a.id, myRegistrations.find((r) => r.activity.id === a.id)?.id ?? null)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
           loading={loading}
+          emptyText="目前沒有開放中的活動"
         />
       </Card>
 
       <h2 className="mb-2 font-bold text-ink">我的報名紀錄</h2>
       <Card>
-        <DataTable
+        <CollapsibleDataTable
           columns={myColumns}
           rows={myRegistrations}
           keyField={(r) => r.id}
           onRowClick={(r) => openDetail(r.activity.id, r.id)}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
           loading={loading}
+          maxRows={3}
+          emptyText="目前沒有報名紀錄"
         />
       </Card>
 
@@ -241,6 +247,7 @@ export default function StudentActivitiesPage() {
           </div>
         )}
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

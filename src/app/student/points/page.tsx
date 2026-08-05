@@ -3,7 +3,8 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getPointBalances, listPointHistory } from '@/lib/services/pointService';
 import Card from '@/components/ui/Card';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // Without this, Next.js prerenders this page once at build time and
@@ -85,7 +86,7 @@ export default async function StudentPointsPage() {
         {history.length === 0 ? (
           <p className="text-sm text-inkMuted">尚無點數紀錄</p>
         ) : (
-          <DataTable columns={historyColumns} rows={history} keyField={(r) => r.id} />
+          <CollapsibleDataTable columns={historyColumns} rows={history} keyField={(r) => r.id} maxRows={3} />
         )}
       </Card>
     </>

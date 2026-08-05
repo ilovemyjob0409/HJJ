@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 
 interface TeacherRow {
@@ -17,6 +18,7 @@ interface TeacherRow {
 
 export default function TeachersPage() {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
   const [search, setSearch] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -89,7 +91,7 @@ export default function TeachersPage() {
 
   async function handleDelete() {
     if (!editing) return;
-    if (!confirm(`確定要刪除老師「${editing.user.name}」嗎？此操作無法復原。`)) return;
+    if (!(await confirm(`確定要刪除老師「${editing.user.name}」嗎？此操作無法復原。`, { danger: true }))) return;
     setEditError('');
     const res = await fetch(`/api/teachers/${editing.id}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -167,7 +169,7 @@ export default function TeachersPage() {
       )}
 
       <Card>
-        <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} loading={loading} />
+        <DataTable columns={columns} rows={filteredTeachers} keyField={(t) => t.id} loading={loading} emptyText="目前沒有老師" />
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯老師">
@@ -200,6 +202,7 @@ export default function TeachersPage() {
           刪除老師
         </button>
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }

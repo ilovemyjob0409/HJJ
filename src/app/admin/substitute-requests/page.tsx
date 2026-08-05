@@ -104,7 +104,7 @@ export default function AdminSubstituteRequestsPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">待安排代課</h1>
       <Card className="mb-6">
-        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} loading={loading} />
+        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} loading={loading} emptyText="目前沒有待安排的代課" />
       </Card>
 
       <SubstituteHistoryTable title="安排代課紀錄" rows={history} />
