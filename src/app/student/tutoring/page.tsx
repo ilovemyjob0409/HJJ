@@ -8,7 +8,7 @@ import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface Enrollment {
   id: string;
@@ -45,6 +45,20 @@ function addMinutes(hhmm: string, minutes: number): string {
   const [h, m] = hhmm.split(':').map(Number);
   const total = h * 60 + m + minutes;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+interface MonthCell {
+  day: number;
+  dateKey: string;
+}
+
+function buildMonthCells(year: number, month: number): MonthCell[] {
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells: MonthCell[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ day: d, dateKey: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+  }
+  return cells;
 }
 
 export default function StudentTutoringPage() {
@@ -87,6 +101,14 @@ export default function StudentTutoringPage() {
   }, [selectedEnrollmentId]);
 
   const selectedEnrollment = enrollments.find((e) => e.id === selectedEnrollmentId);
+
+  const now = new Date();
+  const calendarYear = now.getFullYear();
+  const calendarMonth = now.getMonth() + 1;
+  const monthCells = buildMonthCells(calendarYear, calendarMonth);
+  const leadingBlankCount = new Date(Date.UTC(calendarYear, calendarMonth - 1, 1)).getUTCDay();
+  const availabilityByDate = new Map(availability.map((day) => [day.date, day]));
+  const openDayData = openDay ? availabilityByDate.get(openDay) : undefined;
 
   function openDayForBooking(day: AvailabilityDay) {
     setOpenDay(day.date);
@@ -227,89 +249,93 @@ export default function StudentTutoringPage() {
             </Card>
           )}
 
-          <h2 className="mb-2 font-bold text-ink">未來兩週可預約時段</h2>
-          <div className="mb-6 flex flex-col gap-2">
-            {availability.length === 0 && (
-              <Card>
-                <p className="text-sm text-inkMuted">目前沒有開放的時段</p>
-              </Card>
-            )}
-            {availability.map((day) => (
-              <Card key={day.date}>
-                <button className="flex w-full items-center justify-between" onClick={() => openDayForBooking(day)}>
-                  <span className="font-semibold text-ink">{formatDateWithWeekday(day.date)}</span>
-                  <span className="text-xs text-inkMuted">
-                    {day.windowStartTime}-{day.windowEndTime}
-                  </span>
-                </button>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {day.slots.map((s) => (
-                    <span
-                      key={s.startTime}
-                      title={`${s.startTime}：剩 ${s.remaining} 位`}
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                        s.remaining === 0 ? 'bg-rejectedBg text-rejected' : 'bg-approvedBg text-approved'
-                      }`}
-                    >
-                      {s.startTime}・{s.remaining}
-                    </span>
-                  ))}
-                </div>
+          <h2 className="mb-2 font-bold text-ink">本月可預約時段</h2>
+          <Card className="mb-6">
+            <p className="mb-3 text-center font-semibold text-ink">
+              {calendarYear}年{calendarMonth}月
+            </p>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs text-inkMuted">
+              {WEEKDAY_LABELS.map((label) => (
+                <span key={label}>{label}</span>
+              ))}
+            </div>
+            <div className="mt-1 grid grid-cols-7 gap-1">
+              {Array.from({ length: leadingBlankCount }).map((_, i) => (
+                <span key={`blank-${i}`} />
+              ))}
+              {monthCells.map((cell) => {
+                const day = availabilityByDate.get(cell.dateKey);
+                return (
+                  <button
+                    key={cell.dateKey}
+                    disabled={!day}
+                    onClick={() => day && openDayForBooking(day)}
+                    className={`rounded-lg py-2 text-sm ${
+                      openDay === cell.dateKey
+                        ? 'bg-brand font-semibold text-brandInk'
+                        : day
+                          ? 'bg-approvedBg font-semibold text-approved'
+                          : 'text-inkMuted opacity-50'
+                    }`}
+                  >
+                    {cell.day}
+                  </button>
+                );
+              })}
+            </div>
 
-                {openDay === day.date && (
-                  <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-borderSubtle pt-3">
-                    <label className="text-xs text-inkMuted">
-                      開始
-                      <select
-                        value={startTime}
-                        onChange={(e) => {
-                          setStartTime(e.target.value);
-                          setEndTime(addMinutes(e.target.value, selectedEnrollment?.defaultDurationMinutes ?? 120));
-                        }}
-                        className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-                      >
-                        {day.slots.map((s) => (
-                          <option key={s.startTime} value={s.startTime} disabled={s.remaining === 0}>
-                            {s.startTime}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-xs text-inkMuted">
-                      結束
-                      <select
-                        value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-                      >
-                        {day.slots
-                          .map((s) => s.startTime)
-                          .concat(day.windowEndTime)
-                          .filter((t) => t > startTime)
-                          .map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    <Button loading={submitting} onClick={() => (makeupFor ? submitMakeup(day) : submitBooking(day))}>
-                      {makeupFor ? '確定補課時間' : '確定預約'}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setOpenDay(null);
-                        setMakeupFor(null);
-                      }}
-                    >
-                      取消
-                    </Button>
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
+            {openDayData && (
+              <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-borderSubtle pt-3">
+                <label className="text-xs text-inkMuted">
+                  開始
+                  <select
+                    value={startTime}
+                    onChange={(e) => {
+                      setStartTime(e.target.value);
+                      setEndTime(addMinutes(e.target.value, selectedEnrollment?.defaultDurationMinutes ?? 120));
+                    }}
+                    className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
+                  >
+                    {openDayData.slots.map((s) => (
+                      <option key={s.startTime} value={s.startTime} disabled={s.remaining === 0}>
+                        {s.startTime}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs text-inkMuted">
+                  結束
+                  <select
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
+                  >
+                    {openDayData.slots
+                      .map((s) => s.startTime)
+                      .concat(openDayData.windowEndTime)
+                      .filter((t) => t > startTime)
+                      .map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <Button loading={submitting} onClick={() => (makeupFor ? submitMakeup(openDayData) : submitBooking(openDayData))}>
+                  {makeupFor ? '確定補課時間' : '確定預約'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setOpenDay(null);
+                    setMakeupFor(null);
+                  }}
+                >
+                  取消
+                </Button>
+              </div>
+            )}
+          </Card>
 
           {makeupFor && (
             <Card className="mb-6 border-pending">
