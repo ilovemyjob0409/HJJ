@@ -137,7 +137,7 @@ model TutoringAttendance {       // 沿用現有 AttendanceStatus
 - 課程與窗口維護（CRUD、特定日期停開、容量與老師調整）。
 - 學生報名管理：把學生加入課程、個別月額度覆寫、停用。
 - 預約總覽：依日期看各窗口預約，可代預約、代取消（行政取消可選計次或不計次，處理特殊個案）。
-- 補課申請佇列：核准／駁回。
+- 補課申請佇列：核准／駁回。**與現有 `/admin/makeup-requests` 合併顯示**——同一畫面上方加篩選（全部／班級補課／輔導補課），預設看全部；兩種申請卡片樣式一致（沿用 StatusBadge），核准／駁回按鈕各自呼叫各自的邏輯（`MakeupRequest` 走原邏輯，`TutoringBooking(kind=MAKEUP)` 走本模組邏輯），**資料層不合併、不共用 schema**——理由：`MakeupRequest.leaveRequestId` 是必填且綁定固定班的 `LeaveRequest`，`type` 只有 `INSERTION`／`ONE_ON_ONE` 兩種目標語意，硬塞輔導窗口＋自選時段這種第三種來源，會讓兩套完全不同假設的系統在同一張表、同一段程式碼裡到處加分支，維護風險遠大於省下的一個畫面。
 - 當月出席總表：每位學生 已上／當天取消／缺席／補課 統計，附 ExportCsvButton CSV 匯出。
 
 ## 邊界與不做的事
