@@ -143,6 +143,20 @@ describe('createWalkInBooking', () => {
     expect(await prisma.tutoringBooking.count({ where: { windowId: window.id, date: FRIDAY } })).toBe(2);
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: walkIn.id } })).status).toBe('BOOKED');
   });
+
+  it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
+    const { window } = await setupProgramWithEnrollment();
+    await expect(
+      createWalkInBooking({ enrollmentId: 'nonexistent-enrollment-id', windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+    ).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
+  it('rejects with WINDOW_NOT_FOUND for a nonexistent window id', async () => {
+    const { enrollment } = await setupProgramWithEnrollment();
+    await expect(
+      createWalkInBooking({ enrollmentId: enrollment.id, windowId: 'nonexistent-window-id', date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+    ).rejects.toThrow('WINDOW_NOT_FOUND');
+  });
 });
 
 describe('cancelBooking', () => {
@@ -281,6 +295,10 @@ describe('requestMakeup / decideMakeup', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
     await expect(decideMakeup(booking.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
+  });
+
+  it('rejects with BOOKING_NOT_FOUND for a nonexistent booking id', async () => {
+    await expect(decideMakeup('nonexistent-booking-id', 'APPROVED')).rejects.toThrow('BOOKING_NOT_FOUND');
   });
 });
 

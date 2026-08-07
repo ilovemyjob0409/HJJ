@@ -128,17 +128,28 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
 }
 
 // 老師／行政現場補加：教室現場人數由老師目視判斷，系統不做容量檢查。
-export function createWalkInBooking(input: {
+export async function createWalkInBooking(input: {
   enrollmentId: string;
   windowId: string;
   date: Date;
   startTime: string;
   endTime: string;
 }): Promise<{ id: string }> {
-  return prisma.tutoringBooking.create({
-    data: { ...input, kind: 'REGULAR', status: 'BOOKED' },
-    select: { id: true },
-  });
+  try {
+    return await prisma.tutoringBooking.create({
+      data: { ...input, kind: 'REGULAR', status: 'BOOKED' },
+      select: { id: true },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2003' || err.code === 'P2025')) {
+      // A bad enrollmentId/windowId surfaces as a foreign key violation whose
+      // message names the failing constraint (e.g. `TutoringBooking_enrollmentId_fkey`);
+      // use that to report which caller-supplied id was invalid.
+      if (err.message.includes('enrollmentId')) throw new Error('ENROLLMENT_NOT_FOUND');
+      if (err.message.includes('windowId')) throw new Error('WINDOW_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
 export async function cancelBooking(bookingId: string, studentId: string): Promise<void> {
@@ -223,7 +234,15 @@ export async function requestMakeup(input: {
 // 容量在 PENDING_ADMIN 建立時已檢查並佔位（createBooking 把 PENDING_ADMIN 一併算進容量），
 // 核准時不必再查一次容量。
 export async function decideMakeup(bookingId: string, decision: 'APPROVED' | 'REJECTED'): Promise<void> {
-  const booking = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: bookingId } });
+  let booking;
+  try {
+    booking = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: bookingId } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('BOOKING_NOT_FOUND');
+    }
+    throw err;
+  }
   if (booking.kind !== 'MAKEUP' || booking.status !== 'PENDING_ADMIN') {
     throw new Error('ALREADY_DECIDED');
   }

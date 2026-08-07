@@ -10,7 +10,8 @@ export async function GET(req: NextRequest, { params }: { params: { windowId: st
 
   if (session.user.role === 'TEACHER') {
     const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
-    const window = await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: params.windowId } });
+    const window = await prisma.tutoringWindow.findUnique({ where: { id: params.windowId } });
+    if (!window) return NextResponse.json({ error: 'WINDOW_NOT_FOUND' }, { status: 404 });
     if (window.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else if (session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -27,13 +28,17 @@ export async function POST(req: NextRequest, { params }: { params: { windowId: s
 
   if (session.user.role === 'TEACHER') {
     const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
-    const window = await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: params.windowId } });
+    const window = await prisma.tutoringWindow.findUnique({ where: { id: params.windowId } });
+    if (!window) return NextResponse.json({ error: 'WINDOW_NOT_FOUND' }, { status: 404 });
     if (window.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else if (session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
+  if (!Array.isArray(body.records) || body.records.length === 0) {
+    return NextResponse.json({ error: 'records required' }, { status: 400 });
+  }
   await saveTutoringAttendance(session.user.id, body.records);
   return NextResponse.json({ success: true });
 }
@@ -44,13 +49,17 @@ export async function DELETE(req: NextRequest, { params }: { params: { windowId:
 
   if (session.user.role === 'TEACHER') {
     const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
-    const window = await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: params.windowId } });
+    const window = await prisma.tutoringWindow.findUnique({ where: { id: params.windowId } });
+    if (!window) return NextResponse.json({ error: 'WINDOW_NOT_FOUND' }, { status: 404 });
     if (window.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else if (session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
+  if (!Array.isArray(body.clear)) {
+    return NextResponse.json({ error: 'clear required' }, { status: 400 });
+  }
   await clearTutoringAttendance(body.clear);
   return NextResponse.json({ success: true });
 }
