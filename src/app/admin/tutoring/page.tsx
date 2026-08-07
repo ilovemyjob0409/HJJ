@@ -7,9 +7,18 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
+import { withStopPropagation } from '@/components/ui/stopPropagation';
 import EnrollmentManager from './EnrollmentManager';
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+interface WindowFormValues {
+  weekday: string;
+  startTime: string;
+  endTime: string;
+  capacity: string;
+  teacherId: string;
+}
 
 interface WindowRow {
   id: string;
@@ -18,6 +27,7 @@ interface WindowRow {
   endTime: string;
   capacity: number;
   active: boolean;
+  teacherId: string;
   teacher: { user: { name: string } };
   closures: { id: string; date: string }[];
 }
@@ -36,14 +46,80 @@ interface TeacherOption {
   user: { name: string };
 }
 
+const DEFAULT_WINDOW_FORM: WindowFormValues = { weekday: '0', startTime: '', endTime: '', capacity: '', teacherId: '' };
+
+function WindowFieldInputs({
+  values,
+  onChange,
+  teachers,
+}: {
+  values: WindowFormValues;
+  onChange: (patch: Partial<WindowFormValues>) => void;
+  teachers: TeacherOption[];
+}) {
+  return (
+    <>
+      <label className="text-xs text-inkMuted">
+        星期
+        <select
+          value={values.weekday}
+          onChange={(e) => onChange({ weekday: e.target.value })}
+          className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
+        >
+          {WEEKDAY_LABELS.map((label, i) => (
+            <option key={i} value={i}>
+              週{label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="text-xs text-inkMuted">
+        開始
+        <Input type="time" value={values.startTime} onChange={(e) => onChange({ startTime: e.target.value })} className="mt-1 w-24 py-1 text-sm" />
+      </label>
+      <label className="text-xs text-inkMuted">
+        結束
+        <Input type="time" value={values.endTime} onChange={(e) => onChange({ endTime: e.target.value })} className="mt-1 w-24 py-1 text-sm" />
+      </label>
+      <label className="text-xs text-inkMuted">
+        容量
+        <Input
+          type="number"
+          min={1}
+          value={values.capacity}
+          onChange={(e) => onChange({ capacity: e.target.value })}
+          className="mt-1 w-20 py-1 text-sm"
+        />
+      </label>
+      <label className="text-xs text-inkMuted">
+        老師
+        <select
+          value={values.teacherId}
+          onChange={(e) => onChange({ teacherId: e.target.value })}
+          className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
+        >
+          <option value="">請選擇</option>
+          {teachers.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.user.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+}
+
 export default function AdminTutoringPage() {
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [programs, setPrograms] = useState<ProgramRow[]>([]);
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [newProgramName, setNewProgramName] = useState('');
-  const [windowForm, setWindowForm] = useState<Record<string, { weekday: string; startTime: string; endTime: string; capacity: string; teacherId: string }>>({});
+  const [windowForm, setWindowForm] = useState<Record<string, WindowFormValues>>({});
   const [closureDate, setClosureDate] = useState<Record<string, string>>({});
+  const [editingWindowId, setEditingWindowId] = useState<string | null>(null);
+  const [windowEditForm, setWindowEditForm] = useState<Record<string, WindowFormValues>>({});
 
   async function load() {
     const [programsRes, teachersRes] = await Promise.all([fetch('/api/tutoring-programs'), fetch('/api/teachers')]);
@@ -146,6 +222,50 @@ export default function AdminTutoringPage() {
     load();
   }
 
+  function startEditWindow(window: WindowRow) {
+    setWindowEditForm((prev) => ({
+      ...prev,
+      [window.id]: {
+        weekday: String(window.weekday),
+        startTime: window.startTime,
+        endTime: window.endTime,
+        capacity: String(window.capacity),
+        teacherId: window.teacherId,
+      },
+    }));
+    setEditingWindowId(window.id);
+  }
+
+  function cancelEditWindow() {
+    setEditingWindowId(null);
+  }
+
+  async function saveEditWindow(windowId: string) {
+    const form = windowEditForm[windowId];
+    if (!form?.startTime || !form?.endTime || !form?.capacity || !form?.teacherId) {
+      showToast('請填寫完整的窗口資訊');
+      return;
+    }
+    const res = await fetch(`/api/tutoring-windows/${windowId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        weekday: Number(form.weekday),
+        startTime: form.startTime,
+        endTime: form.endTime,
+        capacity: Number(form.capacity),
+        teacherId: form.teacherId,
+      }),
+    });
+    if (!res.ok) {
+      showToast('更新窗口失敗');
+      return;
+    }
+    setEditingWindowId(null);
+    showToast('已更新窗口');
+    load();
+  }
+
   async function addClosure(windowId: string) {
     const date = closureDate[windowId];
     if (!date) return;
@@ -189,126 +309,104 @@ export default function AdminTutoringPage() {
 
       {programs.map((program) => (
         <Card key={program.id} className="mb-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-ink">{program.name}</p>
-              <p className="text-xs text-inkMuted">
-                每月預設 {program.defaultMonthlyQuota} 堂・單次預設 {program.defaultDurationMinutes} 分鐘
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => toggleProgramActive(program)}>
-                {program.active ? '停用' : '啟用'}
-              </Button>
-              <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => deleteProgram(program)}>
-                刪除
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {program.windows.map((window) => (
-              <div key={window.id} className="rounded-lg border border-borderSubtle p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm text-ink">
-                    週{WEEKDAY_LABELS[window.weekday]} {window.startTime}-{window.endTime}・容量 {window.capacity}・{window.teacher.user.name}
-                    {!window.active && <span className="ml-2 text-xs text-inkMuted">（已停用）</span>}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => toggleWindowActive(window)}>
-                      {window.active ? '停用' : '啟用'}
-                    </Button>
-                    <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => deleteWindow(window)}>
-                      刪除
-                    </Button>
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-inkMuted">停開日：</span>
-                  {window.closures.map((c) => (
-                    <span key={c.id} className="flex items-center gap-1 rounded-full bg-stripe px-2 py-0.5 text-xs text-inkMuted">
-                      {c.date.slice(0, 10)}
-                      <button onClick={() => removeClosure(c.id)} className="text-rejected">
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                  <Input
-                    type="date"
-                    value={closureDate[window.id] ?? ''}
-                    onChange={(e) => setClosureDate((prev) => ({ ...prev, [window.id]: e.target.value }))}
-                    className="w-36 py-1 text-xs"
-                  />
-                  <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => addClosure(window.id)}>
-                    加入停開日
-                  </Button>
+          <details className="group" open>
+            <summary className="mb-3 flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+              <div className="flex items-center gap-2">
+                <span className="text-inkMuted transition-transform group-open:rotate-180">▾</span>
+                <div>
+                  <p className="font-semibold text-ink">{program.name}</p>
+                  <p className="text-xs text-inkMuted">
+                    每月預設 {program.defaultMonthlyQuota} 堂・單次預設 {program.defaultDurationMinutes} 分鐘
+                  </p>
                 </div>
               </div>
-            ))}
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1 text-xs"
+                  onClick={withStopPropagation(() => toggleProgramActive(program))}
+                >
+                  {program.active ? '停用' : '啟用'}
+                </Button>
+                <Button variant="secondary" className="px-3 py-1 text-xs" onClick={withStopPropagation(() => deleteProgram(program))}>
+                  刪除
+                </Button>
+              </div>
+            </summary>
 
-            <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-borderStrong p-3">
-              <label className="text-xs text-inkMuted">
-                星期
-                <select
-                  value={windowForm[program.id]?.weekday ?? '0'}
-                  onChange={(e) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...prev[program.id], weekday: e.target.value } }))}
-                  className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-                >
-                  {WEEKDAY_LABELS.map((label, i) => (
-                    <option key={i} value={i}>
-                      週{label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs text-inkMuted">
-                開始
-                <Input
-                  type="time"
-                  value={windowForm[program.id]?.startTime ?? ''}
-                  onChange={(e) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...prev[program.id], startTime: e.target.value } }))}
-                  className="mt-1 w-24 py-1 text-sm"
+            <div className="flex flex-col gap-2">
+              {program.windows.map((window) =>
+                editingWindowId === window.id ? (
+                  <div key={window.id} className="flex flex-wrap items-end gap-2 rounded-lg border border-borderStrong p-3">
+                    <WindowFieldInputs
+                      values={windowEditForm[window.id] ?? DEFAULT_WINDOW_FORM}
+                      onChange={(patch) =>
+                        setWindowEditForm((prev) => ({ ...prev, [window.id]: { ...(prev[window.id] ?? DEFAULT_WINDOW_FORM), ...patch } }))
+                      }
+                      teachers={teachers}
+                    />
+                    <Button className="px-3 py-1 text-xs" onClick={() => saveEditWindow(window.id)}>
+                      儲存
+                    </Button>
+                    <Button variant="secondary" className="px-3 py-1 text-xs" onClick={cancelEditWindow}>
+                      取消
+                    </Button>
+                  </div>
+                ) : (
+                  <div key={window.id} className="rounded-lg border border-borderSubtle p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm text-ink">
+                        週{WEEKDAY_LABELS[window.weekday]} {window.startTime}-{window.endTime}・容量 {window.capacity}・{window.teacher.user.name}
+                        {!window.active && <span className="ml-2 text-xs text-inkMuted">（已停用）</span>}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => startEditWindow(window)}>
+                          編輯
+                        </Button>
+                        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => toggleWindowActive(window)}>
+                          {window.active ? '停用' : '啟用'}
+                        </Button>
+                        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => deleteWindow(window)}>
+                          刪除
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-inkMuted">停開日：</span>
+                      {window.closures.map((c) => (
+                        <span key={c.id} className="flex items-center gap-1 rounded-full bg-stripe px-2 py-0.5 text-xs text-inkMuted">
+                          {c.date.slice(0, 10)}
+                          <button onClick={() => removeClosure(c.id)} className="text-rejected">
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                      <Input
+                        type="date"
+                        value={closureDate[window.id] ?? ''}
+                        onChange={(e) => setClosureDate((prev) => ({ ...prev, [window.id]: e.target.value }))}
+                        className="w-36 py-1 text-xs"
+                      />
+                      <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => addClosure(window.id)}>
+                        加入停開日
+                      </Button>
+                    </div>
+                  </div>
+                )
+              )}
+
+              <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-borderStrong p-3">
+                <WindowFieldInputs
+                  values={windowForm[program.id] ?? DEFAULT_WINDOW_FORM}
+                  onChange={(patch) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...(prev[program.id] ?? DEFAULT_WINDOW_FORM), ...patch } }))}
+                  teachers={teachers}
                 />
-              </label>
-              <label className="text-xs text-inkMuted">
-                結束
-                <Input
-                  type="time"
-                  value={windowForm[program.id]?.endTime ?? ''}
-                  onChange={(e) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...prev[program.id], endTime: e.target.value } }))}
-                  className="mt-1 w-24 py-1 text-sm"
-                />
-              </label>
-              <label className="text-xs text-inkMuted">
-                容量
-                <Input
-                  type="number"
-                  min={1}
-                  value={windowForm[program.id]?.capacity ?? ''}
-                  onChange={(e) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...prev[program.id], capacity: e.target.value } }))}
-                  className="mt-1 w-20 py-1 text-sm"
-                />
-              </label>
-              <label className="text-xs text-inkMuted">
-                老師
-                <select
-                  value={windowForm[program.id]?.teacherId ?? ''}
-                  onChange={(e) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...prev[program.id], teacherId: e.target.value } }))}
-                  className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-                >
-                  <option value="">請選擇</option>
-                  {teachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.user.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Button className="px-3 py-1 text-xs" onClick={() => createWindow(program.id)}>
-                新增窗口
-              </Button>
+                <Button className="px-3 py-1 text-xs" onClick={() => createWindow(program.id)}>
+                  新增窗口
+                </Button>
+              </div>
             </div>
-          </div>
+          </details>
         </Card>
       ))}
 
