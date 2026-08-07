@@ -312,6 +312,10 @@ describe('getMonthlyQuotaStatus', () => {
     const status = await getMonthlyQuotaStatus(enrollment.id, '2026-08');
     expect(status.quota).toBe(11);
   });
+
+  it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
+    await expect(getMonthlyQuotaStatus('nonexistent-enrollment-id', '2026-08')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
 });
 
 describe('listAvailability', () => {
@@ -325,6 +329,10 @@ describe('listAvailability', () => {
     await prisma.tutoringWindowClosure.create({ data: { windowId: window.id, date: new Date(fridays[0].date) } });
     const daysAfterClosure = await listAvailability(enrollment.id, 14);
     expect(daysAfterClosure.filter((d) => d.windowId === window.id).length).toBe(fridays.length - 1);
+  });
+
+  it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
+    await expect(listAvailability('nonexistent-enrollment-id', 14)).rejects.toThrow('ENROLLMENT_NOT_FOUND');
   });
 });
 

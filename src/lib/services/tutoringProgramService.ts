@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getMonthlyQuotaStatus } from './tutoringBookingService';
 
@@ -136,10 +137,24 @@ export interface UpdateEnrollmentInput {
   active?: boolean;
 }
 
-export function updateEnrollment(id: string, input: UpdateEnrollmentInput) {
-  return prisma.tutoringEnrollment.update({ where: { id }, data: input });
+export async function updateEnrollment(id: string, input: UpdateEnrollmentInput) {
+  try {
+    return await prisma.tutoringEnrollment.update({ where: { id }, data: input });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('ENROLLMENT_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
-export function deleteEnrollment(id: string) {
-  return prisma.tutoringEnrollment.delete({ where: { id } });
+export async function deleteEnrollment(id: string) {
+  try {
+    return await prisma.tutoringEnrollment.delete({ where: { id } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('ENROLLMENT_NOT_FOUND');
+    }
+    throw err;
+  }
 }

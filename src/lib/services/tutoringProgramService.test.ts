@@ -105,4 +105,12 @@ describe('enrollment CRUD', () => {
     await deleteEnrollment(enrollment.id);
     expect(await prisma.tutoringEnrollment.findUnique({ where: { id: enrollment.id } })).toBeNull();
   });
+
+  it('rejects updating a nonexistent enrollment with ENROLLMENT_NOT_FOUND', async () => {
+    await expect(updateEnrollment('nonexistent-enrollment-id', { active: false })).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
+  it('rejects deleting a nonexistent enrollment with ENROLLMENT_NOT_FOUND', async () => {
+    await expect(deleteEnrollment('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
 });

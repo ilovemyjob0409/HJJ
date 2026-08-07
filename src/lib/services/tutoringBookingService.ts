@@ -222,10 +222,11 @@ export async function getMonthlyQuotaStatus(
   enrollmentId: string,
   monthKey: string // 'YYYY-MM'
 ): Promise<{ locked: number; upcoming: number; quota: number }> {
-  const enrollment = await prisma.tutoringEnrollment.findUniqueOrThrow({
+  const enrollment = await prisma.tutoringEnrollment.findUnique({
     where: { id: enrollmentId },
     include: { program: { select: { defaultMonthlyQuota: true } } },
   });
+  if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
   const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
   const [year, month] = monthKey.split('-').map(Number);
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
@@ -257,7 +258,8 @@ export interface AvailabilityDay {
 }
 
 export async function listAvailability(enrollmentId: string, days = 14): Promise<AvailabilityDay[]> {
-  const enrollment = await prisma.tutoringEnrollment.findUniqueOrThrow({ where: { id: enrollmentId } });
+  const enrollment = await prisma.tutoringEnrollment.findUnique({ where: { id: enrollmentId } });
+  if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
   const windows = await prisma.tutoringWindow.findMany({ where: { programId: enrollment.programId, active: true } });
   const todayKey = taipeiDateKey(new Date());
   const [ty, tm, td] = todayKey.split('-').map(Number);
