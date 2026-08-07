@@ -4,6 +4,7 @@ import { pushLineMessage } from './lineService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
+import { getMonthlyQuotaStatus, taipeiDateKey } from './tutoringBookingService';
 
 export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
 
@@ -427,7 +428,75 @@ export async function clearActivityAttendance(activityId: string, date: Date, st
   await prisma.activityAttendance.deleteMany({ where: { activityId, date, studentId: { in: studentIds } } });
 }
 
-export type AttendanceSessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY';
+export interface TutoringRosterEntry {
+  bookingId: string;
+  studentId: string;
+  studentName: string;
+  timeLabel: string;
+  isMakeup: boolean;
+  status: AttendanceStatusValue | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  quotaLabel: string;
+}
+
+export async function getTutoringRoster(windowId: string, date: Date): Promise<TutoringRosterEntry[]> {
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { windowId, date, status: 'BOOKED' },
+    select: {
+      id: true,
+      startTime: true,
+      endTime: true,
+      kind: true,
+      enrollment: { select: { id: true, studentId: true, student: { select: NAME_SELECT } } },
+      attendance: true,
+    },
+  });
+  const monthKey = taipeiDateKey(date);
+  const rows = await Promise.all(
+    bookings.map(async (b) => {
+      const { locked, quota } = await getMonthlyQuotaStatus(b.enrollment.id, monthKey);
+      return {
+        bookingId: b.id,
+        studentId: b.enrollment.studentId,
+        studentName: b.enrollment.student.user.name,
+        timeLabel: `${b.startTime}-${b.endTime}`,
+        isMakeup: b.kind === 'MAKEUP',
+        status: (b.attendance?.status as AttendanceStatusValue) ?? null,
+        checkInTime: b.attendance?.checkInTime ?? null,
+        checkOutTime: b.attendance?.checkOutTime ?? null,
+        quotaLabel: `本月已計次 ${locked}／${quota} 堂`,
+      };
+    })
+  );
+  return rows.sort((a, b) => a.timeLabel.localeCompare(b.timeLabel));
+}
+
+export interface SaveTutoringAttendanceInput {
+  bookingId: string;
+  status: AttendanceStatusValue;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+}
+
+export async function saveTutoringAttendance(markedById: string, records: SaveTutoringAttendanceInput[]): Promise<void> {
+  await prisma.$transaction(
+    records.map((r) =>
+      prisma.tutoringAttendance.upsert({
+        where: { bookingId: r.bookingId },
+        create: { bookingId: r.bookingId, status: r.status, checkInTime: r.checkInTime, checkOutTime: r.checkOutTime, markedById },
+        update: { status: r.status, checkInTime: r.checkInTime, checkOutTime: r.checkOutTime, markedById },
+      })
+    )
+  );
+}
+
+export async function clearTutoringAttendance(bookingIds: string[]): Promise<void> {
+  if (bookingIds.length === 0) return;
+  await prisma.tutoringAttendance.deleteMany({ where: { bookingId: { in: bookingIds } } });
+}
+
+export type AttendanceSessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY' | 'TUTORING';
 
 export interface AttendanceSessionSummary {
   type: AttendanceSessionType;
@@ -459,7 +528,7 @@ export async function listAttendanceSessionsForDate(
       ).map((r) => r.classId)
     : [];
 
-  const [classes, oneOnOnes, goHallSessions, activities] = await Promise.all([
+  const [classes, oneOnOnes, goHallSessions, activities, tutoringWindows] = await Promise.all([
     prisma.class.findMany({
       where: {
         weekday,
@@ -483,6 +552,10 @@ export async function listAttendanceSessionsForDate(
     prisma.activity.findMany({
       where: { startDate: { lte: date }, endDate: { gte: date }, ...(teacherId ? { teachers: { some: { teacherId } } } : {}) },
       select: { id: true, title: true, _count: { select: { registrations: true } } },
+    }),
+    prisma.tutoringWindow.findMany({
+      where: { weekday, active: true, ...(teacherId ? { teacherId } : {}) },
+      select: { id: true, startTime: true, endTime: true, program: { select: { name: true } } },
     }),
   ]);
 
@@ -539,7 +612,23 @@ export async function listAttendanceSessionsForDate(
     }))
   );
 
-  return [...classRows, ...oneOnOneRows, ...goHallRows, ...activityRows];
+  const openTutoringWindows = [];
+  for (const w of tutoringWindows) {
+    const closed = await prisma.tutoringWindowClosure.findUnique({ where: { windowId_date: { windowId: w.id, date: dayStart } } });
+    if (!closed) openTutoringWindows.push(w);
+  }
+  const tutoringRows: AttendanceSessionSummary[] = await Promise.all(
+    openTutoringWindows.map(async (w) => ({
+      type: 'TUTORING' as const,
+      id: w.id,
+      title: w.program.name,
+      timeLabel: `${w.startTime}-${w.endTime}`,
+      markedCount: await prisma.tutoringAttendance.count({ where: { booking: { windowId: w.id, date: dayStart } } }),
+      totalCount: await prisma.tutoringBooking.count({ where: { windowId: w.id, date: dayStart, status: 'BOOKED' } }),
+    }))
+  );
+
+  return [...classRows, ...oneOnOneRows, ...goHallRows, ...activityRows, ...tutoringRows];
 }
 
 export interface MyAttendanceRow {
@@ -553,7 +642,7 @@ export interface MyAttendanceRow {
 }
 
 export async function listMyAttendance(studentId: string): Promise<MyAttendanceRow[]> {
-  const [classRows, oneOnOneRows, goHallRows, activityRows] = await Promise.all([
+  const [classRows, oneOnOneRows, goHallRows, activityRows, tutoringRows] = await Promise.all([
     prisma.classAttendance.findMany({
       where: { studentId },
       select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, class: { select: { name: true } } },
@@ -575,6 +664,16 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
     prisma.activityAttendance.findMany({
       where: { studentId },
       select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, activity: { select: { title: true } } },
+    }),
+    prisma.tutoringAttendance.findMany({
+      where: { booking: { enrollment: { studentId } } },
+      select: {
+        id: true,
+        status: true,
+        checkInTime: true,
+        checkOutTime: true,
+        booking: { select: { date: true, window: { select: { program: { select: { name: true } } } } } },
+      },
     }),
   ]);
 
@@ -611,6 +710,15 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       type: 'ACTIVITY' as const,
       date: r.date,
       title: r.activity.title,
+      status: r.status as AttendanceStatusValue,
+      checkInTime: r.checkInTime,
+      checkOutTime: r.checkOutTime,
+    })),
+    ...tutoringRows.map((r) => ({
+      id: `tutoring-${r.id}`,
+      type: 'TUTORING' as const,
+      date: r.booking.date,
+      title: r.booking.window.program.name,
       status: r.status as AttendanceStatusValue,
       checkInTime: r.checkInTime,
       checkOutTime: r.checkOutTime,
@@ -727,6 +835,21 @@ async function applyOneOnOneAttendance(input: {
   return 'CHECKED_OUT';
 }
 
+async function applyTutoringAttendance(input: { bookingId: string; timeStr: string; markedById: string }): Promise<'CHECKED_IN' | 'CHECKED_OUT'> {
+  const where = { bookingId: input.bookingId };
+  const existing = await prisma.tutoringAttendance.findUnique({ where });
+  if (!existing || !existing.checkInTime) {
+    await prisma.tutoringAttendance.upsert({
+      where,
+      create: { bookingId: input.bookingId, status: 'PRESENT', checkInTime: input.timeStr, markedById: input.markedById },
+      update: { status: 'PRESENT', checkInTime: input.timeStr, markedById: input.markedById },
+    });
+    return 'CHECKED_IN';
+  }
+  await prisma.tutoringAttendance.update({ where, data: { checkOutTime: input.timeStr, markedById: input.markedById } });
+  return 'CHECKED_OUT';
+}
+
 async function getTodayCandidates(
   studentId: string,
   date: Date,
@@ -735,7 +858,7 @@ async function getTodayCandidates(
 ): Promise<CheckInCandidate[]> {
   const weekday = date.getUTCDay();
 
-  const [enrollments, insertions, oneOnOnes, leaveRequests] = await Promise.all([
+  const [enrollments, insertions, oneOnOnes, leaveRequests, tutoringBookings] = await Promise.all([
     prisma.classEnrollment.findMany({
       where: { studentId, class: { weekday } },
       select: {
@@ -758,6 +881,15 @@ async function getTodayCandidates(
       select: { id: true, slotStartTime: true, slotEndTime: true, teacher: { select: { user: { select: { name: true } } } } },
     }),
     prisma.leaveRequest.findMany({ where: { studentId, date }, select: { classId: true } }),
+    prisma.tutoringBooking.findMany({
+      where: { date, status: 'BOOKED', enrollment: { studentId } },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        window: { select: { teacher: { select: { user: { select: { name: true } } } }, program: { select: { name: true } } } },
+      },
+    }),
   ]);
 
   const excludedClassIds = new Set(leaveRequests.map((l) => l.classId));
@@ -812,6 +944,20 @@ async function getTodayCandidates(
       checkInTime: existing?.checkInTime ?? null,
       checkOutTime: existing?.checkOutTime ?? null,
       apply: () => applyOneOnOneAttendance({ makeupRequestId: o.id, timeStr, markedById }),
+    });
+  }
+
+  for (const tb of tutoringBookings) {
+    const existing = await prisma.tutoringAttendance.findUnique({ where: { bookingId: tb.id } });
+    candidates.push({
+      key: `tutoring:${tb.id}`,
+      title: tb.window.program.name,
+      timeLabel: `${tb.startTime}-${tb.endTime}`,
+      teacherName: tb.window.teacher.user.name,
+      startMinutes: toMinutes(tb.startTime),
+      checkInTime: existing?.checkInTime ?? null,
+      checkOutTime: existing?.checkOutTime ?? null,
+      apply: () => applyTutoringAttendance({ bookingId: tb.id, timeStr, markedById }),
     });
   }
 

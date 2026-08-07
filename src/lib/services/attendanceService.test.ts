@@ -6,10 +6,12 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries } from './attendanceService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
+import { createProgram, createWindow } from './tutoringProgramService';
+import { createBooking } from './tutoringBookingService';
 
 beforeEach(async () => {
   // Create marker user for attendance marking
@@ -1006,5 +1008,81 @@ describe('listAttendanceSessionsForDate — 代課老師', () => {
     // 班級每週二上課，下週二（8/11）代課老師沒有被指派，不應出現
     const sessions = await listAttendanceSessionsForDate(new Date('2026-08-11'), substitute.id);
     expect(sessions.find((s) => s.type === 'CLASS' && s.id === cls.id)).toBeUndefined();
+  });
+});
+
+async function setupTutoringBooking() {
+  const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
+  const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+  const program = await createProgram({ name: '英文個別輔導' });
+  const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+  const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
+  const date = new Date('2026-08-07'); // Friday
+  const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date, startTime: '16:00', endTime: '18:00' });
+  return { teacher, student, program, window, enrollment, date, booking };
+}
+
+describe('getTutoringRoster / saveTutoringAttendance / clearTutoringAttendance', () => {
+  it('lists a booked student with no status yet, then reflects a saved status', async () => {
+    const { window, date, booking } = await setupTutoringBooking();
+
+    let roster = await getTutoringRoster(window.id, date);
+    expect(roster).toHaveLength(1);
+    expect(roster[0].bookingId).toBe(booking.id);
+    expect(roster[0].studentName).toBe('小明');
+    expect(roster[0].status).toBeNull();
+    expect(roster[0].isMakeup).toBe(false);
+
+    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:05' }]);
+    roster = await getTutoringRoster(window.id, date);
+    expect(roster[0].status).toBe('PRESENT');
+    expect(roster[0].checkInTime).toBe('16:05');
+  });
+
+  it('clears a saved attendance record', async () => {
+    const { window, date, booking } = await setupTutoringBooking();
+    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'ABSENT' }]);
+    await clearTutoringAttendance([booking.id]);
+    const roster = await getTutoringRoster(window.id, date);
+    expect(roster[0].status).toBeNull();
+  });
+});
+
+describe('listAttendanceSessionsForDate with tutoring windows', () => {
+  it('includes an open tutoring window on its weekday with correct counts', async () => {
+    const { window, date, teacher } = await setupTutoringBooking();
+    const sessions = await listAttendanceSessionsForDate(date, teacher.id);
+    const tutoring = sessions.find((s) => s.type === 'TUTORING' && s.id === window.id);
+    expect(tutoring).toBeDefined();
+    expect(tutoring!.totalCount).toBe(1);
+    expect(tutoring!.markedCount).toBe(0);
+  });
+
+  it('excludes a tutoring window closed on that date', async () => {
+    const { window, date } = await setupTutoringBooking();
+    await prisma.tutoringWindowClosure.create({ data: { windowId: window.id, date } });
+    const sessions = await listAttendanceSessionsForDate(date, null);
+    expect(sessions.find((s) => s.type === 'TUTORING' && s.id === window.id)).toBeUndefined();
+  });
+});
+
+describe('listMyAttendance with tutoring bookings', () => {
+  it('includes a tutoring attendance row', async () => {
+    const { student, booking } = await setupTutoringBooking();
+    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT' }]);
+    const rows = await listMyAttendance(student.id);
+    expect(rows.find((r) => r.type === 'TUTORING')).toMatchObject({ status: 'PRESENT', title: '英文個別輔導' });
+  });
+});
+
+describe('checkInByStudentNumber with a tutoring booking', () => {
+  it('checks the student into their tutoring booking for today', async () => {
+    const { student, window } = await setupTutoringBooking();
+    await prisma.student.update({ where: { id: student.id }, data: { studentNumber: 'S001' } });
+    const result = await checkInByStudentNumber('S001', '2026-08-07', '16:02', 'marker-1');
+    expect(result.result).toBe('CHECKED_IN');
+    expect(result.sessionTitle).toBe('英文個別輔導');
+    const roster = await getTutoringRoster(window.id, new Date('2026-08-07'));
+    expect(roster[0].checkInTime).toBe('16:02');
   });
 });
