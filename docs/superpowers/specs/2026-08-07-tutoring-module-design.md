@@ -129,7 +129,7 @@ model TutoringAttendance {       // 沿用現有 AttendanceStatus
 
 ## 老師端與點名整合
 
-- **AttendanceHub**：`listAttendanceSessionsForDate` 增加 `TUTORING` 場次類型——當日有預約的窗口出現一列，打開是當日預約學生名單（各自起訖時間、補課徽章），照常標到／遲到／早退／缺席。臨時上門沒預約的學生，老師／行政可現場補加（建立當日預約＋出席，補加的預約一樣計次）。
+- **AttendanceHub**：`listAttendanceSessionsForDate` 增加 `TUTORING` 場次類型——當日有預約的窗口出現一列，打開是當日預約學生名單（各自起訖時間、補課徽章），照常標到／遲到／早退／缺席。臨時上門沒預約的學生，老師／行政可現場補加（建立當日預約＋出席，補加的預約一樣計次）；現場補加**不做容量檢查**——教室現場人數由老師目視判斷，系統只負責記錄。
 - **自助刷學號簽到**：`checkInByStudentNumber` 的候選清單加入當日輔導預約（`BOOKED`，含核准的補課），簽到標 PRESENT、簽退記時間，LINE 簽到通知沿用現有格式。
 
 ## 行政端 `/admin/tutoring`
