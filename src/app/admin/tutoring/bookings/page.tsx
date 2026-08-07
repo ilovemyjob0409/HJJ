@@ -10,7 +10,6 @@ import DataTable from '@/components/ui/DataTable';
 import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface OverviewRow {
   id: string;
@@ -37,6 +36,19 @@ interface WindowOption {
   startTime: string;
   endTime: string;
   programId: string;
+}
+
+interface EnrollmentApiRow {
+  id: string;
+  active: boolean;
+  studentName: string;
+  programId: string;
+  programName: string;
+}
+
+interface ProgramApiRow {
+  id: string;
+  windows: { id: string; weekday: number; startTime: string; endTime: string }[];
 }
 
 interface SummaryRow {
@@ -75,10 +87,10 @@ export default function AdminTutoringBookingsPage() {
 
   async function loadOptions() {
     const [enrollmentsRes, programsRes] = await Promise.all([fetch('/api/tutoring-enrollments'), fetch('/api/tutoring-programs')]);
-    const enrollmentData = await enrollmentsRes.json();
-    setEnrollments(enrollmentData.filter((e: { active: boolean }) => e.active).map((e: any) => ({ id: e.id, studentName: e.studentName, programId: e.programId, programName: e.programName })));
-    const programData = await programsRes.json();
-    setWindows(programData.flatMap((p: any) => p.windows.map((w: any) => ({ ...w, programId: p.id }))));
+    const enrollmentData: EnrollmentApiRow[] = await enrollmentsRes.json();
+    setEnrollments(enrollmentData.filter((e) => e.active).map((e) => ({ id: e.id, studentName: e.studentName, programId: e.programId, programName: e.programName })));
+    const programData: ProgramApiRow[] = await programsRes.json();
+    setWindows(programData.flatMap((p) => p.windows.map((w) => ({ ...w, programId: p.id }))));
   }
 
   async function loadSummary() {

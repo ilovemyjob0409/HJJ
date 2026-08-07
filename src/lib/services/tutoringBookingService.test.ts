@@ -3,7 +3,6 @@ import {
   toMinutes,
   minutesToHHMM,
   utcDateKey,
-  taipeiDateKey,
   countOverlapsInSlot,
   buildSlotRemaining,
   hasCapacityForRange,
@@ -453,7 +452,7 @@ describe('listBookingsOverview and listPendingTutoringMakeupRequests', () => {
 
 describe('sendMonthlyQuotaReminders', () => {
   it('notifies an under-quota enrollment with a lineUserId once, then skips it on a second run', async () => {
-    const { student, program } = await setupProgramWithEnrollment();
+    const { student } = await setupProgramWithEnrollment();
     await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'line-1' } });
 
     const first = await sendMonthlyQuotaReminders();
