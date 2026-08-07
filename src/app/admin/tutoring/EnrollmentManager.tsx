@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Column } from '@/components/ui/DataTable';
-import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 
@@ -79,21 +78,29 @@ export default function EnrollmentManager() {
   async function saveQuotaOverride(row: EnrollmentRow) {
     const raw = quotaOverride[row.id];
     const monthlyQuota = raw === '' || raw === undefined ? null : Number(raw);
-    await fetch(`/api/tutoring-enrollments/${row.id}`, {
+    const res = await fetch(`/api/tutoring-enrollments/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ monthlyQuota }),
     });
+    if (!res.ok) {
+      showToast('更新失敗，請稍後再試');
+      return;
+    }
     showToast('已更新額度');
     load();
   }
 
   async function toggleActive(row: EnrollmentRow) {
-    await fetch(`/api/tutoring-enrollments/${row.id}`, {
+    const res = await fetch(`/api/tutoring-enrollments/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !row.active }),
     });
+    if (!res.ok) {
+      showToast('更新失敗，請稍後再試');
+      return;
+    }
     load();
   }
 
@@ -176,7 +183,7 @@ export default function EnrollmentManager() {
         </div>
       </Card>
       <Card>
-        <CollapsibleDataTable columns={columns} rows={enrollments} keyField={(r) => r.id} maxRows={3} emptyText="目前沒有學生報名個別輔導" />
+        <DataTable columns={columns} rows={enrollments} keyField={(r) => r.id} emptyText="目前沒有學生報名個別輔導" />
       </Card>
       {ConfirmDialog}
     </>

@@ -71,11 +71,15 @@ export default function AdminTutoringPage() {
   }
 
   async function toggleProgramActive(program: ProgramRow) {
-    await fetch(`/api/tutoring-programs/${program.id}`, {
+    const res = await fetch(`/api/tutoring-programs/${program.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !program.active }),
     });
+    if (!res.ok) {
+      showToast('更新失敗，請稍後再試');
+      return;
+    }
     load();
   }
 
@@ -118,11 +122,15 @@ export default function AdminTutoringPage() {
   }
 
   async function toggleWindowActive(window: WindowRow) {
-    await fetch(`/api/tutoring-windows/${window.id}`, {
+    const res = await fetch(`/api/tutoring-windows/${window.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active: !window.active }),
     });
+    if (!res.ok) {
+      showToast('更新失敗，請稍後再試');
+      return;
+    }
     load();
   }
 
@@ -154,7 +162,11 @@ export default function AdminTutoringPage() {
   }
 
   async function removeClosure(closureId: string) {
-    await fetch(`/api/tutoring-window-closures/${closureId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/tutoring-window-closures/${closureId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      showToast('刪除失敗，請稍後再試');
+      return;
+    }
     load();
   }
 
