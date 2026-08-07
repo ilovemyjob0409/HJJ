@@ -162,3 +162,4 @@ model TutoringAttendance {       // 沿用現有 AttendanceStatus
 1. Prisma migration（純新增表，無現有資料影響）＋ production SQL 存 `docs/superpowers/`。
 2. Vercel 環境變數加 `CRON_SECRET`，`vercel.json` 加 cron 設定。
 3. 行政建課程與窗口 → 報名學生 → 學生端開放。
+4. **更新使用手冊**：`/guide` 學生使用教學頁補「個別輔導預約」章節（預約、取消改期、補課申請、月額度說明），並重產 PDF（`docs/manual/學生帳號使用手冊.pdf`；截圖須用最新 main＋zh-TW locale，方法見 memory `project_student_guide`）。
