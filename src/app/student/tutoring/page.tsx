@@ -292,7 +292,7 @@ export default function StudentTutoringPage() {
             </Card>
           )}
 
-          <h2 className="mb-2 font-bold text-ink">本月可預約時段</h2>
+          <h2 className="mb-2 font-bold text-ink">{makeupFor ? '本月及下月可預約時段' : '本月可預約時段'}</h2>
           <Card className="mb-6">
             {renderMonthGrid(calendarYear, calendarMonth)}
             {makeupFor && renderMonthGrid(nextCalendarYear, nextCalendarMonth)}

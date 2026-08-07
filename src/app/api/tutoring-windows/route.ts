@@ -9,6 +9,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const body = await req.json().catch(() => ({}));
+  if (!body.programId || body.weekday === undefined || !body.startTime || !body.endTime || body.capacity === undefined || !body.teacherId) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
   try {
     const window = await createWindow({
       programId: body.programId,
