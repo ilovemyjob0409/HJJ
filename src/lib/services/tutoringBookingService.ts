@@ -142,10 +142,18 @@ export function createWalkInBooking(input: {
 }
 
 export async function cancelBooking(bookingId: string, studentId: string): Promise<void> {
-  const booking = await prisma.tutoringBooking.findUniqueOrThrow({
-    where: { id: bookingId },
-    include: { enrollment: { select: { studentId: true } } },
-  });
+  let booking;
+  try {
+    booking = await prisma.tutoringBooking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: { enrollment: { select: { studentId: true } } },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('BOOKING_NOT_FOUND');
+    }
+    throw err;
+  }
   if (booking.enrollment.studentId !== studentId) throw new Error('NOT_OWNER');
 
   const late = isCancellationLate(utcDateKey(booking.date), taipeiDateKey(new Date()));
@@ -158,11 +166,18 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
 
 // 行政取消：可選是否計次，處理特殊個案（例如場地臨時取消，不該算學生的堂數）。
 export async function adminCancelBooking(bookingId: string, countsTowardQuota: boolean): Promise<void> {
-  if (!countsTowardQuota) {
-    await prisma.tutoringBooking.delete({ where: { id: bookingId } });
-    return;
+  try {
+    if (!countsTowardQuota) {
+      await prisma.tutoringBooking.delete({ where: { id: bookingId } });
+      return;
+    }
+    await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('BOOKING_NOT_FOUND');
+    }
+    throw err;
   }
-  await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
 }
 
 export async function requestMakeup(input: {

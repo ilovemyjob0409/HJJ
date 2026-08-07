@@ -10,8 +10,15 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   if (session.user.role === 'ADMIN') {
     const body = await req.json().catch(() => ({}));
-    await adminCancelBooking(params.id, Boolean(body.countsTowardQuota));
-    return NextResponse.json({ success: true });
+    try {
+      await adminCancelBooking(params.id, Boolean(body.countsTowardQuota));
+      return NextResponse.json({ success: true });
+    } catch (err) {
+      if (err instanceof Error && err.message === 'BOOKING_NOT_FOUND') {
+        return NextResponse.json({ error: err.message }, { status: 404 });
+      }
+      throw err;
+    }
   }
   if (session.user.role !== 'STUDENT') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -23,6 +30,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: message === 'NOT_OWNER' ? 403 : 400 });
+    const status = message === 'NOT_OWNER' ? 403 : message === 'BOOKING_NOT_FOUND' ? 404 : 422;
+    return NextResponse.json({ error: message }, { status });
   }
 }

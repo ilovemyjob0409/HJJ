@@ -169,6 +169,10 @@ describe('cancelBooking', () => {
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
     await expect(cancelBooking(booking.id, 'someone-else')).rejects.toThrow('NOT_OWNER');
   });
+
+  it('rejects with BOOKING_NOT_FOUND for a nonexistent booking id', async () => {
+    await expect(cancelBooking('nonexistent-booking-id', 'someone')).rejects.toThrow('BOOKING_NOT_FOUND');
+  });
 });
 
 describe('adminCancelBooking', () => {

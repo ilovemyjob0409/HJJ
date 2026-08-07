@@ -10,13 +10,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const student = await prisma.student.findUniqueOrThrow({ where: { userId: session.user.id } });
-  const original = await prisma.tutoringBooking.findUniqueOrThrow({
+  const original = await prisma.tutoringBooking.findUnique({
     where: { id: params.id },
     include: { enrollment: { select: { studentId: true } } },
   });
+  if (!original) return NextResponse.json({ error: 'BOOKING_NOT_FOUND' }, { status: 404 });
   if (original.enrollment.studentId !== student.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
+  if (!body.windowId || !body.date || !body.startTime || !body.endTime) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
   try {
     const makeup = await requestMakeup({
       originalBookingId: params.id,
