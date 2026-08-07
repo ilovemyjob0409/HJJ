@@ -9,7 +9,9 @@ export type KnownStatus =
   | 'LEFT_EARLY'
   | 'ON_LEAVE'
   | 'ABSENT'
-  | 'NOT_REGISTERED';
+  | 'NOT_REGISTERED'
+  | 'BOOKED'
+  | 'CANCELLED_LATE';
 
 interface StatusConfig {
   label: string;
@@ -30,6 +32,9 @@ const STATUS_CONFIG: Record<KnownStatus, StatusConfig> = {
   ABSENT: { label: '缺席未請假', bg: 'bg-rejectedBg', text: 'text-rejected' },
   // 報名時聲明不出席、未繳該堂費用 → 不扣堂；中性灰顯示
   NOT_REGISTERED: { label: '未報名', bg: 'bg-borderSubtle', text: 'text-inkMuted' },
+  // 個別輔導預約狀態
+  BOOKED: { label: '已預約', bg: 'bg-approvedBg', text: 'text-approved' },
+  CANCELLED_LATE: { label: '當天取消', bg: 'bg-rejectedBg', text: 'text-rejected' },
 };
 
 export function getStatusBadgeConfig(status: string): StatusConfig {
