@@ -7,6 +7,7 @@ import { listRegistrationsForStudent } from '@/lib/services/goHallService';
 import { listStudentEnrolledClasses } from '@/lib/services/classService';
 import { getMyTickets } from '@/lib/services/goHallTicketService';
 import { getPointBalances } from '@/lib/services/pointService';
+import { listEnrollments } from '@/lib/services/tutoringProgramService';
 import Card from '@/components/ui/Card';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import LeaveHistoryTable from './LeaveHistoryTable';
@@ -19,14 +20,15 @@ export const dynamic = 'force-dynamic';
 export default async function StudentDashboard() {
   const session = await getServerSession(authOptions);
   const student = session ? await prisma.student.findUnique({ where: { userId: session.user.id } }) : null;
-  const [leaves, myRegistrations, myClasses, tickets] = student
+  const [leaves, myRegistrations, myClasses, tickets, tutoringEnrollments] = student
     ? await Promise.all([
         listLeaveRequestsForStudent(student.id),
         listRegistrationsForStudent(student.id),
         listStudentEnrolledClasses(student.id),
         getMyTickets(student.id),
+        listEnrollments(student.id),
       ])
-    : [[], [], [], { balance: 0, activePassEndDate: null }];
+    : [[], [], [], { balance: 0, activePassEndDate: null }, []];
   const balances = student ? await getPointBalances(student.id) : { regular: 0, redeemOnly: 0 };
 
   const goHallRows = myRegistrations.map((r) => ({
@@ -118,6 +120,24 @@ export default async function StudentDashboard() {
           </div>
         </Card>
       </Link>
+
+      {tutoringEnrollments.filter((e) => e.active).length > 0 && (
+        <Link href="/student/tutoring">
+          <Card className="mb-6 transition-shadow hover:shadow-md">
+            <p className="mb-2 text-sm text-inkMuted">個別輔導</p>
+            {tutoringEnrollments
+              .filter((e) => e.active)
+              .map((e, i) => (
+                <div key={e.id} className={`flex items-center justify-between gap-3 py-1.5 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}>
+                  <span className="text-sm font-semibold text-ink">{e.programName}</span>
+                  <span className="text-xs tabular-nums text-inkMuted">
+                    本月 <span className="font-semibold text-ink">{e.locked}</span>／{e.monthlyQuota} 堂
+                  </span>
+                </div>
+              ))}
+          </Card>
+        </Link>
+      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/student/leave-request">

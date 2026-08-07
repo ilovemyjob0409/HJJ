@@ -252,6 +252,23 @@ export default function GuidePage() {
           </Step>
         </Chapter>
 
+        <Chapter no="9" title="個別輔導預約">
+          <Step no="1" title="從首頁進入" img="m31-tutoring-dashboard-card.png" imgAlt="首頁個別輔導卡片">
+            如果您有報名英文或數學個別輔導，首頁會多一張<b className="text-ink">個別輔導</b>卡片，顯示本月已上堂數；點卡片進入預約頁面。
+          </Step>
+          <Step no="2" title="挑日期與時間" img="m32-tutoring-availability.png" imgAlt="選擇預約日期與時間">
+            預約頁是<b className="text-ink">當月月曆網格</b>，本月有開課的日子會用綠色標示，其他日子反灰不能點選。點一個可預約的日期後，下方會出現開始與結束時間選單，自動帶入第一個還有名額的時段（額滿的時段不能選），選好時間按「確定預約」即可，
+            <b className="text-ink">不需要經過行政審核</b>。
+          </Step>
+          <Step no="3" title="我的預約紀錄" img="m33-tutoring-booking-list.png" imgAlt="我的預約紀錄表格">
+            這裡列出所有預約紀錄與狀態。<b className="text-ink">前一天 23:59 前</b>都可以直接按「取消」，不計入次數；如果是<b className="text-ink">當天才取消或沒來</b>，會計入本月次數，事後可以按「申請補課」另約時間，待行政核准。
+          </Step>
+          <Tip title="本月次數怎麼算？">
+            每月 1 號重新歸零，「已計次」是當天已到、當天取消、或缺席的預約堂數；申請補課核准後不會重複計次。若快到月底還有很多堂沒約，系統會透過
+            LINE 提醒您。
+          </Tip>
+        </Chapter>
+
         <Tip title="還有問題？">
           登入後可到上方選單的「常見問題」查看更多說明；任何操作或帳號問題，都歡迎聯絡櫃檯行政人員。
         </Tip>

@@ -8,7 +8,7 @@ import Input from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import AttendanceRosterEditor, { RosterRow, SavedRecord, ClearedRecord } from '@/components/AttendanceRosterEditor';
 
-type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY';
+type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY' | 'TUTORING';
 
 interface SessionSummary {
   type: SessionType;
@@ -24,6 +24,7 @@ const TYPE_LABEL: Record<SessionType, string> = {
   ONE_ON_ONE: '一對一補課',
   GO_HALL: '弈廳',
   ACTIVITY: '活動',
+  TUTORING: '個別輔導',
 };
 
 interface ClassRosterApiRow {
@@ -55,6 +56,18 @@ const GO_HALL_QUALIFICATION_LABEL: Record<string, string> = {
   SINGLE: '單堂（現場收費）',
 };
 
+interface TutoringRosterApiRow {
+  bookingId: string;
+  studentId: string;
+  studentName: string;
+  timeLabel: string;
+  isMakeup: boolean;
+  status: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  quotaLabel: string;
+}
+
 export function todayDateInput() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -67,6 +80,7 @@ function apiPathFor(type: SessionType, id: string) {
   if (type === 'CLASS') return `/api/attendance/class/${id}`;
   if (type === 'ONE_ON_ONE') return `/api/attendance/one-on-one/${id}`;
   if (type === 'GO_HALL') return `/api/attendance/go-hall/${id}`;
+  if (type === 'TUTORING') return `/api/attendance/tutoring/${id}`;
   return `/api/attendance/activity/${id}`;
 }
 
@@ -143,6 +157,20 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
           quotaTone: r.qualification === 'SINGLE' ? ('warning' as const) : undefined,
         }))
       );
+    } else if (s.type === 'TUTORING') {
+      const res = await fetch(`/api/attendance/tutoring/${s.id}?date=${date}`);
+      const roster = await res.json();
+      setRosterRows(
+        roster.map((r: TutoringRosterApiRow) => ({
+          key: r.bookingId,
+          studentId: r.studentId,
+          studentName: r.studentName + (r.isMakeup ? '（補課）' : ''),
+          status: r.status,
+          checkInTime: r.checkInTime,
+          checkOutTime: r.checkOutTime,
+          quotaLabel: r.quotaLabel,
+        }))
+      );
     } else {
       const res = await fetch(`/api/attendance/activity/${s.id}?date=${date}`);
       const roster = await res.json();
@@ -167,16 +195,18 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       const body =
         opening.type === 'ONE_ON_ONE'
           ? records[0]
-          : {
-              date,
-              records: records.map((r) => ({
-                studentId: r.studentId,
-                status: r.status,
-                checkInTime: r.checkInTime,
-                checkOutTime: r.checkOutTime,
-                ...(opening.type === 'CLASS' && r.key !== r.studentId ? { makeupRequestId: r.key } : {}),
-              })),
-            };
+          : opening.type === 'TUTORING'
+            ? { records: records.map((r) => ({ bookingId: r.key, status: r.status, checkInTime: r.checkInTime, checkOutTime: r.checkOutTime })) }
+            : {
+                date,
+                records: records.map((r) => ({
+                  studentId: r.studentId,
+                  status: r.status,
+                  checkInTime: r.checkInTime,
+                  checkOutTime: r.checkOutTime,
+                  ...(opening.type === 'CLASS' && r.key !== r.studentId ? { makeupRequestId: r.key } : {}),
+                })),
+              };
       const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) {
         showToast('儲存失敗，請稍後再試');
@@ -195,8 +225,8 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
                   c.key !== c.studentId ? { studentId: c.studentId, makeupRequestId: c.key } : { studentId: c.studentId }
                 ),
               }
-            : opening.type === 'GO_HALL'
-              ? { clear: clears.map((c) => c.studentId) }
+            : opening.type === 'GO_HALL' || opening.type === 'TUTORING'
+              ? { clear: clears.map((c) => c.key) }
               : { date, clear: clears.map((c) => c.studentId) };
       const res = await fetch(path, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) {
