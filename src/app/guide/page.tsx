@@ -257,7 +257,7 @@ export default function GuidePage() {
             如果您有報名英文或數學個別輔導，首頁會多一張<b className="text-ink">個別輔導</b>卡片，顯示本月已上堂數；點卡片進入預約頁面。
           </Step>
           <Step no="2" title="挑日期與時間" img="m32-tutoring-availability.png" imgAlt="選擇預約日期與時間">
-            預約頁列出未來兩週可預約的日子，每天旁邊的小標籤是各時段<b className="text-ink">剩餘名額</b>（紅色代表已滿）。點日期展開後選開始與結束時間，按「確定預約」即可，
+            預約頁是<b className="text-ink">當月月曆網格</b>，本月有開課的日子會用綠色標示，其他日子反灰不能點選。點一個可預約的日期後，下方會出現開始與結束時間選單，自動帶入第一個還有名額的時段（額滿的時段不能選），選好時間按「確定預約」即可，
             <b className="text-ink">不需要經過行政審核</b>。
           </Step>
           <Step no="3" title="我的預約紀錄" img="m33-tutoring-booking-list.png" imgAlt="我的預約紀錄表格">
