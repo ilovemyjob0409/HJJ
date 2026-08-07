@@ -480,3 +480,60 @@ export async function sendMonthlyQuotaReminders(): Promise<{ notified: number }>
   }
   return { notified };
 }
+
+export interface MonthlySummaryRow {
+  enrollmentId: string;
+  studentName: string;
+  programName: string;
+  attended: number;
+  cancelledLate: number;
+  absent: number;
+  makeup: number;
+}
+
+// 已上／當天取消／缺席／補課 統計，供行政對帳與 CSV 匯出。「已上」= 已鎖定且非取消非缺席的
+// REGULAR 預約（含尚未點名的，視為已上——月結報表以「有沒有到場義務」為準，不是點名進度表）。
+export async function listMonthlyAttendanceSummary(monthKey: string): Promise<MonthlySummaryRow[]> {
+  const [year, month] = monthKey.split('-').map(Number);
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0));
+  const todayKey = taipeiDateKey(new Date());
+
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { date: { gte: monthStart, lte: monthEnd } },
+    select: {
+      date: true,
+      kind: true,
+      status: true,
+      enrollment: { select: { id: true, student: { select: { user: { select: { name: true } } } } } },
+      window: { select: { program: { select: { name: true } } } },
+      attendance: { select: { status: true } },
+    },
+  });
+
+  const byEnrollmentId = new Map<string, MonthlySummaryRow>();
+  for (const b of bookings) {
+    const key = b.enrollment.id;
+    if (!byEnrollmentId.has(key)) {
+      byEnrollmentId.set(key, {
+        enrollmentId: key,
+        studentName: b.enrollment.student.user.name,
+        programName: b.window.program.name,
+        attended: 0,
+        cancelledLate: 0,
+        absent: 0,
+        makeup: 0,
+      });
+    }
+    const row = byEnrollmentId.get(key)!;
+    if (b.kind === 'MAKEUP') {
+      if (b.status === 'BOOKED') row.makeup++;
+      continue;
+    }
+    if (utcDateKey(b.date) > todayKey) continue;
+    if (b.status === 'CANCELLED_LATE') row.cancelledLate++;
+    else if (b.attendance?.status === 'ABSENT') row.absent++;
+    else if (b.status === 'BOOKED') row.attended++;
+  }
+  return Array.from(byEnrollmentId.values()).sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
+}

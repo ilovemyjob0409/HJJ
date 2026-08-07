@@ -15,6 +15,7 @@ import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, createWalkInBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
+import { listMonthlyAttendanceSummary } from './tutoringBookingService';
 
 describe('toMinutes / minutesToHHMM', () => {
   it('round-trips', () => {
@@ -415,5 +416,36 @@ describe('sendMonthlyQuotaReminders', () => {
     await setupProgramWithEnrollment();
     const result = await sendMonthlyQuotaReminders();
     expect(result.notified).toBe(0);
+  });
+});
+
+describe('listMonthlyAttendanceSummary', () => {
+  it('buckets locked REGULAR bookings into attended/cancelledLate/absent and counts approved MAKEUP separately', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    // Fixture gap in the brief: TutoringAttendance.markedById has an FK to User,
+    // and this file (unlike attendanceService.test.ts) has no marker-user
+    // beforeEach, so the literal 'marker-1' id must be created here first.
+    await prisma.user.create({ data: { id: 'marker-1', email: 'tutoring-summary-marker@example.com', password: 'x', name: 'Marker', role: 'ADMIN' } });
+    const past = '2020-08-';
+    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '07'), startTime: '16:00', endTime: '18:00' });
+    await prisma.tutoringAttendance.create({ data: { bookingId: attended.id, status: 'PRESENT', markedById: 'marker-1' } });
+
+    const lateCancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '14'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(lateCancelled.id, true);
+
+    const absentBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '21'), startTime: '16:00', endTime: '18:00' });
+    await prisma.tutoringAttendance.create({ data: { bookingId: absentBooking.id, status: 'ABSENT', markedById: 'marker-1' } });
+
+    const makeupOriginal = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '28'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(makeupOriginal.id, true);
+    const makeup = await requestMakeup({ originalBookingId: makeupOriginal.id, windowId: window.id, date: new Date('2020-09-04'), startTime: '16:00', endTime: '18:00' });
+    await decideMakeup(makeup.id, 'APPROVED');
+
+    const augustSummary = await listMonthlyAttendanceSummary('2020-08');
+    expect(augustSummary).toHaveLength(1);
+    expect(augustSummary[0]).toMatchObject({ studentName: '小明', attended: 1, cancelledLate: 2, absent: 1 });
+
+    const septemberSummary = await listMonthlyAttendanceSummary('2020-09');
+    expect(septemberSummary[0].makeup).toBe(1);
   });
 });
