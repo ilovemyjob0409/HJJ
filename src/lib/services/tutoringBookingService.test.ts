@@ -13,7 +13,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
-import { createBooking, createWalkInBooking, cancelBooking, adminCancelBooking } from './tutoringBookingService';
+import { createBooking, createWalkInBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 
 describe('toMinutes / minutesToHHMM', () => {
   it('round-trips', () => {
@@ -183,5 +183,60 @@ describe('adminCancelBooking', () => {
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
     await adminCancelBooking(booking.id, true);
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('CANCELLED_LATE');
+  });
+});
+
+describe('requestMakeup / decideMakeup', () => {
+  it('rejects a makeup request for a booking that was not missed', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await expect(
+      requestMakeup({ originalBookingId: booking.id, windowId: window.id, date: FRIDAY, startTime: '18:00', endTime: '20:00' })
+    ).rejects.toThrow('NOT_ELIGIBLE');
+  });
+
+  it('creates a PENDING_ADMIN MAKEUP booking for a late-cancelled original, and approving it flips status without re-checking capacity', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(1);
+    const past = new Date('2020-08-07');
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(original.id, true); // CANCELLED_LATE
+
+    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    let row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } });
+    expect(row.kind).toBe('MAKEUP');
+    expect(row.status).toBe('PENDING_ADMIN');
+    expect(row.makeupForId).toBe(original.id);
+
+    // capacity is 1 and already reserved by the PENDING_ADMIN makeup — a second regular booking for the same slot must fail
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+    ).rejects.toThrow('WINDOW_FULL');
+
+    await decideMakeup(makeup.id, 'APPROVED');
+    row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } });
+    expect(row.status).toBe('BOOKED');
+  });
+
+  it('rejects a second makeup request for the same original booking', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const past = new Date('2020-08-07');
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(original.id, true);
+    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+
+    await expect(
+      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '18:00', endTime: '20:00' })
+    ).rejects.toThrow('ALREADY_REQUESTED');
+  });
+
+  it('sets status to REJECTED when the admin rejects', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const past = new Date('2020-08-07');
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(original.id, true);
+    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+
+    await decideMakeup(makeup.id, 'REJECTED');
+    expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } })).status).toBe('REJECTED');
   });
 });

@@ -163,3 +163,39 @@ export async function adminCancelBooking(bookingId: string, countsTowardQuota: b
   }
   await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
 }
+
+export async function requestMakeup(input: {
+  originalBookingId: string;
+  windowId: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+}): Promise<{ id: string }> {
+  const original = await prisma.tutoringBooking.findUniqueOrThrow({
+    where: { id: input.originalBookingId },
+    include: { attendance: true, makeupChild: true },
+  });
+  if (original.kind !== 'REGULAR') throw new Error('NOT_ELIGIBLE');
+  if (original.makeupChild) throw new Error('ALREADY_REQUESTED');
+  const missed = original.status === 'CANCELLED_LATE' || original.attendance?.status === 'ABSENT';
+  if (!missed) throw new Error('NOT_ELIGIBLE');
+
+  return createBooking({
+    enrollmentId: original.enrollmentId,
+    windowId: input.windowId,
+    date: input.date,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    kind: 'MAKEUP',
+    makeupForId: original.id,
+  });
+}
+
+// 容量在 PENDING_ADMIN 建立時已檢查並佔位（createBooking 把 PENDING_ADMIN 一併算進容量），
+// 核准時不必再查一次容量。
+export async function decideMakeup(bookingId: string, decision: 'APPROVED' | 'REJECTED'): Promise<void> {
+  await prisma.tutoringBooking.update({
+    where: { id: bookingId },
+    data: { status: decision === 'APPROVED' ? 'BOOKED' : 'REJECTED' },
+  });
+}
