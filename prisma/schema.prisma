@@ -72,6 +72,18 @@ enum GoHallTicketKind {
   ADMIN_ADJUST // 管理員調整 ±N（附原因）
 }
 
+enum TutoringBookingKind {
+  REGULAR // 一般預約
+  MAKEUP  // 補課（由某筆計次的 REGULAR 預約衍生）
+}
+
+enum TutoringBookingStatus {
+  PENDING_ADMIN // 補課申請待行政核准（僅 MAKEUP 用）
+  BOOKED        // 已確定（一般預約送出即是；補課核准後轉為此）
+  CANCELLED_LATE // 當天取消，計次
+  REJECTED      // 補課申請被駁回
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -85,6 +97,7 @@ model User {
   markedOneOnOneAttendances OneOnOneAttendance[]
   markedGoHallAttendances   GoHallAttendance[]
   markedActivityAttendances ActivityAttendance[]
+  markedTutoringAttendances TutoringAttendance[]
 }
 
 model Teacher {
@@ -101,6 +114,7 @@ model Teacher {
   goHallSessions             GoHallSession[]
   activityTeachers           ActivityTeacher[]
   pointTransactions          PointTransaction[]
+  tutoringWindows            TutoringWindow[]
 }
 
 model Student {
@@ -122,6 +136,7 @@ model Student {
   goHallTicketTransactions GoHallTicketTransaction[]
   goHallSeasonPasses       GoHallSeasonPass[]
   activityAttendances ActivityAttendance[]
+  tutoringEnrollments TutoringEnrollment[]
 }
 
 model Class {
@@ -400,6 +415,85 @@ model ActivityAttendance {
   updatedAt    DateTime          @updatedAt
 
   @@unique([activityId, studentId, date])
+}
+
+model TutoringProgram {
+  id                     String   @id @default(cuid())
+  name                   String
+  defaultMonthlyQuota    Int      @default(8)
+  defaultDurationMinutes Int      @default(120)
+  active                 Boolean  @default(true)
+  windows                TutoringWindow[]
+  enrollments            TutoringEnrollment[]
+}
+
+model TutoringWindow {
+  id        String   @id @default(cuid())
+  programId String
+  program   TutoringProgram @relation(fields: [programId], references: [id])
+  weekday   Int      // 0-6，同 Class.weekday 慣例（JS getUTCDay()）
+  startTime String   // "16:00"
+  endTime   String   // "21:00"
+  capacity  Int      // 同時在座人數上限
+  teacherId String
+  teacher   Teacher  @relation(fields: [teacherId], references: [id])
+  active    Boolean  @default(true)
+  closures  TutoringWindowClosure[]
+  bookings  TutoringBooking[]
+}
+
+model TutoringWindowClosure {
+  id       String   @id @default(cuid())
+  windowId String
+  window   TutoringWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  date     DateTime // UTC 日曆日
+
+  @@unique([windowId, date])
+}
+
+model TutoringEnrollment {
+  id                     String   @id @default(cuid())
+  programId              String
+  program                TutoringProgram @relation(fields: [programId], references: [id])
+  studentId              String
+  student                Student  @relation(fields: [studentId], references: [id])
+  monthlyQuota           Int?     // null＝用課程預設；行政可個別覆寫
+  active                 Boolean  @default(true)
+  lastQuotaReminderMonth String?  // "2026-08"，月中提醒防重複
+  bookings               TutoringBooking[]
+
+  @@unique([programId, studentId])
+}
+
+model TutoringBooking {
+  id           String   @id @default(cuid())
+  enrollmentId String
+  enrollment   TutoringEnrollment @relation(fields: [enrollmentId], references: [id])
+  windowId     String
+  window       TutoringWindow @relation(fields: [windowId], references: [id])
+  date         DateTime // UTC 日曆日
+  startTime    String   // 30 分鐘刻度，需落在窗口內
+  endTime      String
+  kind         TutoringBookingKind   @default(REGULAR)
+  status       TutoringBookingStatus @default(BOOKED)
+  makeupForId  String?  @unique
+  makeupFor    TutoringBooking? @relation("MakeupFor", fields: [makeupForId], references: [id])
+  makeupChild  TutoringBooking? @relation("MakeupFor")
+  createdAt    DateTime @default(now())
+  attendance   TutoringAttendance?
+}
+
+model TutoringAttendance {
+  id           String   @id @default(cuid())
+  bookingId    String   @unique
+  booking      TutoringBooking @relation(fields: [bookingId], references: [id])
+  status       AttendanceStatus
+  checkInTime  String?
+  checkOutTime String?
+  markedById   String
+  markedBy     User     @relation(fields: [markedById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model FaqItem {
