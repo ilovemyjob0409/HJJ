@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { listAvailability } from '@/lib/services/tutoringBookingService';
+import { listAvailability, daysRemainingInTaipeiMonth } from '@/lib/services/tutoringBookingService';
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -17,5 +17,6 @@ export async function GET(req: NextRequest) {
   if (!enrollment) return NextResponse.json({ error: 'ENROLLMENT_NOT_FOUND' }, { status: 404 });
   if (enrollment.studentId !== student.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  return NextResponse.json(await listAvailability(enrollmentId));
+  const days = daysRemainingInTaipeiMonth(new Date());
+  return NextResponse.json(await listAvailability(enrollmentId, days));
 }

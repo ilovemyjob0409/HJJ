@@ -8,6 +8,7 @@ import {
   buildSlotRemaining,
   hasCapacityForRange,
   isCancellationLate,
+  daysRemainingInTaipeiMonth,
 } from './tutoringBookingService';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
@@ -29,6 +30,20 @@ describe('toMinutes / minutesToHHMM', () => {
 describe('utcDateKey / taipeiDateKey', () => {
   it('formats as YYYY-MM-DD', () => {
     expect(utcDateKey(new Date('2026-08-07T00:00:00.000Z'))).toBe('2026-08-07');
+  });
+});
+
+describe('daysRemainingInTaipeiMonth', () => {
+  it('returns the full month length on the 1st', () => {
+    expect(daysRemainingInTaipeiMonth(new Date('2026-08-01T00:00:00.000Z'))).toBe(31);
+  });
+
+  it('returns the correct count mid-month', () => {
+    expect(daysRemainingInTaipeiMonth(new Date('2026-08-15T00:00:00.000Z'))).toBe(17);
+  });
+
+  it('returns 1 on the last day of the month', () => {
+    expect(daysRemainingInTaipeiMonth(new Date('2026-08-31T00:00:00.000Z'))).toBe(1);
   });
 });
 

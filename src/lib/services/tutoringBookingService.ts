@@ -31,6 +31,13 @@ export function taipeiDateKey(date: Date): string {
   return TAIPEI_DATE_FMT.format(date);
 }
 
+export function daysRemainingInTaipeiMonth(now: Date): number {
+  const todayKey = taipeiDateKey(now);
+  const [y, m, d] = todayKey.split('-').map(Number);
+  const lastDayOfMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return lastDayOfMonth - d + 1;
+}
+
 export function countOverlapsInSlot(slotStart: number, slotEnd: number, ranges: { startTime: string; endTime: string }[]): number {
   return ranges.filter((r) => toMinutes(r.startTime) < slotEnd && toMinutes(r.endTime) > slotStart).length;
 }
