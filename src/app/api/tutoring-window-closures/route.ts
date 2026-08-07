@@ -9,6 +9,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const { windowId, date } = await req.json();
-  const closure = await addWindowClosure(windowId, new Date(date));
-  return NextResponse.json(closure, { status: 201 });
+  try {
+    const closure = await addWindowClosure(windowId, new Date(date));
+    return NextResponse.json(closure, { status: 201 });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'CLOSURE_ALREADY_EXISTS') {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    if (err instanceof Error && err.message === 'WINDOW_NOT_FOUND') {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    throw err;
+  }
 }

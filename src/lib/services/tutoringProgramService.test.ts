@@ -39,6 +39,14 @@ describe('program CRUD', () => {
     await deleteProgram(program.id);
     expect(await prisma.tutoringProgram.findUnique({ where: { id: program.id } })).toBeNull();
   });
+
+  it('rejects updating a nonexistent program with PROGRAM_NOT_FOUND', async () => {
+    await expect(updateProgram('nonexistent-program-id', { active: false })).rejects.toThrow('PROGRAM_NOT_FOUND');
+  });
+
+  it('rejects deleting a nonexistent program with PROGRAM_NOT_FOUND', async () => {
+    await expect(deleteProgram('nonexistent-program-id')).rejects.toThrow('PROGRAM_NOT_FOUND');
+  });
 });
 
 describe('window CRUD', () => {
@@ -76,6 +84,31 @@ describe('window CRUD', () => {
     await deleteWindowClosure(closure.id);
     expect(await prisma.tutoringWindowClosure.count({ where: { windowId: window.id } })).toBe(0);
   });
+
+  it('rejects updating a nonexistent window with WINDOW_NOT_FOUND', async () => {
+    await expect(updateWindow('nonexistent-window-id', { capacity: 5 })).rejects.toThrow('WINDOW_NOT_FOUND');
+  });
+
+  it('rejects deleting a nonexistent window with WINDOW_NOT_FOUND', async () => {
+    await expect(deleteWindow('nonexistent-window-id')).rejects.toThrow('WINDOW_NOT_FOUND');
+  });
+
+  it('rejects adding a duplicate window closure with CLOSURE_ALREADY_EXISTS', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+
+    await addWindowClosure(window.id, new Date('2026-10-09'));
+    await expect(addWindowClosure(window.id, new Date('2026-10-09'))).rejects.toThrow('CLOSURE_ALREADY_EXISTS');
+  });
+
+  it('rejects adding a closure for a nonexistent window with WINDOW_NOT_FOUND', async () => {
+    await expect(addWindowClosure('nonexistent-window-id', new Date('2026-10-09'))).rejects.toThrow('WINDOW_NOT_FOUND');
+  });
+
+  it('rejects deleting a nonexistent window closure with CLOSURE_NOT_FOUND', async () => {
+    await expect(deleteWindowClosure('nonexistent-closure-id')).rejects.toThrow('CLOSURE_NOT_FOUND');
+  });
 });
 
 describe('enrollment CRUD', () => {
@@ -112,5 +145,13 @@ describe('enrollment CRUD', () => {
 
   it('rejects deleting a nonexistent enrollment with ENROLLMENT_NOT_FOUND', async () => {
     await expect(deleteEnrollment('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
+  it('rejects creating a duplicate enrollment with ALREADY_ENROLLED', async () => {
+    const student = await createStudent({ name: '小美', email: 'mei@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await expect(createEnrollment({ studentId: student.id, programId: program.id })).rejects.toThrow('ALREADY_ENROLLED');
   });
 });

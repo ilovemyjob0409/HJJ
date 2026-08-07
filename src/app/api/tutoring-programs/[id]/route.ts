@@ -9,8 +9,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const body = await req.json();
-  const program = await updateProgram(params.id, body);
-  return NextResponse.json(program);
+  try {
+    const program = await updateProgram(params.id, body);
+    return NextResponse.json(program);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'PROGRAM_NOT_FOUND') {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    throw err;
+  }
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -18,6 +25,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  await deleteProgram(params.id);
-  return NextResponse.json({ success: true });
+  try {
+    await deleteProgram(params.id);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'PROGRAM_NOT_FOUND') {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    throw err;
+  }
 }

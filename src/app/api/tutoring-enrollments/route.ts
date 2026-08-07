@@ -21,7 +21,9 @@ export async function POST(req: NextRequest) {
     const enrollment = await createEnrollment({ studentId, programId, monthlyQuota });
     return NextResponse.json(enrollment, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 409 });
+    if (err instanceof Error && err.message === 'ALREADY_ENROLLED') {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    throw err;
   }
 }

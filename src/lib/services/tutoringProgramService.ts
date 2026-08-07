@@ -32,12 +32,26 @@ export interface UpdateProgramInput {
   active?: boolean;
 }
 
-export function updateProgram(id: string, input: UpdateProgramInput) {
-  return prisma.tutoringProgram.update({ where: { id }, data: input });
+export async function updateProgram(id: string, input: UpdateProgramInput) {
+  try {
+    return await prisma.tutoringProgram.update({ where: { id }, data: input });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('PROGRAM_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
-export function deleteProgram(id: string) {
-  return prisma.tutoringProgram.delete({ where: { id } });
+export async function deleteProgram(id: string) {
+  try {
+    return await prisma.tutoringProgram.delete({ where: { id } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('PROGRAM_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
 export interface CreateWindowInput {
@@ -62,20 +76,51 @@ export interface UpdateWindowInput {
   active?: boolean;
 }
 
-export function updateWindow(id: string, input: UpdateWindowInput) {
-  return prisma.tutoringWindow.update({ where: { id }, data: input });
+export async function updateWindow(id: string, input: UpdateWindowInput) {
+  try {
+    return await prisma.tutoringWindow.update({ where: { id }, data: input });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('WINDOW_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
-export function deleteWindow(id: string) {
-  return prisma.tutoringWindow.delete({ where: { id } });
+export async function deleteWindow(id: string) {
+  try {
+    return await prisma.tutoringWindow.delete({ where: { id } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('WINDOW_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
-export function addWindowClosure(windowId: string, date: Date) {
-  return prisma.tutoringWindowClosure.create({ data: { windowId, date } });
+export async function addWindowClosure(windowId: string, date: Date) {
+  try {
+    return await prisma.tutoringWindowClosure.create({ data: { windowId, date } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new Error('CLOSURE_ALREADY_EXISTS');
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      throw new Error('WINDOW_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
-export function deleteWindowClosure(id: string) {
-  return prisma.tutoringWindowClosure.delete({ where: { id } });
+export async function deleteWindowClosure(id: string) {
+  try {
+    return await prisma.tutoringWindowClosure.delete({ where: { id } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new Error('CLOSURE_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
 export interface CreateEnrollmentInput {
@@ -84,8 +129,15 @@ export interface CreateEnrollmentInput {
   monthlyQuota?: number;
 }
 
-export function createEnrollment(input: CreateEnrollmentInput) {
-  return prisma.tutoringEnrollment.create({ data: input });
+export async function createEnrollment(input: CreateEnrollmentInput) {
+  try {
+    return await prisma.tutoringEnrollment.create({ data: input });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new Error('ALREADY_ENROLLED');
+    }
+    throw err;
+  }
 }
 
 export interface EnrollmentSummary {
