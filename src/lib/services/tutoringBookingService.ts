@@ -1,3 +1,7 @@
+import { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/db';
+import { runSerializableWithRetry } from '@/lib/transaction';
+
 export const SLOT_MINUTES = 30;
 
 export function toMinutes(hhmm: string): number {
@@ -67,4 +71,95 @@ export function hasCapacityForRange(
 // 前一天 23:59（台北）為分界：今天（台北）已到達或超過預約日期＝當天取消或更晚，視為 late。
 export function isCancellationLate(bookingDateUtcKey: string, nowTaipeiKey: string): boolean {
   return nowTaipeiKey >= bookingDateUtcKey;
+}
+
+export interface CreateBookingInput {
+  enrollmentId: string;
+  windowId: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+  kind?: 'REGULAR' | 'MAKEUP';
+  makeupForId?: string;
+}
+
+export function createBooking(input: CreateBookingInput): Promise<{ id: string }> {
+  return runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const window = await tx.tutoringWindow.findUniqueOrThrow({ where: { id: input.windowId } });
+        if (toMinutes(input.endTime) <= toMinutes(input.startTime)) throw new Error('INVALID_RANGE');
+        if (toMinutes(input.startTime) < toMinutes(window.startTime) || toMinutes(input.endTime) > toMinutes(window.endTime)) {
+          throw new Error('OUT_OF_WINDOW');
+        }
+        if (input.date.getUTCDay() !== window.weekday) throw new Error('INVALID_WEEKDAY');
+
+        const closure = await tx.tutoringWindowClosure.findUnique({
+          where: { windowId_date: { windowId: input.windowId, date: input.date } },
+        });
+        if (closure) throw new Error('WINDOW_CLOSED');
+
+        const existing = await tx.tutoringBooking.findMany({
+          where: { windowId: input.windowId, date: input.date, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
+          select: { startTime: true, endTime: true },
+        });
+        if (!hasCapacityForRange(window.startTime, window.endTime, window.capacity, existing, input)) {
+          throw new Error('WINDOW_FULL');
+        }
+
+        return tx.tutoringBooking.create({
+          data: {
+            enrollmentId: input.enrollmentId,
+            windowId: input.windowId,
+            date: input.date,
+            startTime: input.startTime,
+            endTime: input.endTime,
+            kind: input.kind ?? 'REGULAR',
+            status: input.kind === 'MAKEUP' ? 'PENDING_ADMIN' : 'BOOKED',
+            makeupForId: input.makeupForId,
+          },
+          select: { id: true },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
+}
+
+// 老師／行政現場補加：教室現場人數由老師目視判斷，系統不做容量檢查。
+export function createWalkInBooking(input: {
+  enrollmentId: string;
+  windowId: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+}): Promise<{ id: string }> {
+  return prisma.tutoringBooking.create({
+    data: { ...input, kind: 'REGULAR', status: 'BOOKED' },
+    select: { id: true },
+  });
+}
+
+export async function cancelBooking(bookingId: string, studentId: string): Promise<void> {
+  const booking = await prisma.tutoringBooking.findUniqueOrThrow({
+    where: { id: bookingId },
+    include: { enrollment: { select: { studentId: true } } },
+  });
+  if (booking.enrollment.studentId !== studentId) throw new Error('NOT_OWNER');
+
+  const late = isCancellationLate(utcDateKey(booking.date), taipeiDateKey(new Date()));
+  if (!late) {
+    await prisma.tutoringBooking.delete({ where: { id: bookingId } });
+    return;
+  }
+  await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
+}
+
+// 行政取消：可選是否計次，處理特殊個案（例如場地臨時取消，不該算學生的堂數）。
+export async function adminCancelBooking(bookingId: string, countsTowardQuota: boolean): Promise<void> {
+  if (!countsTowardQuota) {
+    await prisma.tutoringBooking.delete({ where: { id: bookingId } });
+    return;
+  }
+  await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
 }
