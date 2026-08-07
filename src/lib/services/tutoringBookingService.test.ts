@@ -9,6 +9,7 @@ import {
   hasCapacityForRange,
   isCancellationLate,
   daysRemainingInTaipeiMonth,
+  daysRemainingThroughNextTaipeiMonth,
 } from './tutoringBookingService';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
@@ -44,6 +45,16 @@ describe('daysRemainingInTaipeiMonth', () => {
 
   it('returns 1 on the last day of the month', () => {
     expect(daysRemainingInTaipeiMonth(new Date('2026-08-31T00:00:00.000Z'))).toBe(1);
+  });
+});
+
+describe('daysRemainingThroughNextTaipeiMonth', () => {
+  it('adds the full next month to the days remaining in the current one', () => {
+    expect(daysRemainingThroughNextTaipeiMonth(new Date('2026-08-15T00:00:00.000Z'))).toBe(17 + 30);
+  });
+
+  it('handles a December-to-January year rollover', () => {
+    expect(daysRemainingThroughNextTaipeiMonth(new Date('2026-12-20T00:00:00.000Z'))).toBe(12 + 31);
   });
 });
 
@@ -148,6 +159,31 @@ describe('createBooking', () => {
     await expect(
       createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
     ).rejects.toThrow('WINDOW_CLOSED');
+  });
+
+  it('rejects a nonexistent window id', async () => {
+    const { enrollment } = await setupProgramWithEnrollment();
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: 'nonexistent-window-id', date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+    ).rejects.toThrow('WINDOW_NOT_FOUND');
+  });
+
+  it('rejects a window that belongs to a different program than the enrollment', async () => {
+    const { enrollment } = await setupProgramWithEnrollment();
+    const otherTeacher = await createTeacher({ name: '別的老師', email: `other-${Date.now()}@example.com`, password: 'x', subjects: '數學' });
+    const otherProgram = await createProgram({ name: '數學個別輔導' });
+    const otherWindow = await createWindow({ programId: otherProgram.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 4, teacherId: otherTeacher.id });
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: otherWindow.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+    ).rejects.toThrow('PROGRAM_MISMATCH');
+  });
+
+  it('rejects booking into an inactive enrollment', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { active: false } });
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+    ).rejects.toThrow('ENROLLMENT_INACTIVE');
   });
 });
 

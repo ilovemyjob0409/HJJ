@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -173,6 +174,10 @@ export default function AdminTutoringPage() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">個別輔導管理</h1>
+
+      <Link href="/admin/tutoring/bookings" className="mb-4 inline-block text-sm font-semibold text-brand hover:underline">
+        查看每日預約總覽 →
+      </Link>
 
       <Card className="mb-6">
         <p className="mb-2 font-semibold text-ink">新增課程</p>

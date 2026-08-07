@@ -63,8 +63,16 @@ export interface CreateWindowInput {
   teacherId: string;
 }
 
-export function createWindow(input: CreateWindowInput) {
-  return prisma.tutoringWindow.create({ data: input });
+export async function createWindow(input: CreateWindowInput) {
+  try {
+    return await prisma.tutoringWindow.create({ data: input });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      if (err.message.includes('programId')) throw new Error('PROGRAM_NOT_FOUND');
+      if (err.message.includes('teacherId')) throw new Error('TEACHER_NOT_FOUND');
+    }
+    throw err;
+  }
 }
 
 export interface UpdateWindowInput {
@@ -135,6 +143,10 @@ export async function createEnrollment(input: CreateEnrollmentInput) {
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       throw new Error('ALREADY_ENROLLED');
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      if (err.message.includes('programId')) throw new Error('PROGRAM_NOT_FOUND');
+      if (err.message.includes('studentId')) throw new Error('STUDENT_NOT_FOUND');
     }
     throw err;
   }

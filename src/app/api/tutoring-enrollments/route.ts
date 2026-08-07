@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     if (err instanceof Error && err.message === 'ALREADY_ENROLLED') {
       return NextResponse.json({ error: err.message }, { status: 409 });
     }
+    if (err instanceof Error && (err.message === 'PROGRAM_NOT_FOUND' || err.message === 'STUDENT_NOT_FOUND')) {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
     throw err;
   }
 }

@@ -38,6 +38,14 @@ export function daysRemainingInTaipeiMonth(now: Date): number {
   return lastDayOfMonth - d + 1;
 }
 
+export function daysRemainingThroughNextTaipeiMonth(now: Date): number {
+  const remaining = daysRemainingInTaipeiMonth(now);
+  const todayKey = taipeiDateKey(now);
+  const [y, m] = todayKey.split('-').map(Number);
+  const daysInNextMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return remaining + daysInNextMonth;
+}
+
 export function countOverlapsInSlot(slotStart: number, slotEnd: number, ranges: { startTime: string; endTime: string }[]): number {
   return ranges.filter((r) => toMinutes(r.startTime) < slotEnd && toMinutes(r.endTime) > slotStart).length;
 }
@@ -95,7 +103,14 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
   return runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
-        const window = await tx.tutoringWindow.findUniqueOrThrow({ where: { id: input.windowId } });
+        const [window, enrollment] = await Promise.all([
+          tx.tutoringWindow.findUnique({ where: { id: input.windowId } }),
+          tx.tutoringEnrollment.findUnique({ where: { id: input.enrollmentId } }),
+        ]);
+        if (!window) throw new Error('WINDOW_NOT_FOUND');
+        if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
+        if (!enrollment.active) throw new Error('ENROLLMENT_INACTIVE');
+        if (window.programId !== enrollment.programId) throw new Error('PROGRAM_MISMATCH');
         if (toMinutes(input.endTime) <= toMinutes(input.startTime)) throw new Error('INVALID_RANGE');
         if (toMinutes(input.startTime) < toMinutes(window.startTime) || toMinutes(input.endTime) > toMinutes(window.endTime)) {
           throw new Error('OUT_OF_WINDOW');

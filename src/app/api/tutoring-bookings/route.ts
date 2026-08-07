@@ -44,7 +44,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(booking, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    const status = message === 'WINDOW_FULL' || message === 'WINDOW_CLOSED' ? 409 : 422;
+    const status =
+      message === 'WINDOW_FULL' || message === 'WINDOW_CLOSED'
+        ? 409
+        : message === 'WINDOW_NOT_FOUND' || message === 'ENROLLMENT_NOT_FOUND'
+          ? 404
+          : 422;
     return NextResponse.json({ error: message }, { status });
   }
 }

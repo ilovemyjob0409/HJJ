@@ -86,8 +86,8 @@ export default function StudentTutoringPage() {
     setBookings(await res.json());
   }
 
-  async function loadAvailability(enrollmentId: string) {
-    const res = await fetch(`/api/tutoring-availability?enrollmentId=${enrollmentId}`);
+  async function loadAvailability(enrollmentId: string, months: 1 | 2 = 1) {
+    const res = await fetch(`/api/tutoring-availability?enrollmentId=${enrollmentId}&months=${months}`);
     setAvailability(await res.json());
   }
 
@@ -97,18 +97,61 @@ export default function StudentTutoringPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId);
-  }, [selectedEnrollmentId]);
+    if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId, makeupFor ? 2 : 1);
+  }, [selectedEnrollmentId, makeupFor]);
 
   const selectedEnrollment = enrollments.find((e) => e.id === selectedEnrollmentId);
 
   const now = new Date();
   const calendarYear = now.getFullYear();
   const calendarMonth = now.getMonth() + 1;
-  const monthCells = buildMonthCells(calendarYear, calendarMonth);
-  const leadingBlankCount = new Date(Date.UTC(calendarYear, calendarMonth - 1, 1)).getUTCDay();
   const availabilityByDate = new Map(availability.map((day) => [day.date, day]));
   const openDayData = openDay ? availabilityByDate.get(openDay) : undefined;
+
+  const nextMonthDate = new Date(Date.UTC(calendarYear, calendarMonth, 1));
+  const nextCalendarYear = nextMonthDate.getUTCFullYear();
+  const nextCalendarMonth = nextMonthDate.getUTCMonth() + 1;
+
+  function renderMonthGrid(year: number, month: number) {
+    const cells = buildMonthCells(year, month);
+    const leadingBlanks = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    return (
+      <div className="mb-4">
+        <p className="mb-3 text-center font-semibold text-ink">
+          {year}年{month}月
+        </p>
+        <div className="grid grid-cols-7 gap-1 text-center text-xs text-inkMuted">
+          {WEEKDAY_LABELS.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {Array.from({ length: leadingBlanks }).map((_, i) => (
+            <span key={`blank-${year}-${month}-${i}`} />
+          ))}
+          {cells.map((cell) => {
+            const day = availabilityByDate.get(cell.dateKey);
+            return (
+              <button
+                key={cell.dateKey}
+                disabled={!day}
+                onClick={() => day && openDayForBooking(day)}
+                className={`rounded-lg py-2 text-sm ${
+                  openDay === cell.dateKey
+                    ? 'bg-brand font-semibold text-brandInk'
+                    : day
+                      ? 'bg-approvedBg font-semibold text-approved'
+                      : 'text-inkMuted opacity-50'
+                }`}
+              >
+                {cell.day}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   function openDayForBooking(day: AvailabilityDay) {
     setOpenDay(day.date);
@@ -135,7 +178,7 @@ export default function StudentTutoringPage() {
       showToast('預約成功');
       setOpenDay(null);
       loadBookings();
-      loadAvailability(selectedEnrollment.id);
+      loadAvailability(selectedEnrollment.id, 1);
       loadEnrollments();
     } finally {
       setSubmitting(false);
@@ -154,7 +197,7 @@ export default function StudentTutoringPage() {
     }
     showToast('已取消');
     loadBookings();
-    if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId);
+    if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId, makeupFor ? 2 : 1);
     loadEnrollments();
   }
 
@@ -176,7 +219,7 @@ export default function StudentTutoringPage() {
       setMakeupFor(null);
       setOpenDay(null);
       loadBookings();
-      if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId);
+      if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId, 1);
     } finally {
       setSubmitting(false);
     }
@@ -251,38 +294,8 @@ export default function StudentTutoringPage() {
 
           <h2 className="mb-2 font-bold text-ink">本月可預約時段</h2>
           <Card className="mb-6">
-            <p className="mb-3 text-center font-semibold text-ink">
-              {calendarYear}年{calendarMonth}月
-            </p>
-            <div className="grid grid-cols-7 gap-1 text-center text-xs text-inkMuted">
-              {WEEKDAY_LABELS.map((label) => (
-                <span key={label}>{label}</span>
-              ))}
-            </div>
-            <div className="mt-1 grid grid-cols-7 gap-1">
-              {Array.from({ length: leadingBlankCount }).map((_, i) => (
-                <span key={`blank-${i}`} />
-              ))}
-              {monthCells.map((cell) => {
-                const day = availabilityByDate.get(cell.dateKey);
-                return (
-                  <button
-                    key={cell.dateKey}
-                    disabled={!day}
-                    onClick={() => day && openDayForBooking(day)}
-                    className={`rounded-lg py-2 text-sm ${
-                      openDay === cell.dateKey
-                        ? 'bg-brand font-semibold text-brandInk'
-                        : day
-                          ? 'bg-approvedBg font-semibold text-approved'
-                          : 'text-inkMuted opacity-50'
-                    }`}
-                  >
-                    {cell.day}
-                  </button>
-                );
-              })}
-            </div>
+            {renderMonthGrid(calendarYear, calendarMonth)}
+            {makeupFor && renderMonthGrid(nextCalendarYear, nextCalendarMonth)}
 
             {openDayData && (
               <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-borderSubtle pt-3">
