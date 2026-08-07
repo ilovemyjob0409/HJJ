@@ -14,6 +14,7 @@ import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, createWalkInBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
+import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
 
 describe('toMinutes / minutesToHHMM', () => {
   it('round-trips', () => {
@@ -276,5 +277,113 @@ describe('requestMakeup / decideMakeup', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
     await expect(decideMakeup(booking.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
+  });
+});
+
+describe('getMonthlyQuotaStatus', () => {
+  it('counts a past-dated REGULAR booking as locked regardless of status, and excludes MAKEUP bookings', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const past = new Date('2020-08-07'); // locked (date has passed)
+    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+    // requestMakeup requires the original to be missed (CANCELLED_LATE or ABSENT); mark it so
+    // it's eligible, while its status still counts toward `locked` regardless of status.
+    await adminCancelBooking(attended.id, true);
+    await requestMakeup({ originalBookingId: attended.id, windowId: window.id, date: new Date('2020-08-21'), startTime: '16:00', endTime: '18:00' });
+
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2020-08');
+    expect(status.locked).toBe(2); // the two REGULAR bookings, MAKEUP excluded
+    expect(status.quota).toBe(8);
+  });
+
+  it('counts a future BOOKED REGULAR booking as upcoming, not locked', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const future = new Date(Date.UTC(2099, 0, 2));
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
+
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2099-01');
+    expect(status.locked).toBe(0);
+    expect(status.upcoming).toBe(1);
+  });
+
+  it('uses the enrollment override when set, otherwise the program default', async () => {
+    const { enrollment } = await setupProgramWithEnrollment();
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 11 } });
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2026-08');
+    expect(status.quota).toBe(11);
+  });
+});
+
+describe('listAvailability', () => {
+  it('lists remaining capacity for the matching weekday within the horizon, skipping closed dates', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(8);
+    const days = await listAvailability(enrollment.id, 14);
+    const fridays = days.filter((d) => d.windowId === window.id);
+    expect(fridays.length).toBeGreaterThan(0);
+    expect(fridays[0].slots[0]).toEqual({ startTime: '16:00', remaining: 8 });
+
+    await prisma.tutoringWindowClosure.create({ data: { windowId: window.id, date: new Date(fridays[0].date) } });
+    const daysAfterClosure = await listAvailability(enrollment.id, 14);
+    expect(daysAfterClosure.filter((d) => d.windowId === window.id).length).toBe(fridays.length - 1);
+  });
+});
+
+describe('listBookingsForStudent', () => {
+  it('flags canCancelFree for a future booking and canRequestMakeup for a late-cancelled one', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const future = new Date(Date.UTC(2099, 0, 2));
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
+    const past = new Date('2020-08-07');
+    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(missed.id, true);
+
+    const rows = await listBookingsForStudent(enrollment.studentId);
+    expect(rows).toHaveLength(2);
+    const futureRow = rows.find((r) => r.status === 'BOOKED')!;
+    expect(futureRow.canCancelFree).toBe(true);
+    const missedRow = rows.find((r) => r.status === 'CANCELLED_LATE')!;
+    expect(missedRow.canRequestMakeup).toBe(true);
+  });
+});
+
+describe('listBookingsOverview and listPendingTutoringMakeupRequests', () => {
+  it('lists all bookings for a date with student and program names', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const rows = await listBookingsOverview(FRIDAY);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].studentName).toBe('小明');
+    expect(rows[0].programName).toBe('英文個別輔導');
+  });
+
+  it('lists pending makeup requests with the original booking date', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const past = new Date('2020-08-07');
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(original.id, true);
+    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+
+    const rows = await listPendingTutoringMakeupRequests();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].originalDate.toISOString().slice(0, 10)).toBe('2020-08-07');
+  });
+});
+
+describe('sendMonthlyQuotaReminders', () => {
+  it('notifies an under-quota enrollment with a lineUserId once, then skips it on a second run', async () => {
+    const { student, program } = await setupProgramWithEnrollment();
+    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'line-1' } });
+
+    const first = await sendMonthlyQuotaReminders();
+    expect(first.notified).toBe(1);
+
+    const second = await sendMonthlyQuotaReminders();
+    expect(second.notified).toBe(0);
+  });
+
+  it('skips enrollments without a lineUserId', async () => {
+    await setupProgramWithEnrollment();
+    const result = await sendMonthlyQuotaReminders();
+    expect(result.notified).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
+import { createStudent } from './studentService';
 import {
   createProgram,
   listPrograms,
@@ -12,6 +13,7 @@ import {
   addWindowClosure,
   deleteWindowClosure,
 } from './tutoringProgramService';
+import { createEnrollment, listEnrollments, updateEnrollment, deleteEnrollment } from './tutoringProgramService';
 
 describe('program CRUD', () => {
   it('creates a program with defaults and lists it back with an empty windows array', async () => {
@@ -73,5 +75,34 @@ describe('window CRUD', () => {
 
     await deleteWindowClosure(closure.id);
     expect(await prisma.tutoringWindowClosure.count({ where: { windowId: window.id } })).toBe(0);
+  });
+});
+
+describe('enrollment CRUD', () => {
+  it('creates an enrollment and lists it with the program default quota', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+
+    const list = await listEnrollments();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ studentName: '小明', programName: '英文個別輔導', monthlyQuota: 8, locked: 0, upcoming: 0 });
+
+    const filtered = await listEnrollments(student.id);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe(enrollment.id);
+  });
+
+  it('overrides monthlyQuota and deactivates, then deletes', async () => {
+    const student = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    const program = await createProgram({ name: '數學個別輔導' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+
+    const updated = await updateEnrollment(enrollment.id, { monthlyQuota: 11, active: false });
+    expect(updated.monthlyQuota).toBe(11);
+    expect(updated.active).toBe(false);
+
+    await deleteEnrollment(enrollment.id);
+    expect(await prisma.tutoringEnrollment.findUnique({ where: { id: enrollment.id } })).toBeNull();
   });
 });

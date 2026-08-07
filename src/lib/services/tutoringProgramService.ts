@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { getMonthlyQuotaStatus } from './tutoringBookingService';
 
 export interface CreateProgramInput {
   name: string;
@@ -74,4 +75,71 @@ export function addWindowClosure(windowId: string, date: Date) {
 
 export function deleteWindowClosure(id: string) {
   return prisma.tutoringWindowClosure.delete({ where: { id } });
+}
+
+export interface CreateEnrollmentInput {
+  studentId: string;
+  programId: string;
+  monthlyQuota?: number;
+}
+
+export function createEnrollment(input: CreateEnrollmentInput) {
+  return prisma.tutoringEnrollment.create({ data: input });
+}
+
+export interface EnrollmentSummary {
+  id: string;
+  studentId: string;
+  studentName: string;
+  programId: string;
+  programName: string;
+  defaultDurationMinutes: number;
+  monthlyQuota: number;
+  active: boolean;
+  locked: number;
+  upcoming: number;
+}
+
+export async function listEnrollments(studentId?: string): Promise<EnrollmentSummary[]> {
+  const enrollments = await prisma.tutoringEnrollment.findMany({
+    where: studentId ? { studentId } : {},
+    include: {
+      student: { select: { user: { select: { name: true } } } },
+      program: { select: { name: true, defaultDurationMinutes: true } },
+    },
+    orderBy: { student: { user: { name: 'asc' } } },
+  });
+  const monthKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' })
+    .format(new Date())
+    .slice(0, 7);
+  return Promise.all(
+    enrollments.map(async (e) => {
+      const { locked, upcoming, quota } = await getMonthlyQuotaStatus(e.id, monthKey);
+      return {
+        id: e.id,
+        studentId: e.studentId,
+        studentName: e.student.user.name,
+        programId: e.programId,
+        programName: e.program.name,
+        defaultDurationMinutes: e.program.defaultDurationMinutes,
+        monthlyQuota: quota,
+        active: e.active,
+        locked,
+        upcoming,
+      };
+    })
+  );
+}
+
+export interface UpdateEnrollmentInput {
+  monthlyQuota?: number | null;
+  active?: boolean;
+}
+
+export function updateEnrollment(id: string, input: UpdateEnrollmentInput) {
+  return prisma.tutoringEnrollment.update({ where: { id }, data: input });
+}
+
+export function deleteEnrollment(id: string) {
+  return prisma.tutoringEnrollment.delete({ where: { id } });
 }

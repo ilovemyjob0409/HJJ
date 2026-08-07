@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
+import { pushLineMessage } from './lineService';
 
 export const SLOT_MINUTES = 30;
 
@@ -215,4 +216,231 @@ export async function decideMakeup(bookingId: string, decision: 'APPROVED' | 'RE
     where: { id: bookingId },
     data: { status: decision === 'APPROVED' ? 'BOOKED' : 'REJECTED' },
   });
+}
+
+export async function getMonthlyQuotaStatus(
+  enrollmentId: string,
+  monthKey: string // 'YYYY-MM'
+): Promise<{ locked: number; upcoming: number; quota: number }> {
+  const enrollment = await prisma.tutoringEnrollment.findUniqueOrThrow({
+    where: { id: enrollmentId },
+    include: { program: { select: { defaultMonthlyQuota: true } } },
+  });
+  const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
+  const [year, month] = monthKey.split('-').map(Number);
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0));
+  const todayKey = taipeiDateKey(new Date());
+
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { enrollmentId, kind: 'REGULAR', date: { gte: monthStart, lte: monthEnd } },
+    select: { date: true, status: true },
+  });
+
+  let locked = 0;
+  let upcoming = 0;
+  for (const b of bookings) {
+    const key = utcDateKey(b.date);
+    if (key <= todayKey) locked++;
+    else if (b.status === 'BOOKED') upcoming++;
+  }
+  return { locked, upcoming, quota };
+}
+
+export interface AvailabilityDay {
+  date: string;
+  windowId: string;
+  windowStartTime: string;
+  windowEndTime: string;
+  capacity: number;
+  slots: { startTime: string; remaining: number }[];
+}
+
+export async function listAvailability(enrollmentId: string, days = 14): Promise<AvailabilityDay[]> {
+  const enrollment = await prisma.tutoringEnrollment.findUniqueOrThrow({ where: { id: enrollmentId } });
+  const windows = await prisma.tutoringWindow.findMany({ where: { programId: enrollment.programId, active: true } });
+  const todayKey = taipeiDateKey(new Date());
+  const [ty, tm, td] = todayKey.split('-').map(Number);
+
+  const result: AvailabilityDay[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(Date.UTC(ty, tm - 1, td + i));
+    const window = windows.find((w) => w.weekday === d.getUTCDay());
+    if (!window) continue;
+
+    const closure = await prisma.tutoringWindowClosure.findUnique({
+      where: { windowId_date: { windowId: window.id, date: d } },
+    });
+    if (closure) continue;
+
+    const existing = await prisma.tutoringBooking.findMany({
+      where: { windowId: window.id, date: d, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
+      select: { startTime: true, endTime: true },
+    });
+    result.push({
+      date: utcDateKey(d),
+      windowId: window.id,
+      windowStartTime: window.startTime,
+      windowEndTime: window.endTime,
+      capacity: window.capacity,
+      slots: buildSlotRemaining(window.startTime, window.endTime, window.capacity, existing),
+    });
+  }
+  return result;
+}
+
+export interface StudentBookingRow {
+  id: string;
+  programName: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+  kind: 'REGULAR' | 'MAKEUP';
+  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+  canCancelFree: boolean;
+  canRequestMakeup: boolean;
+}
+
+export async function listBookingsForStudent(studentId: string): Promise<StudentBookingRow[]> {
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { enrollment: { studentId } },
+    select: {
+      id: true,
+      date: true,
+      startTime: true,
+      endTime: true,
+      kind: true,
+      status: true,
+      window: { select: { program: { select: { name: true } } } },
+      attendance: { select: { status: true } },
+      makeupChild: { select: { id: true } },
+    },
+    orderBy: { date: 'desc' },
+  });
+  const todayKey = taipeiDateKey(new Date());
+  return bookings.map((b) => {
+    const dateKey = utcDateKey(b.date);
+    const missed = b.status === 'CANCELLED_LATE' || b.attendance?.status === 'ABSENT';
+    return {
+      id: b.id,
+      programName: b.window.program.name,
+      date: b.date,
+      startTime: b.startTime,
+      endTime: b.endTime,
+      kind: b.kind as 'REGULAR' | 'MAKEUP',
+      status: b.status as StudentBookingRow['status'],
+      canCancelFree: b.status === 'BOOKED' && dateKey > todayKey,
+      canRequestMakeup: b.kind === 'REGULAR' && missed && !b.makeupChild,
+    };
+  });
+}
+
+export interface OverviewBookingRow {
+  id: string;
+  studentName: string;
+  programName: string;
+  windowId: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+  kind: 'REGULAR' | 'MAKEUP';
+  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+}
+
+export async function listBookingsOverview(date: Date): Promise<OverviewBookingRow[]> {
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { date },
+    select: {
+      id: true,
+      startTime: true,
+      endTime: true,
+      kind: true,
+      status: true,
+      date: true,
+      windowId: true,
+      enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
+      window: { select: { program: { select: { name: true } } } },
+    },
+    orderBy: { startTime: 'asc' },
+  });
+  return bookings.map((b) => ({
+    id: b.id,
+    studentName: b.enrollment.student.user.name,
+    programName: b.window.program.name,
+    windowId: b.windowId,
+    date: b.date,
+    startTime: b.startTime,
+    endTime: b.endTime,
+    kind: b.kind as 'REGULAR' | 'MAKEUP',
+    status: b.status as OverviewBookingRow['status'],
+  }));
+}
+
+export interface PendingMakeupRow {
+  id: string;
+  studentName: string;
+  programName: string;
+  originalDate: Date;
+  date: Date;
+  startTime: string;
+  endTime: string;
+}
+
+export async function listPendingTutoringMakeupRequests(): Promise<PendingMakeupRow[]> {
+  const rows = await prisma.tutoringBooking.findMany({
+    where: { kind: 'MAKEUP', status: 'PENDING_ADMIN' },
+    select: {
+      id: true,
+      date: true,
+      startTime: true,
+      endTime: true,
+      enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
+      window: { select: { program: { select: { name: true } } } },
+      makeupFor: { select: { date: true } },
+    },
+    orderBy: { date: 'asc' },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    studentName: r.enrollment.student.user.name,
+    programName: r.window.program.name,
+    originalDate: r.makeupFor!.date,
+    date: r.date,
+    startTime: r.startTime,
+    endTime: r.endTime,
+  }));
+}
+
+// 每月 20 號由 Vercel Cron 觸發（見 Task 18）；本函式本身不檢查日期，
+// 靠 lastQuotaReminderMonth 保證同一學生同一月只提醒一次，可安全重複呼叫。
+export async function sendMonthlyQuotaReminders(): Promise<{ notified: number }> {
+  const monthKey = taipeiDateKey(new Date()).slice(0, 7);
+  const enrollments = await prisma.tutoringEnrollment.findMany({
+    // `lastQuotaReminderMonth: { not: monthKey }` alone would silently drop
+    // enrollments where the field is still null (SQL's NULL <> x is unknown,
+    // so Prisma excludes it) — the common case for an enrollment that has
+    // never been reminded. OR in the null case explicitly.
+    where: {
+      active: true,
+      OR: [{ lastQuotaReminderMonth: null }, { lastQuotaReminderMonth: { not: monthKey } }],
+    },
+    include: {
+      program: { select: { name: true } },
+      student: { select: { id: true, lineUserId: true, user: { select: { name: true } } } },
+    },
+  });
+
+  let notified = 0;
+  for (const e of enrollments) {
+    if (!e.student.lineUserId) continue;
+    const { locked, upcoming, quota } = await getMonthlyQuotaStatus(e.id, monthKey);
+    if (locked + upcoming >= quota) continue;
+    await pushLineMessage(
+      e.student.lineUserId,
+      `【MUP】${e.student.user.name} 本月「${e.program.name}」還剩 ${quota - locked - upcoming} 堂未預約，記得安排上課時間`
+    );
+    await prisma.tutoringEnrollment.update({ where: { id: e.id }, data: { lastQuotaReminderMonth: monthKey } });
+    notified++;
+  }
+  return { notified };
 }
