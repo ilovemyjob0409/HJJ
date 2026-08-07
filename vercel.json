@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/tutoring-quota-reminder",
+      "schedule": "0 1 20 * *"
+    }
+  ]
+}
