@@ -154,6 +154,7 @@ export default function StudentTutoringPage() {
       setMakeupFor(null);
       setOpenDay(null);
       loadBookings();
+      if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId);
     } finally {
       setSubmitting(false);
     }
