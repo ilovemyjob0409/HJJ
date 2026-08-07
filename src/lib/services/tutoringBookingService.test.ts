@@ -239,4 +239,42 @@ describe('requestMakeup / decideMakeup', () => {
     await decideMakeup(makeup.id, 'REJECTED');
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } })).status).toBe('REJECTED');
   });
+
+  it('allows only one of two concurrent makeup requests for the same original booking to succeed', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const past = new Date('2020-08-07');
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(original.id, true);
+
+    const results = await Promise.allSettled([
+      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' }),
+      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.message).toBe('ALREADY_REQUESTED');
+
+    const created = await prisma.tutoringBooking.count({ where: { makeupForId: original.id } });
+    expect(created).toBe(1);
+  });
+
+  it('rejects deciding the same makeup booking twice', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const past = new Date('2020-08-07');
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(original.id, true);
+    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+
+    await decideMakeup(makeup.id, 'APPROVED');
+    await expect(decideMakeup(makeup.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
+  });
+
+  it('rejects deciding a REGULAR booking', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await expect(decideMakeup(booking.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
+  });
 });

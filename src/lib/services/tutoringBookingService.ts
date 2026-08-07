@@ -180,20 +180,37 @@ export async function requestMakeup(input: {
   const missed = original.status === 'CANCELLED_LATE' || original.attendance?.status === 'ABSENT';
   if (!missed) throw new Error('NOT_ELIGIBLE');
 
-  return createBooking({
-    enrollmentId: original.enrollmentId,
-    windowId: input.windowId,
-    date: input.date,
-    startTime: input.startTime,
-    endTime: input.endTime,
-    kind: 'MAKEUP',
-    makeupForId: original.id,
-  });
+  try {
+    return await createBooking({
+      enrollmentId: original.enrollmentId,
+      windowId: input.windowId,
+      date: input.date,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      kind: 'MAKEUP',
+      makeupForId: original.id,
+    });
+  } catch (err) {
+    // TOCTOU: the makeupChild check above runs outside a transaction, so two
+    // concurrent requestMakeup calls for the same original can both pass it
+    // before either commits. The DB's unique constraint on makeupForId then
+    // rejects the loser's insert with P2002 — translate that into the same
+    // ALREADY_REQUESTED error the pre-check above throws, instead of leaking
+    // the raw Prisma error.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new Error('ALREADY_REQUESTED');
+    }
+    throw err;
+  }
 }
 
 // 容量在 PENDING_ADMIN 建立時已檢查並佔位（createBooking 把 PENDING_ADMIN 一併算進容量），
 // 核准時不必再查一次容量。
 export async function decideMakeup(bookingId: string, decision: 'APPROVED' | 'REJECTED'): Promise<void> {
+  const booking = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: bookingId } });
+  if (booking.kind !== 'MAKEUP' || booking.status !== 'PENDING_ADMIN') {
+    throw new Error('ALREADY_DECIDED');
+  }
   await prisma.tutoringBooking.update({
     where: { id: bookingId },
     data: { status: decision === 'APPROVED' ? 'BOOKED' : 'REJECTED' },
