@@ -37,6 +37,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/student', label: '首頁', exact: true },
     { href: '/student/leave-request', label: '請假申請' },
     { href: '/student/makeup-request', label: '補課申請' },
+    { href: '/student/tutoring', label: '個別輔導' },
     { href: '/student/go-hall', label: '弈廳' },
     { href: '/student/attendance', label: '我的出席紀錄' },
     { href: '/student/points', label: '集點卡' },
