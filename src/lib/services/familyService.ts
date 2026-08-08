@@ -59,6 +59,13 @@ export async function createSwitchToken(currentUserId: string, targetStudentId: 
 export async function redeemSwitchToken(token: string) {
   const record = await prisma.familySwitchToken.findUnique({ where: { token } });
   if (!record || record.usedAt || record.expiresAt < new Date()) return null;
-  await prisma.familySwitchToken.update({ where: { id: record.id }, data: { usedAt: new Date() } });
-  return prisma.user.findUniqueOrThrow({ where: { id: record.targetUserId } });
+  const result = await prisma.familySwitchToken.updateMany({
+    where: { id: record.id, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+  if (result.count === 0) return null;
+  return prisma.user.findUniqueOrThrow({
+    where: { id: record.targetUserId },
+    select: { id: true, name: true, email: true, role: true },
+  });
 }

@@ -86,6 +86,7 @@ describe('redeemSwitchToken', () => {
 
     const user = await redeemSwitchToken(token);
     expect(user?.name).toBe('B');
+    expect(Object.keys(user ?? {}).sort()).toEqual(['email', 'id', 'name', 'role']);
 
     expect(await redeemSwitchToken(token)).toBeNull();
   });
