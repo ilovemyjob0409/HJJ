@@ -18,7 +18,7 @@ export async function listSiblings(userId: string): Promise<SiblingOption[]> {
 }
 
 export async function setSiblings(studentId: string, siblingIds: string[]): Promise<void> {
-  const uniqueSiblingIds = [...new Set(siblingIds)].filter((id) => id !== studentId);
+  const uniqueSiblingIds = Array.from(new Set(siblingIds)).filter((id) => id !== studentId);
   const student = await prisma.student.findUniqueOrThrow({ where: { id: studentId }, select: { familyGroupId: true } });
 
   if (uniqueSiblingIds.length === 0) {
