@@ -10,6 +10,8 @@ import DataTable from '@/components/ui/DataTable';
 import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
+import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
 
 interface OverviewRow {
   id: string;
@@ -28,14 +30,7 @@ interface EnrollmentOption {
   studentName: string;
   programId: string;
   programName: string;
-}
-
-interface WindowOption {
-  id: string;
-  weekday: number;
-  startTime: string;
-  endTime: string;
-  programId: string;
+  defaultDurationMinutes: number;
 }
 
 interface EnrollmentApiRow {
@@ -44,11 +39,14 @@ interface EnrollmentApiRow {
   studentName: string;
   programId: string;
   programName: string;
+  defaultDurationMinutes: number;
 }
 
-interface ProgramApiRow {
+interface MissedBookingOption {
   id: string;
-  windows: { id: string; weekday: number; startTime: string; endTime: string }[];
+  date: string;
+  startTime: string;
+  endTime: string;
 }
 
 interface SummaryRow {
@@ -72,11 +70,10 @@ export default function AdminTutoringBookingsPage() {
   const [date, setDate] = useState(todayDateInput());
   const [rows, setRows] = useState<OverviewRow[]>([]);
   const [enrollments, setEnrollments] = useState<EnrollmentOption[]>([]);
-  const [windows, setWindows] = useState<WindowOption[]>([]);
-  const [walkInEnrollmentId, setWalkInEnrollmentId] = useState('');
-  const [walkInWindowId, setWalkInWindowId] = useState('');
-  const [walkInStart, setWalkInStart] = useState('');
-  const [walkInEnd, setWalkInEnd] = useState('');
+  const [newBookingEnrollmentId, setNewBookingEnrollmentId] = useState('');
+  const [newBookingKind, setNewBookingKind] = useState<'regular' | 'makeup'>('regular');
+  const [missedBookings, setMissedBookings] = useState<MissedBookingOption[]>([]);
+  const [makeupOriginalId, setMakeupOriginalId] = useState('');
   const [month, setMonth] = useState(todayDateInput().slice(0, 7));
   const [summary, setSummary] = useState<SummaryRow[]>([]);
 
@@ -86,11 +83,19 @@ export default function AdminTutoringBookingsPage() {
   }
 
   async function loadOptions() {
-    const [enrollmentsRes, programsRes] = await Promise.all([fetch('/api/tutoring-enrollments'), fetch('/api/tutoring-programs')]);
-    const enrollmentData: EnrollmentApiRow[] = await enrollmentsRes.json();
-    setEnrollments(enrollmentData.filter((e) => e.active).map((e) => ({ id: e.id, studentName: e.studentName, programId: e.programId, programName: e.programName })));
-    const programData: ProgramApiRow[] = await programsRes.json();
-    setWindows(programData.flatMap((p) => p.windows.map((w) => ({ ...w, programId: p.id }))));
+    const res = await fetch('/api/tutoring-enrollments');
+    const enrollmentData: EnrollmentApiRow[] = await res.json();
+    setEnrollments(
+      enrollmentData
+        .filter((e) => e.active)
+        .map((e) => ({
+          id: e.id,
+          studentName: e.studentName,
+          programId: e.programId,
+          programName: e.programName,
+          defaultDurationMinutes: e.defaultDurationMinutes,
+        }))
+    );
   }
 
   async function loadSummary() {
@@ -112,6 +117,18 @@ export default function AdminTutoringBookingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
+  useEffect(() => {
+    if (newBookingKind !== 'makeup' || !newBookingEnrollmentId) {
+      setMissedBookings([]);
+      setMakeupOriginalId('');
+      return;
+    }
+    setMakeupOriginalId('');
+    fetch(`/api/tutoring-bookings/makeup-eligible?enrollmentId=${newBookingEnrollmentId}`)
+      .then((res) => res.json())
+      .then(setMissedBookings);
+  }, [newBookingEnrollmentId, newBookingKind]);
+
   async function cancel(row: OverviewRow, countsTowardQuota: boolean) {
     const message = countsTowardQuota ? '確定要取消並計入這位學生本月次數嗎？' : '確定要取消嗎？此次不計入學生次數。';
     if (!(await confirm(message, { danger: true }))) return;
@@ -124,27 +141,7 @@ export default function AdminTutoringBookingsPage() {
     loadOverview();
   }
 
-  async function addWalkIn() {
-    if (!walkInEnrollmentId || !walkInWindowId || !walkInStart || !walkInEnd) {
-      showToast('請填寫完整的現場補加資訊');
-      return;
-    }
-    const res = await fetch('/api/tutoring-bookings/walk-in', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enrollmentId: walkInEnrollmentId, windowId: walkInWindowId, date, startTime: walkInStart, endTime: walkInEnd }),
-    });
-    if (!res.ok) {
-      showToast('新增失敗');
-      return;
-    }
-    showToast('已新增現場預約');
-    setWalkInEnrollmentId('');
-    setWalkInWindowId('');
-    setWalkInStart('');
-    setWalkInEnd('');
-    loadOverview();
-  }
+  const newBookingEnrollment = enrollments.find((e) => e.id === newBookingEnrollmentId);
 
   const columns: Column<OverviewRow>[] = [
     { header: '學生', render: (r) => r.studentName },
@@ -192,13 +189,13 @@ export default function AdminTutoringBookingsPage() {
       </Card>
 
       <Card className="mb-6">
-        <p className="mb-2 font-semibold text-ink">現場補加（不檢查容量）</p>
-        <div className="flex flex-wrap items-end gap-2">
+        <p className="mb-2 font-semibold text-ink">新增預約</p>
+        <div className="mb-3 flex flex-wrap items-end gap-2">
           <label className="text-xs text-inkMuted">
             學生
             <select
-              value={walkInEnrollmentId}
-              onChange={(e) => setWalkInEnrollmentId(e.target.value)}
+              value={newBookingEnrollmentId}
+              onChange={(e) => setNewBookingEnrollmentId(e.target.value)}
               className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
             >
               <option value="">請選擇</option>
@@ -210,32 +207,50 @@ export default function AdminTutoringBookingsPage() {
             </select>
           </label>
           <label className="text-xs text-inkMuted">
-            窗口
+            類型
             <select
-              value={walkInWindowId}
-              onChange={(e) => setWalkInWindowId(e.target.value)}
+              value={newBookingKind}
+              onChange={(e) => setNewBookingKind(e.target.value as 'regular' | 'makeup')}
               className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
             >
-              <option value="">請選擇</option>
-              {windows
-                .filter((w) => !walkInEnrollmentId || w.programId === enrollments.find((e) => e.id === walkInEnrollmentId)?.programId)
-                .map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.startTime}-{w.endTime}
-                  </option>
-                ))}
+              <option value="regular">一般</option>
+              <option value="makeup">補課</option>
             </select>
           </label>
-          <label className="text-xs text-inkMuted">
-            開始
-            <Input type="time" value={walkInStart} onChange={(e) => setWalkInStart(e.target.value)} className="mt-1 w-24 py-1 text-sm" />
-          </label>
-          <label className="text-xs text-inkMuted">
-            結束
-            <Input type="time" value={walkInEnd} onChange={(e) => setWalkInEnd(e.target.value)} className="mt-1 w-24 py-1 text-sm" />
-          </label>
-          <Button onClick={addWalkIn}>新增</Button>
+          {newBookingKind === 'makeup' && (
+            <label className="text-xs text-inkMuted">
+              要補的缺席紀錄
+              <select
+                value={makeupOriginalId}
+                onChange={(e) => setMakeupOriginalId(e.target.value)}
+                className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
+              >
+                <option value="">請選擇</option>
+                {missedBookings.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {formatDateWithWeekday(b.date)}・{b.startTime}-{b.endTime}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
+
+        {!newBookingEnrollmentId && <p className="text-sm text-inkMuted">請先選擇學生</p>}
+        {newBookingEnrollmentId && newBookingKind === 'makeup' && missedBookings.length === 0 && (
+          <p className="text-sm text-inkMuted">這位學生目前沒有可補課的紀錄</p>
+        )}
+        {newBookingEnrollment && (newBookingKind === 'regular' || makeupOriginalId) && (
+          <TutoringBookingCalendar
+            key={`${newBookingEnrollmentId}-${newBookingKind}-${makeupOriginalId}`}
+            enrollmentId={newBookingEnrollment.id}
+            defaultDurationMinutes={newBookingEnrollment.defaultDurationMinutes}
+            mode={newBookingKind}
+            makeupForBookingId={newBookingKind === 'makeup' ? makeupOriginalId : undefined}
+            successMessage={newBookingKind === 'makeup' ? '已建立補課預約' : '已新增預約'}
+            onBooked={loadOverview}
+          />
+        )}
       </Card>
 
       <div className="mb-2 mt-6 flex items-center justify-between">
