@@ -29,7 +29,6 @@ interface OverviewRow {
 interface EnrollmentOption {
   id: string;
   studentName: string;
-  programId: string;
   programName: string;
   defaultDurationMinutes: number;
 }
@@ -38,7 +37,6 @@ interface EnrollmentApiRow {
   id: string;
   active: boolean;
   studentName: string;
-  programId: string;
   programName: string;
   defaultDurationMinutes: number;
 }
@@ -77,6 +75,7 @@ export default function AdminTutoringBookingsPage() {
   const [makeupOriginalId, setMakeupOriginalId] = useState('');
   const [month, setMonth] = useState(todayDateInput().slice(0, 7));
   const [summary, setSummary] = useState<SummaryRow[]>([]);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
 
   async function loadOverview() {
     const res = await fetch(`/api/tutoring-bookings/overview?date=${date}`);
@@ -92,7 +91,6 @@ export default function AdminTutoringBookingsPage() {
         .map((e) => ({
           id: e.id,
           studentName: e.studentName,
-          programId: e.programId,
           programName: e.programName,
           defaultDurationMinutes: e.defaultDurationMinutes,
         }))
@@ -128,7 +126,7 @@ export default function AdminTutoringBookingsPage() {
     fetch(`/api/tutoring-bookings/makeup-eligible?enrollmentId=${newBookingEnrollmentId}`)
       .then((res) => res.json())
       .then(setMissedBookings);
-  }, [newBookingEnrollmentId, newBookingKind]);
+  }, [newBookingEnrollmentId, newBookingKind, calendarRefreshKey]);
 
   async function cancel(row: OverviewRow, countsTowardQuota: boolean) {
     const message = countsTowardQuota ? '確定要取消並計入這位學生本月次數嗎？' : '確定要取消嗎？此次不計入學生次數。';
@@ -140,6 +138,7 @@ export default function AdminTutoringBookingsPage() {
     });
     showToast('已取消');
     loadOverview();
+    setCalendarRefreshKey((k) => k + 1);
   }
 
   const newBookingEnrollment = enrollments.find((e) => e.id === newBookingEnrollmentId);
@@ -252,13 +251,17 @@ export default function AdminTutoringBookingsPage() {
         )}
         {newBookingEnrollment && (newBookingKind === 'regular' || makeupOriginalId) && (
           <TutoringBookingCalendar
-            key={`${newBookingEnrollmentId}-${newBookingKind}-${makeupOriginalId}`}
+            key={`${newBookingEnrollmentId}-${newBookingKind}-${makeupOriginalId}-${calendarRefreshKey}`}
             enrollmentId={newBookingEnrollment.id}
             defaultDurationMinutes={newBookingEnrollment.defaultDurationMinutes}
             mode={newBookingKind}
             makeupForBookingId={newBookingKind === 'makeup' ? makeupOriginalId : undefined}
             successMessage={newBookingKind === 'makeup' ? '已建立補課預約' : '已新增預約'}
-            onBooked={loadOverview}
+            onBooked={() => {
+              loadOverview();
+              setCalendarRefreshKey((k) => k + 1);
+              setMakeupOriginalId('');
+            }}
           />
         )}
       </Card>

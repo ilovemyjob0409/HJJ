@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db';
 
 const sessionMock = vi.fn();
@@ -34,7 +35,7 @@ async function setupMissedBooking(capacity = 8) {
 }
 
 function postBody(windowId: string) {
-  return new Request('http://x', {
+  return new NextRequest('http://x', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ windowId, date: '2026-08-07', startTime: '16:00', endTime: '18:00' }),
