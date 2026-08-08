@@ -393,6 +393,32 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
   });
 }
 
+export interface MissedBookingRow {
+  id: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+}
+
+export async function listMissedBookingsForEnrollment(enrollmentId: string): Promise<MissedBookingRow[]> {
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { enrollmentId, kind: 'REGULAR' },
+    select: {
+      id: true,
+      date: true,
+      startTime: true,
+      endTime: true,
+      status: true,
+      attendance: { select: { status: true } },
+      makeupChild: { select: { id: true } },
+    },
+    orderBy: { date: 'desc' },
+  });
+  return bookings
+    .filter((b) => (b.status === 'CANCELLED_LATE' || b.attendance?.status === 'ABSENT') && !b.makeupChild)
+    .map((b) => ({ id: b.id, date: b.date, startTime: b.startTime, endTime: b.endTime }));
+}
+
 export interface OverviewBookingRow {
   id: string;
   studentName: string;

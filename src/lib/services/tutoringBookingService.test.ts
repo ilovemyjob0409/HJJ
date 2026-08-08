@@ -16,7 +16,7 @@ import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, createWalkInBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
-import { listMonthlyAttendanceSummary } from './tutoringBookingService';
+import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment } from './tutoringBookingService';
 
 describe('toMinutes / minutesToHHMM', () => {
   it('round-trips', () => {
@@ -424,6 +424,35 @@ describe('listBookingsForStudent', () => {
     expect(futureRow.canCancelFree).toBe(true);
     const missedRow = rows.find((r) => r.status === 'CANCELLED_LATE')!;
     expect(missedRow.canRequestMakeup).toBe(true);
+  });
+});
+
+describe('listMissedBookingsForEnrollment', () => {
+  it('returns only missed REGULAR bookings without an existing makeup child, scoped to the given enrollment', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+
+    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(missed.id, true); // CANCELLED_LATE, eligible
+
+    const alreadyRequested = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(alreadyRequested.id, true);
+    await requestMakeup({ originalBookingId: alreadyRequested.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21'), startTime: '16:00', endTime: '18:00' }); // BOOKED, not missed
+
+    const otherStudent = await createStudent({ name: '小華', email: `hua-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: enrollment.programId, studentId: otherStudent.id } });
+    const otherMissed = await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-28'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(otherMissed.id, true);
+
+    const rows = await listMissedBookingsForEnrollment(enrollment.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(missed.id);
+  });
+
+  it('returns an empty array when there are no missed bookings', async () => {
+    const { enrollment } = await setupProgramWithEnrollment();
+    expect(await listMissedBookingsForEnrollment(enrollment.id)).toEqual([]);
   });
 });
 
