@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -178,6 +179,15 @@ export default function AdminTutoringBookingsPage() {
 
   return (
     <>
+      <Link
+        href="/admin/tutoring"
+        className="mb-2 inline-flex items-center gap-1 text-sm text-inkMuted transition-colors hover:text-ink"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+        返回個別輔導管理
+      </Link>
       <h1 className="mb-4 text-xl font-bold text-ink">個別輔導預約總覽</h1>
 
       <div className="mb-4 flex items-center gap-2">
