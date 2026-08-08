@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOut } from 'next-auth/react';
-import { ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
+import { signIn, signOut } from 'next-auth/react';
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
 
@@ -54,10 +54,49 @@ const HOME_HREF: Record<Role, string> = {
 
 export default function AppShell({ role, children }: { role: Role; children: ReactNode }) {
   const pathname = usePathname();
+  const [siblings, setSiblings] = useState<{ id: string; name: string }[]>([]);
+  const [selfName, setSelfName] = useState('');
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const activeLinkRef = useRef<HTMLAnchorElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
   const indicatorPositionedRef = useRef(false);
+
+  useEffect(() => {
+    if (role !== 'STUDENT') return;
+    fetch('/api/students/me/siblings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setSelfName(data.self.name);
+        setSiblings(data.siblings);
+      });
+  }, [role]);
+
+  async function switchToSibling(targetStudentId: string) {
+    setSwitching(true);
+    try {
+      const tokenRes = await fetch('/api/auth/family-switch-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetStudentId }),
+      });
+      if (!tokenRes.ok) return;
+      const { switchToken } = await tokenRes.json();
+      const result = await signIn('credentials', { switchToken, redirect: false });
+      // A full navigation (not router.push) is required here: this component
+      // is already mounted under /student for the pre-switch identity, and
+      // Next.js's client router won't re-run server components or this
+      // component's own siblings-fetch effect for a same-route transition.
+      // Without a hard reload, the header and page content would keep
+      // showing the OLD identity even though the session cookie has changed.
+      if (!result?.error) window.location.href = '/student';
+    } finally {
+      setSwitching(false);
+      setSwitcherOpen(false);
+    }
+  }
 
   useLayoutEffect(() => {
     const positionIndicator = () => {
@@ -138,6 +177,31 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
           </div>
         </nav>
         <div className="flex shrink-0 items-center justify-self-end gap-1 sm:gap-2">
+          {role === 'STUDENT' && siblings.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setSwitcherOpen((v) => !v)}
+                className="flex items-center gap-1 rounded-full bg-cream px-2.5 py-1 text-xs font-semibold text-ink hover:opacity-80 sm:text-sm"
+              >
+                {selfName} ▾
+              </button>
+              {switcherOpen && (
+                <div className="animate-fade-in absolute right-0 top-full z-20 mt-2 w-40 rounded-lg border border-borderStrong bg-card py-1 text-left shadow-md">
+                  <div className="px-3 py-1.5 text-xs font-semibold text-inkMuted">{selfName}（目前）</div>
+                  {siblings.map((s) => (
+                    <button
+                      key={s.id}
+                      disabled={switching}
+                      onClick={() => switchToSibling(s.id)}
+                      className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-stripe disabled:opacity-50"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <ThemeToggle />
           <button onClick={() => signOut()} className="cursor-pointer text-xs text-inkMuted hover:text-ink sm:text-sm">
             登出
