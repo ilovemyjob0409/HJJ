@@ -309,7 +309,7 @@ export default function AdminTutoringPage() {
 
       {programs.map((program) => (
         <Card key={program.id} className="mb-4">
-          <details className="group" open>
+          <details className="group">
             <summary className="mb-3 flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-2">
                 <span className="text-inkMuted transition-transform group-open:rotate-180">▾</span>

@@ -14,9 +14,9 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
-import { createBooking, createWalkInBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
+import { createBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
-import { listMonthlyAttendanceSummary } from './tutoringBookingService';
+import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment } from './tutoringBookingService';
 
 describe('toMinutes / minutesToHHMM', () => {
   it('round-trips', () => {
@@ -183,30 +183,6 @@ describe('createBooking', () => {
     await expect(
       createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
     ).rejects.toThrow('ENROLLMENT_INACTIVE');
-  });
-});
-
-describe('createWalkInBooking', () => {
-  it('creates a BOOKED booking without checking capacity', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment(1);
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
-    const walkIn = await createWalkInBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
-    expect(await prisma.tutoringBooking.count({ where: { windowId: window.id, date: FRIDAY } })).toBe(2);
-    expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: walkIn.id } })).status).toBe('BOOKED');
-  });
-
-  it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
-    const { window } = await setupProgramWithEnrollment();
-    await expect(
-      createWalkInBooking({ enrollmentId: 'nonexistent-enrollment-id', windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
-    ).rejects.toThrow('ENROLLMENT_NOT_FOUND');
-  });
-
-  it('rejects with WINDOW_NOT_FOUND for a nonexistent window id', async () => {
-    const { enrollment } = await setupProgramWithEnrollment();
-    await expect(
-      createWalkInBooking({ enrollmentId: enrollment.id, windowId: 'nonexistent-window-id', date: FRIDAY, startTime: '16:00', endTime: '18:00' })
-    ).rejects.toThrow('WINDOW_NOT_FOUND');
   });
 });
 
@@ -424,6 +400,35 @@ describe('listBookingsForStudent', () => {
     expect(futureRow.canCancelFree).toBe(true);
     const missedRow = rows.find((r) => r.status === 'CANCELLED_LATE')!;
     expect(missedRow.canRequestMakeup).toBe(true);
+  });
+});
+
+describe('listMissedBookingsForEnrollment', () => {
+  it('returns only missed REGULAR bookings without an existing makeup child, scoped to the given enrollment', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+
+    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(missed.id, true); // CANCELLED_LATE, eligible
+
+    const alreadyRequested = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(alreadyRequested.id, true);
+    await requestMakeup({ originalBookingId: alreadyRequested.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21'), startTime: '16:00', endTime: '18:00' }); // BOOKED, not missed
+
+    const otherStudent = await createStudent({ name: '小華', email: `hua-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: enrollment.programId, studentId: otherStudent.id } });
+    const otherMissed = await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-28'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(otherMissed.id, true);
+
+    const rows = await listMissedBookingsForEnrollment(enrollment.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(missed.id);
+  });
+
+  it('returns an empty array when there are no missed bookings', async () => {
+    const { enrollment } = await setupProgramWithEnrollment();
+    expect(await listMissedBookingsForEnrollment(enrollment.id)).toEqual([]);
   });
 });
 
