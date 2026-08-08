@@ -8,7 +8,8 @@ import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
+import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
 
 interface Enrollment {
   id: string;
@@ -18,15 +19,6 @@ interface Enrollment {
   monthlyQuota: number;
   locked: number;
   upcoming: number;
-}
-
-interface AvailabilityDay {
-  date: string;
-  windowId: string;
-  windowStartTime: string;
-  windowEndTime: string;
-  capacity: number;
-  slots: { startTime: string; remaining: number }[];
 }
 
 interface BookingRow {
@@ -41,37 +33,12 @@ interface BookingRow {
   canRequestMakeup: boolean;
 }
 
-function addMinutes(hhmm: string, minutes: number): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  const total = h * 60 + m + minutes;
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-}
-
-interface MonthCell {
-  day: number;
-  dateKey: string;
-}
-
-function buildMonthCells(year: number, month: number): MonthCell[] {
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const cells: MonthCell[] = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({ day: d, dateKey: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
-  }
-  return cells;
-}
-
 export default function StudentTutoringPage() {
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>('');
-  const [availability, setAvailability] = useState<AvailabilityDay[]>([]);
   const [bookings, setBookings] = useState<BookingRow[]>([]);
-  const [openDay, setOpenDay] = useState<string | null>(null);
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
-  const [submitting, setSubmitting] = useState(false);
   const [makeupFor, setMakeupFor] = useState<BookingRow | null>(null);
 
   async function loadEnrollments() {
@@ -86,104 +53,12 @@ export default function StudentTutoringPage() {
     setBookings(await res.json());
   }
 
-  async function loadAvailability(enrollmentId: string, months: 1 | 2 = 1) {
-    const res = await fetch(`/api/tutoring-availability?enrollmentId=${enrollmentId}&months=${months}`);
-    setAvailability(await res.json());
-  }
-
   useEffect(() => {
     loadEnrollments();
     loadBookings();
   }, []);
 
-  useEffect(() => {
-    if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId, makeupFor ? 2 : 1);
-  }, [selectedEnrollmentId, makeupFor]);
-
   const selectedEnrollment = enrollments.find((e) => e.id === selectedEnrollmentId);
-
-  const now = new Date();
-  const calendarYear = now.getFullYear();
-  const calendarMonth = now.getMonth() + 1;
-  const availabilityByDate = new Map(availability.map((day) => [day.date, day]));
-  const openDayData = openDay ? availabilityByDate.get(openDay) : undefined;
-
-  const nextMonthDate = new Date(Date.UTC(calendarYear, calendarMonth, 1));
-  const nextCalendarYear = nextMonthDate.getUTCFullYear();
-  const nextCalendarMonth = nextMonthDate.getUTCMonth() + 1;
-
-  function renderMonthGrid(year: number, month: number) {
-    const cells = buildMonthCells(year, month);
-    const leadingBlanks = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
-    return (
-      <div className="mb-4">
-        <p className="mb-3 text-center font-semibold text-ink">
-          {year}年{month}月
-        </p>
-        <div className="grid grid-cols-7 gap-1 text-center text-xs text-inkMuted">
-          {WEEKDAY_LABELS.map((label) => (
-            <span key={label}>{label}</span>
-          ))}
-        </div>
-        <div className="mt-1 grid grid-cols-7 gap-1">
-          {Array.from({ length: leadingBlanks }).map((_, i) => (
-            <span key={`blank-${year}-${month}-${i}`} />
-          ))}
-          {cells.map((cell) => {
-            const day = availabilityByDate.get(cell.dateKey);
-            return (
-              <button
-                key={cell.dateKey}
-                disabled={!day}
-                onClick={() => day && openDayForBooking(day)}
-                className={`rounded-lg py-2 text-sm ${
-                  openDay === cell.dateKey
-                    ? 'bg-brand font-semibold text-brandInk'
-                    : day
-                      ? 'bg-approvedBg font-semibold text-approved'
-                      : 'text-inkMuted opacity-50'
-                }`}
-              >
-                {cell.day}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  function openDayForBooking(day: AvailabilityDay) {
-    setOpenDay(day.date);
-    const firstAvailable = day.slots.find((s) => s.remaining > 0);
-    const start = firstAvailable?.startTime ?? day.windowStartTime;
-    setStartTime(start);
-    setEndTime(addMinutes(start, selectedEnrollment?.defaultDurationMinutes ?? 120));
-  }
-
-  async function submitBooking(day: AvailabilityDay) {
-    if (!selectedEnrollment) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/tutoring-bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enrollmentId: selectedEnrollment.id, windowId: day.windowId, date: day.date, startTime, endTime }),
-      });
-      if (!res.ok) {
-        const { error } = await res.json();
-        showToast(error === 'WINDOW_FULL' ? '這段時間名額已滿，請選別的時間' : '預約失敗，請確認時間範圍');
-        return;
-      }
-      showToast('預約成功');
-      setOpenDay(null);
-      loadBookings();
-      loadAvailability(selectedEnrollment.id, 1);
-      loadEnrollments();
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   async function cancelBooking(row: BookingRow) {
     const message = row.canCancelFree
@@ -197,32 +72,7 @@ export default function StudentTutoringPage() {
     }
     showToast('已取消');
     loadBookings();
-    if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId, makeupFor ? 2 : 1);
     loadEnrollments();
-  }
-
-  async function submitMakeup(day: AvailabilityDay) {
-    if (!makeupFor) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/tutoring-bookings/${makeupFor.id}/makeup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ windowId: day.windowId, date: day.date, startTime, endTime }),
-      });
-      if (!res.ok) {
-        const { error } = await res.json();
-        showToast(error === 'WINDOW_FULL' ? '這段時間名額已滿，請選別的時間' : '申請失敗，請確認時間範圍');
-        return;
-      }
-      showToast('已送出補課申請，待行政核准');
-      setMakeupFor(null);
-      setOpenDay(null);
-      loadBookings();
-      if (selectedEnrollmentId) loadAvailability(selectedEnrollmentId, 1);
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   const bookingColumns: Column<BookingRow>[] = [
@@ -294,59 +144,19 @@ export default function StudentTutoringPage() {
 
           <h2 className="mb-2 font-bold text-ink">{makeupFor ? '本月及下月可預約時段' : '本月可預約時段'}</h2>
           <Card className="mb-6">
-            {renderMonthGrid(calendarYear, calendarMonth)}
-            {makeupFor && renderMonthGrid(nextCalendarYear, nextCalendarMonth)}
-
-            {openDayData && (
-              <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-borderSubtle pt-3">
-                <label className="text-xs text-inkMuted">
-                  開始
-                  <select
-                    value={startTime}
-                    onChange={(e) => {
-                      setStartTime(e.target.value);
-                      setEndTime(addMinutes(e.target.value, selectedEnrollment?.defaultDurationMinutes ?? 120));
-                    }}
-                    className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-                  >
-                    {openDayData.slots.map((s) => (
-                      <option key={s.startTime} value={s.startTime} disabled={s.remaining === 0}>
-                        {s.startTime}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-xs text-inkMuted">
-                  結束
-                  <select
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-                  >
-                    {openDayData.slots
-                      .map((s) => s.startTime)
-                      .concat(openDayData.windowEndTime)
-                      .filter((t) => t > startTime)
-                      .map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <Button loading={submitting} onClick={() => (makeupFor ? submitMakeup(openDayData) : submitBooking(openDayData))}>
-                  {makeupFor ? '確定補課時間' : '確定預約'}
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setOpenDay(null);
-                    setMakeupFor(null);
-                  }}
-                >
-                  取消
-                </Button>
-              </div>
+            {selectedEnrollment && (
+              <TutoringBookingCalendar
+                enrollmentId={selectedEnrollment.id}
+                defaultDurationMinutes={selectedEnrollment.defaultDurationMinutes}
+                mode={makeupFor ? 'makeup' : 'regular'}
+                makeupForBookingId={makeupFor?.id}
+                onCancel={() => setMakeupFor(null)}
+                onBooked={() => {
+                  loadBookings();
+                  if (!makeupFor) loadEnrollments();
+                  setMakeupFor(null);
+                }}
+              />
             )}
           </Card>
 
