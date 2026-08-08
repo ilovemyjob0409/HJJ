@@ -37,7 +37,9 @@ export default function EnrollmentManager() {
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [studentId, setStudentId] = useState('');
+  const [studentQuery, setStudentQuery] = useState('');
   const [programId, setProgramId] = useState('');
+  const [newMonthlyQuota, setNewMonthlyQuota] = useState('');
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
 
   async function load() {
@@ -63,14 +65,20 @@ export default function EnrollmentManager() {
     const res = await fetch('/api/tutoring-enrollments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId, programId }),
+      body: JSON.stringify({
+        studentId,
+        programId,
+        monthlyQuota: newMonthlyQuota === '' ? undefined : Number(newMonthlyQuota),
+      }),
     });
     if (!res.ok) {
       showToast('新增失敗，該學生可能已報名此課程');
       return;
     }
     setStudentId('');
+    setStudentQuery('');
     setProgramId('');
+    setNewMonthlyQuota('');
     showToast('已新增報名');
     load();
   }
@@ -159,14 +167,56 @@ export default function EnrollmentManager() {
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs text-inkMuted">
             學生
-            <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink">
-              <option value="">請選擇</option>
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.user.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative mt-1">
+              <div className="flex items-center gap-1.5 rounded-lg border border-borderSubtle bg-card px-2 py-1">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5 shrink-0 text-inkMuted"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.2" y2="16.2" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="搜尋學生姓名"
+                  value={studentId ? (students.find((s) => s.id === studentId)?.user.name ?? '') : studentQuery}
+                  onChange={(e) => {
+                    setStudentId('');
+                    setStudentQuery(e.target.value);
+                  }}
+                  className="w-32 bg-transparent text-sm text-ink outline-none"
+                />
+              </div>
+              {!studentId && studentQuery.trim() && (
+                <div className="absolute z-10 mt-1 max-h-48 w-48 overflow-y-auto rounded-lg border border-borderStrong bg-card shadow-lg">
+                  {(() => {
+                    const q = studentQuery.trim().toLowerCase();
+                    const matches = students.filter((s) => s.user.name.toLowerCase().includes(q)).slice(0, 8);
+                    if (matches.length === 0) {
+                      return <p className="p-2 text-xs text-inkMuted">找不到符合的學生</p>;
+                    }
+                    return matches.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          setStudentId(s.id);
+                          setStudentQuery('');
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-stripe"
+                      >
+                        {s.user.name}
+                      </button>
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
           </label>
           <label className="text-xs text-inkMuted">
             課程
@@ -178,6 +228,17 @@ export default function EnrollmentManager() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="text-xs text-inkMuted">
+            每月堂數
+            <Input
+              type="number"
+              min={0}
+              placeholder="預設"
+              value={newMonthlyQuota}
+              onChange={(e) => setNewMonthlyQuota(e.target.value)}
+              className="mt-1 w-20 py-1 text-sm"
+            />
           </label>
           <Button onClick={createEnrollment}>新增報名</Button>
         </div>
