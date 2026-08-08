@@ -124,6 +124,7 @@ function StudentsContent() {
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
   const [addClassQuery, setAddClassQuery] = useState('');
   const [openHintClassId, setOpenHintClassId] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   // 續報彈窗：目標班級、本期堂數、勾選的未報名日期
   const [renewTarget, setRenewTarget] = useState<ClassOption | null>(null);
   const [renewAmount, setRenewAmount] = useState('');
@@ -228,6 +229,7 @@ function StudentsContent() {
     setEditError('');
     setLineBindInfo(null);
     setLineBinding(false);
+    setAdvancedOpen(false);
   }
 
   function toggleClass(classId: string) {
@@ -540,223 +542,252 @@ function StudentsContent() {
       </Card>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生" maxWidthClassName="max-w-2xl">
-        <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
-          <Input placeholder="姓名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
-          <Input
-            placeholder="帳號"
-            type="text"
-            value={editForm.email}
-            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-            required
-          />
-          <Input
-            placeholder="新密碼（留空＝不變更）"
-            type="password"
-            value={editForm.password}
-            onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-          />
-          <Input
-            placeholder="家長電話"
-            value={editForm.parentPhone}
-            onChange={(e) => setEditForm({ ...editForm, parentPhone: e.target.value })}
-          />
-          <Input
-            placeholder="學號"
-            value={editForm.studentNumber}
-            onChange={(e) => setEditForm({ ...editForm, studentNumber: e.target.value })}
-          />
-
+        <form onSubmit={handleEditSubmit} className="flex flex-col gap-6">
           <div>
-            <p className="mb-1 text-sm font-medium text-ink">已加入班級</p>
-            {Object.keys(editEnrollments).length === 0 ? (
-              <p className="rounded-lg border border-dashed border-borderStrong p-3 text-center text-sm text-inkMuted">
-                尚未加入任何班級
-              </p>
-            ) : (
-              <DataTable
-                columns={[
-                  {
-                    header: '班級',
-                    render: (c) => (
-                      <div className="text-left">
-                        <div className="font-medium">{c.name}</div>
-                        <div className="text-xs text-inkMuted">{c.subject}</div>
-                      </div>
-                    ),
-                  },
-                  {
-                    header: '總堂數',
-                    render: (c) => (
-                      <div className="flex items-center justify-center gap-1">
-                        <Input
-                          type="number"
-                          value={editEnrollments[c.id] ?? ''}
-                          onChange={(e) => setEditEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                          className="w-24"
-                        />
-                        <HintButton
-                          label="總堂數說明"
-                          active={openHintClassId === c.id}
-                          onToggle={() => setOpenHintClassId((prev) => (prev === c.id ? null : c.id))}
-                        >
-                          留空表示不追蹤堂數——「已上／剩餘」會顯示「未追蹤」，點名也不會扣堂。填數字才會開始計算已上與剩餘堂數。
-                        </HintButton>
-                      </div>
-                    ),
-                  },
-                  {
-                    header: '已上／剩餘',
-                    render: (c) => {
-                      const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
-                      if (!enrollment || enrollment.totalSessions === null) {
-                        return <span className="text-xs text-inkMuted">未追蹤</span>;
-                      }
-                      const low = enrollment.remaining !== null && enrollment.remaining <= LOW_CLASS_QUOTA_THRESHOLD;
-                      return (
-                        <span className={`flex items-center justify-center gap-1 text-xs ${low ? 'font-semibold text-pending' : 'text-inkMuted'}`}>
-                          {low && <LowQuotaIcon />}
-                          已上 {enrollment.usedSessions}／剩餘 {enrollment.remaining}
-                        </span>
-                      );
-                    },
-                  },
-                  {
-                    header: (
-                      <span className="flex items-center justify-center gap-1">
-                        續報
-                        <HintButton
-                          label="續報說明"
-                          active={openHintClassId === 'period-header'}
-                          onToggle={() => setOpenHintClassId((prev) => (prev === 'period-header' ? null : 'period-header'))}
-                        >
-                          續報＝這期報課：堂數會累加到總堂數，圍棋班的一對一補課額度同時重新起算；可順便勾選這期不出席的日期，預先標為「未報名」（不扣堂）。直接修改「總堂數」欄位則是校正，不會開新的一期。
-                        </HintButton>
-                      </span>
-                    ),
-                    render: (c) => {
-                      const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
-                      if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => openRenew(c)}
-                          className="whitespace-nowrap text-xs text-brandDark hover:underline"
-                        >
-                          續報
-                        </button>
-                      );
-                    },
-                  },
-                  {
-                    header: '',
-                    render: (c) => (
-                      <button type="button" className="text-xs text-rejected hover:underline" onClick={() => toggleClass(c.id)}>
-                        移除
-                      </button>
-                    ),
-                  },
-                ]}
-                rows={classes.filter((c) => c.id in editEnrollments)}
-                keyField={(c) => c.id}
+            <p className="mb-2 text-sm font-medium text-ink">基本資料</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input placeholder="姓名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+              <Input
+                placeholder="帳號"
+                type="text"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                required
               />
+              <Input
+                placeholder="家長電話"
+                value={editForm.parentPhone}
+                onChange={(e) => setEditForm({ ...editForm, parentPhone: e.target.value })}
+              />
+              <Input
+                placeholder="學號"
+                value={editForm.studentNumber}
+                onChange={(e) => setEditForm({ ...editForm, studentNumber: e.target.value })}
+              />
+              <Input
+                placeholder="新密碼（留空＝不變更）"
+                type="password"
+                value={editForm.password}
+                onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                className="sm:col-span-2"
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-borderSubtle pt-6">
+            <p className="mb-2 text-sm font-medium text-ink">班級</p>
+            <div className="flex flex-col gap-3 rounded-lg bg-background p-3">
+              <div>
+                <p className="mb-1 text-xs font-medium text-inkMuted">已加入班級</p>
+                {Object.keys(editEnrollments).length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-borderStrong p-3 text-center text-sm text-inkMuted">
+                    尚未加入任何班級
+                  </p>
+                ) : (
+                  <DataTable
+                    columns={[
+                      {
+                        header: '班級',
+                        render: (c) => (
+                          <div className="text-left">
+                            <div className="font-medium">{c.name}</div>
+                            <div className="text-xs text-inkMuted">{c.subject}</div>
+                          </div>
+                        ),
+                      },
+                      {
+                        header: '總堂數',
+                        render: (c) => (
+                          <div className="flex items-center justify-center gap-1">
+                            <Input
+                              type="number"
+                              value={editEnrollments[c.id] ?? ''}
+                              onChange={(e) => setEditEnrollments((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                              className="w-24"
+                            />
+                            <HintButton
+                              label="總堂數說明"
+                              active={openHintClassId === c.id}
+                              onToggle={() => setOpenHintClassId((prev) => (prev === c.id ? null : c.id))}
+                            >
+                              留空表示不追蹤堂數——「已上／剩餘」會顯示「未追蹤」，點名也不會扣堂。填數字才會開始計算已上與剩餘堂數。
+                            </HintButton>
+                          </div>
+                        ),
+                      },
+                      {
+                        header: '已上／剩餘',
+                        render: (c) => {
+                          const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                          if (!enrollment || enrollment.totalSessions === null) {
+                            return <span className="text-xs text-inkMuted">未追蹤</span>;
+                          }
+                          const low = enrollment.remaining !== null && enrollment.remaining <= LOW_CLASS_QUOTA_THRESHOLD;
+                          return (
+                            <span className={`flex items-center justify-center gap-1 text-xs ${low ? 'font-semibold text-pending' : 'text-inkMuted'}`}>
+                              {low && <LowQuotaIcon />}
+                              已上 {enrollment.usedSessions}／剩餘 {enrollment.remaining}
+                            </span>
+                          );
+                        },
+                      },
+                      {
+                        header: (
+                          <span className="flex items-center justify-center gap-1">
+                            續報
+                            <HintButton
+                              label="續報說明"
+                              active={openHintClassId === 'period-header'}
+                              onToggle={() => setOpenHintClassId((prev) => (prev === 'period-header' ? null : 'period-header'))}
+                            >
+                              續報＝這期報課：堂數會累加到總堂數，圍棋班的一對一補課額度同時重新起算；可順便勾選這期不出席的日期，預先標為「未報名」（不扣堂）。直接修改「總堂數」欄位則是校正，不會開新的一期。
+                            </HintButton>
+                          </span>
+                        ),
+                        render: (c) => {
+                          const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                          if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => openRenew(c)}
+                              className="whitespace-nowrap text-xs text-brandDark hover:underline"
+                            >
+                              續報
+                            </button>
+                          );
+                        },
+                      },
+                      {
+                        header: '',
+                        render: (c) => (
+                          <button type="button" className="text-xs text-rejected hover:underline" onClick={() => toggleClass(c.id)}>
+                            移除
+                          </button>
+                        ),
+                      },
+                    ]}
+                    rows={classes.filter((c) => c.id in editEnrollments)}
+                    keyField={(c) => c.id}
+                  />
+                )}
+              </div>
+
+              <div>
+                <p className="mb-1 text-xs font-medium text-inkMuted">加入新班級</p>
+                <Input
+                  placeholder="搜尋班級名稱或科目加入…"
+                  value={addClassQuery}
+                  onChange={(e) => setAddClassQuery(e.target.value)}
+                />
+                {addClassQuery.trim() &&
+                  (() => {
+                    const q = addClassQuery.trim().toLowerCase();
+                    const matches = classes
+                      .filter((c) => !(c.id in editEnrollments))
+                      .filter((c) => c.name.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q))
+                      .slice(0, 8);
+                    if (matches.length === 0) {
+                      return <p className="mt-2 text-sm text-inkMuted">找不到符合的班級</p>;
+                    }
+                    return (
+                      <div className="mt-2 flex max-h-40 flex-col overflow-y-auto rounded-lg border border-borderStrong">
+                        {matches.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              toggleClass(c.id);
+                              setAddClassQuery('');
+                            }}
+                            className="flex items-center justify-between border-b border-borderSubtle px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stripe"
+                          >
+                            <span>
+                              {c.name}（{c.subject}）
+                            </span>
+                            <span className="text-xs text-brandDark">加入</span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-borderSubtle pt-6">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between text-sm font-medium text-ink"
+              onClick={() => setAdvancedOpen((open) => !open)}
+            >
+              <span>進階設定</span>
+              <span className="text-xs text-inkMuted">{advancedOpen ? '收合' : '展開'}</span>
+            </button>
+            {advancedOpen && (
+              <div className="mt-3 flex flex-col gap-4">
+                <div>
+                  <p className="mb-1 text-xs font-medium text-inkMuted">LINE 通知</p>
+                  <div className="rounded-lg bg-background p-3">
+                    {editing?.lineUserId ? (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-approved">已綁定</span>
+                        <button type="button" className="text-xs text-rejected hover:underline" onClick={handleLineUnbind}>
+                          解除綁定
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-inkMuted">未綁定</span>
+                          <div className="flex items-center gap-3">
+                            <button type="button" className="text-xs text-brandDark hover:underline" onClick={refreshEditingFromServer}>
+                              重新查詢狀態
+                            </button>
+                            <Button type="button" variant="secondary" loading={lineBinding} onClick={handleGenerateLineBindCode}>
+                              產生綁定 QR code
+                            </Button>
+                          </div>
+                        </div>
+                        {lineBindInfo && (
+                          <div className="flex flex-col items-center gap-2 rounded-lg border border-borderSubtle p-3">
+                            <canvas ref={qrCanvasRef} />
+                            <p className="text-xs text-inkMuted">綁定碼：{lineBindInfo.code}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <Link
+                      href="/admin/line-setup"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-block text-xs text-brandDark hover:underline"
+                    >
+                      查看設定教學
+                    </Link>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-1 text-xs font-medium text-inkMuted">手足帳號</p>
+                  <div className="rounded-lg bg-background p-3">
+                    <Button type="button" variant="secondary" onClick={() => editing && setFamilyModalStudent(editing)}>
+                      設定手足
+                    </Button>
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
-
-          <div>
-            <p className="mb-1 text-sm font-medium text-ink">加入新班級</p>
-            <Input
-              placeholder="搜尋班級名稱或科目加入…"
-              value={addClassQuery}
-              onChange={(e) => setAddClassQuery(e.target.value)}
-            />
-            {addClassQuery.trim() &&
-              (() => {
-                const q = addClassQuery.trim().toLowerCase();
-                const matches = classes
-                  .filter((c) => !(c.id in editEnrollments))
-                  .filter((c) => c.name.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q))
-                  .slice(0, 8);
-                if (matches.length === 0) {
-                  return <p className="mt-2 text-sm text-inkMuted">找不到符合的班級</p>;
-                }
-                return (
-                  <div className="mt-2 flex max-h-40 flex-col overflow-y-auto rounded-lg border border-borderStrong">
-                    {matches.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          toggleClass(c.id);
-                          setAddClassQuery('');
-                        }}
-                        className="flex items-center justify-between border-b border-borderSubtle px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stripe"
-                      >
-                        <span>
-                          {c.name}（{c.subject}）
-                        </span>
-                        <span className="text-xs text-brandDark">加入</span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()}
-          </div>
-
-          <div>
-            <p className="mb-1 text-sm font-medium text-ink">LINE 通知</p>
-            <div className="rounded-lg border border-borderStrong p-3">
-              {editing?.lineUserId ? (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-approved">已綁定</span>
-                  <button type="button" className="text-xs text-rejected hover:underline" onClick={handleLineUnbind}>
-                    解除綁定
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-inkMuted">未綁定</span>
-                    <div className="flex items-center gap-3">
-                      <button type="button" className="text-xs text-brandDark hover:underline" onClick={refreshEditingFromServer}>
-                        重新查詢狀態
-                      </button>
-                      <Button type="button" variant="secondary" loading={lineBinding} onClick={handleGenerateLineBindCode}>
-                        產生綁定 QR code
-                      </Button>
-                    </div>
-                  </div>
-                  {lineBindInfo && (
-                    <div className="flex flex-col items-center gap-2 rounded-lg bg-background p-3">
-                      <canvas ref={qrCanvasRef} />
-                      <p className="text-xs text-inkMuted">綁定碼：{lineBindInfo.code}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-              <Link
-                href="/admin/line-setup"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block text-xs text-brandDark hover:underline"
-              >
-                查看設定教學
-              </Link>
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-1 text-sm font-medium text-ink">手足帳號</p>
-            <div className="rounded-lg border border-borderStrong p-3">
-              <Button type="button" variant="secondary" onClick={() => editing && setFamilyModalStudent(editing)}>
-                設定手足
-              </Button>
-            </div>
           </div>
 
           {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit" loading={submitting}>儲存</Button>
         </form>
-        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+        <button
+          type="button"
+          className="mt-6 w-full border-t border-borderSubtle pt-4 text-left text-sm text-rejected hover:underline"
+          onClick={handleDelete}
+        >
           刪除學生
         </button>
       </Modal>
