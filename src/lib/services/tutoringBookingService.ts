@@ -149,31 +149,6 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
   );
 }
 
-// 老師／行政現場補加：教室現場人數由老師目視判斷，系統不做容量檢查。
-export async function createWalkInBooking(input: {
-  enrollmentId: string;
-  windowId: string;
-  date: Date;
-  startTime: string;
-  endTime: string;
-}): Promise<{ id: string }> {
-  try {
-    return await prisma.tutoringBooking.create({
-      data: { ...input, kind: 'REGULAR', status: 'BOOKED' },
-      select: { id: true },
-    });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2003' || err.code === 'P2025')) {
-      // A bad enrollmentId/windowId surfaces as a foreign key violation whose
-      // message names the failing constraint (e.g. `TutoringBooking_enrollmentId_fkey`);
-      // use that to report which caller-supplied id was invalid.
-      if (err.message.includes('enrollmentId')) throw new Error('ENROLLMENT_NOT_FOUND');
-      if (err.message.includes('windowId')) throw new Error('WINDOW_NOT_FOUND');
-    }
-    throw err;
-  }
-}
-
 export async function cancelBooking(bookingId: string, studentId: string): Promise<void> {
   let booking;
   try {

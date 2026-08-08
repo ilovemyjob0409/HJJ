@@ -14,7 +14,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
-import { createBooking, createWalkInBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
+import { createBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment } from './tutoringBookingService';
 
@@ -183,30 +183,6 @@ describe('createBooking', () => {
     await expect(
       createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
     ).rejects.toThrow('ENROLLMENT_INACTIVE');
-  });
-});
-
-describe('createWalkInBooking', () => {
-  it('creates a BOOKED booking without checking capacity', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment(1);
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
-    const walkIn = await createWalkInBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
-    expect(await prisma.tutoringBooking.count({ where: { windowId: window.id, date: FRIDAY } })).toBe(2);
-    expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: walkIn.id } })).status).toBe('BOOKED');
-  });
-
-  it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
-    const { window } = await setupProgramWithEnrollment();
-    await expect(
-      createWalkInBooking({ enrollmentId: 'nonexistent-enrollment-id', windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
-    ).rejects.toThrow('ENROLLMENT_NOT_FOUND');
-  });
-
-  it('rejects with WINDOW_NOT_FOUND for a nonexistent window id', async () => {
-    const { enrollment } = await setupProgramWithEnrollment();
-    await expect(
-      createWalkInBooking({ enrollmentId: enrollment.id, windowId: 'nonexistent-window-id', date: FRIDAY, startTime: '16:00', endTime: '18:00' })
-    ).rejects.toThrow('WINDOW_NOT_FOUND');
   });
 });
 
