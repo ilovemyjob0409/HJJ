@@ -6,6 +6,7 @@ import { createTeacher } from './teacherService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { p2002TargetsField } from '@/lib/prismaErrors';
+import { setSiblings } from './familyService';
 
 describe('createStudent', () => {
   it('creates a User with role STUDENT and a linked Student record', async () => {
@@ -103,6 +104,27 @@ describe('listStudents', () => {
     expect(found?.enrollments[0].totalSessions).toBe(12);
     expect(found?.enrollments[0].usedSessions).toBe(1);
     expect(found?.enrollments[0].remaining).toBe(11);
+  });
+});
+
+describe('listStudents familyGroupId', () => {
+  it('includes familyGroupId, null by default', async () => {
+    const a = await createStudent({ name: 'A', email: 'fam-a@x.com', password: 'pw' });
+    const list = await listStudents();
+    const row = list.find((s) => s.id === a.id);
+    expect(row?.familyGroupId).toBeNull();
+  });
+
+  it('reflects the assigned family group after setSiblings', async () => {
+    const a = await createStudent({ name: 'A', email: 'fam-a2@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'fam-b2@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id]);
+
+    const list = await listStudents();
+    const rowA = list.find((s) => s.id === a.id);
+    const rowB = list.find((s) => s.id === b.id);
+    expect(rowA?.familyGroupId).not.toBeNull();
+    expect(rowA?.familyGroupId).toBe(rowB?.familyGroupId);
   });
 });
 

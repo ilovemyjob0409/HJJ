@@ -125,6 +125,7 @@ model Student {
   studentNumber         String?                @unique
   lineUserId            String?                @unique
   lineBindCode          String?                @unique
+  familyGroupId         String?
   enrollments           ClassEnrollment[]
   leaveRequests         LeaveRequest[]
   goHallRegistrations   GoHallRegistration[]
@@ -534,4 +535,14 @@ model PointReason {
   sortOrder Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// 手足快速切換用的短效單次權杖：由 family-switch-token API 核發，
+// authorize() 驗證後立刻標記 usedAt，過期或用過的一律視為無效。
+model FamilySwitchToken {
+  id           String    @id @default(cuid())
+  token        String    @unique
+  targetUserId String
+  expiresAt    DateTime
+  usedAt       DateTime?
 }
