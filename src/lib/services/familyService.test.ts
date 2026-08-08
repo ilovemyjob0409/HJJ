@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createStudent } from './studentService';
-import { listSiblings, setSiblings } from './familyService';
+import { listSiblings, setSiblings, createSwitchToken, redeemSwitchToken } from './familyService';
 
 describe('listSiblings', () => {
   it('returns an empty array when the student has no family group', async () => {
@@ -47,6 +47,61 @@ describe('setSiblings', () => {
   it('rejects a nonexistent sibling id with SIBLING_NOT_FOUND', async () => {
     const a = await createStudent({ name: 'A', email: 'a5@x.com', password: 'pw' });
     await expect(setSiblings(a.id, ['nonexistent-id'])).rejects.toThrow('SIBLING_NOT_FOUND');
+  });
+});
+
+describe('createSwitchToken', () => {
+  it('issues a token when the caller and target share a family group', async () => {
+    const a = await createStudent({ name: 'A', email: 'a6@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'b6@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id]);
+
+    const token = await createSwitchToken(await userIdOf(a.id), b.id);
+    expect(typeof token).toBe('string');
+    expect(token.length).toBeGreaterThan(20);
+  });
+
+  it('rejects when the caller has no family group', async () => {
+    const a = await createStudent({ name: 'A', email: 'a7@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'b7@x.com', password: 'pw' });
+    await expect(createSwitchToken(await userIdOf(a.id), b.id)).rejects.toThrow('NOT_IN_FAMILY_GROUP');
+  });
+
+  it('rejects when the target is not in the same family group', async () => {
+    const a = await createStudent({ name: 'A', email: 'a8@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'b8@x.com', password: 'pw' });
+    const outsider = await createStudent({ name: 'X', email: 'x8@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id]);
+
+    await expect(createSwitchToken(await userIdOf(a.id), outsider.id)).rejects.toThrow('NOT_A_SIBLING');
+  });
+});
+
+describe('redeemSwitchToken', () => {
+  it('returns the target user once, then rejects on second use', async () => {
+    const a = await createStudent({ name: 'A', email: 'a9@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'b9@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id]);
+    const token = await createSwitchToken(await userIdOf(a.id), b.id);
+
+    const user = await redeemSwitchToken(token);
+    expect(user?.name).toBe('B');
+
+    expect(await redeemSwitchToken(token)).toBeNull();
+  });
+
+  it('rejects an expired token', async () => {
+    const { prisma } = await import('@/lib/db');
+    const b = await createStudent({ name: 'B', email: 'b10@x.com', password: 'pw' });
+    await prisma.familySwitchToken.create({
+      data: { token: 'expired-token', targetUserId: await userIdOf(b.id), expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    expect(await redeemSwitchToken('expired-token')).toBeNull();
+  });
+
+  it('rejects an unknown token', async () => {
+    expect(await redeemSwitchToken('never-issued')).toBeNull();
   });
 });
 
