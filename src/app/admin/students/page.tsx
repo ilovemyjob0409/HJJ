@@ -14,7 +14,6 @@ import Link from 'next/link';
 import QRCode from 'qrcode';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
-import { withStopPropagation } from '@/components/ui/stopPropagation';
 import FamilySiblingModal from './FamilySiblingModal';
 
 interface EnrollmentQuota {
@@ -419,14 +418,9 @@ function StudentsContent() {
     {
       header: '操作',
       render: (s) => (
-        <div className="flex flex-col items-center gap-1">
-          <button className="text-brandDark hover:underline" onClick={() => openEdit(s)}>
-            編輯
-          </button>
-          <button className="text-brandDark hover:underline" onClick={withStopPropagation(() => setFamilyModalStudent(s))}>
-            設定手足
-          </button>
-        </div>
+        <button className="text-brandDark hover:underline" onClick={() => openEdit(s)}>
+          編輯
+        </button>
       ),
     },
   ];
@@ -747,6 +741,15 @@ function StudentsContent() {
               >
                 查看設定教學
               </Link>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1 text-sm font-medium text-ink">手足帳號</p>
+            <div className="rounded-lg border border-borderStrong p-3">
+              <Button type="button" variant="secondary" onClick={() => editing && setFamilyModalStudent(editing)}>
+                設定手足
+              </Button>
             </div>
           </div>
 
