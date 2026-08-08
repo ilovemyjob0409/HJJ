@@ -38,29 +38,34 @@ export async function setSiblings(studentId: string, siblingIds: string[]): Prom
   // Explicit unlink: anyone previously in studentId's own group who wasn't
   // re-selected this time drops back to ungrouped. This is what makes
   // unchecking a sibling in the admin UI actually take effect.
-  if (student.familyGroupId) {
-    await prisma.student.updateMany({
-      where: { familyGroupId: student.familyGroupId, id: { notIn: finalMemberIds } },
-      data: { familyGroupId: null },
-    });
-  }
-
   // Full-group merge: a selected sibling who brought a *different*
   // pre-existing group pulls that whole group along — matches the
   // already-approved "adding a third student to an existing pair" behavior,
   // generalized to when multiple distinct pre-existing groups are touched.
   const foreignGroupIds = siblings.map((s) => s.familyGroupId).filter((g): g is string => !!g && g !== groupId);
-  if (foreignGroupIds.length > 0) {
-    await prisma.student.updateMany({
-      where: { familyGroupId: { in: foreignGroupIds } },
-      data: { familyGroupId: groupId },
-    });
-  }
 
-  await prisma.student.updateMany({
-    where: { id: { in: finalMemberIds } },
-    data: { familyGroupId: groupId },
-  });
+  await prisma.$transaction([
+    ...(student.familyGroupId
+      ? [
+          prisma.student.updateMany({
+            where: { familyGroupId: student.familyGroupId, id: { notIn: finalMemberIds } },
+            data: { familyGroupId: null },
+          }),
+        ]
+      : []),
+    ...(foreignGroupIds.length > 0
+      ? [
+          prisma.student.updateMany({
+            where: { familyGroupId: { in: foreignGroupIds } },
+            data: { familyGroupId: groupId },
+          }),
+        ]
+      : []),
+    prisma.student.updateMany({
+      where: { id: { in: finalMemberIds } },
+      data: { familyGroupId: groupId },
+    }),
+  ]);
 }
 
 const SWITCH_TOKEN_TTL_MS = 30_000;
