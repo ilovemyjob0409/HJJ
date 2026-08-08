@@ -1086,3 +1086,47 @@ describe('checkInByStudentNumber with a tutoring booking', () => {
     expect(roster[0].checkInTime).toBe('16:02');
   });
 });
+
+describe('checkInByStudentNumber with a go-hall registration', () => {
+  it('checks the student into their go-hall session for today and stamps qualification/deducts a ticket', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-gohall1@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'checkin-gohall1-s@example.com', password: 'x' });
+    await prisma.student.update({ where: { id: student.id }, data: { studentNumber: 'S001' } });
+    await createSessions({ dates: [new Date('2026-08-04')], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+
+    const result = await checkInByStudentNumber('S001', '2026-08-04', '14:02', 'marker-1');
+
+    expect(result.result).toBe('CHECKED_IN');
+    expect(result.sessionTitle).toBe('弈廳');
+    const record = await prisma.goHallAttendance.findUniqueOrThrow({
+      where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+    });
+    expect(record.status).toBe('PRESENT');
+    expect(record.checkInTime).toBe('14:02');
+    expect(record.qualification).toBe('TICKET');
+    expect(await goHallBalance(student.id)).toBe(9);
+  });
+
+  it('checks out on a second scan without deducting a second ticket', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-gohall2@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'checkin-gohall2-s@example.com', password: 'x' });
+    await prisma.student.update({ where: { id: student.id }, data: { studentNumber: 'S002' } });
+    await createSessions({ dates: [new Date('2026-08-04')], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+    await checkInByStudentNumber('S002', '2026-08-04', '14:02', 'marker-1');
+
+    const result = await checkInByStudentNumber('S002', '2026-08-04', '16:05', 'marker-1');
+
+    expect(result.result).toBe('CHECKED_OUT');
+    const record = await prisma.goHallAttendance.findUniqueOrThrow({
+      where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
+    });
+    expect(record.checkOutTime).toBe('16:05');
+    expect(await goHallBalance(student.id)).toBe(9);
+  });
+});

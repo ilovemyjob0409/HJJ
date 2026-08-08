@@ -781,6 +781,7 @@ interface CheckInCandidate {
   checkInTime: string | null;
   checkOutTime: string | null;
   classId?: string;
+  goHallSessionId?: string;
   apply: () => Promise<'CHECKED_IN' | 'CHECKED_OUT'>;
 }
 
@@ -850,6 +851,52 @@ async function applyTutoringAttendance(input: { bookingId: string; timeStr: stri
   return 'CHECKED_OUT';
 }
 
+async function applyGoHallAttendance(input: {
+  sessionId: string;
+  studentId: string;
+  timeStr: string;
+  markedById: string;
+}): Promise<'CHECKED_IN' | 'CHECKED_OUT'> {
+  const where = { sessionId_studentId: { sessionId: input.sessionId, studentId: input.studentId } };
+  const existing = await prisma.goHallAttendance.findUnique({ where });
+  if (!existing || !existing.checkInTime) {
+    await runSerializableWithRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const current = await tx.goHallAttendance.findUnique({ where, select: { qualification: true } });
+          // 已戳記過資格（冪等重試）就沿用，避免重複扣堂票。
+          let qualification: GoHallQualificationValue | null = current?.qualification ?? null;
+          if (qualification === null) {
+            const session = await tx.goHallSession.findUniqueOrThrow({ where: { id: input.sessionId }, select: { date: true } });
+            qualification = await determineQualification(tx, input.studentId, session.date);
+            if (qualification === 'TICKET') {
+              await tx.goHallTicketTransaction.create({
+                data: { studentId: input.studentId, amount: -1, kind: 'ATTEND', sessionId: input.sessionId },
+              });
+            }
+          }
+          await tx.goHallAttendance.upsert({
+            where,
+            create: {
+              sessionId: input.sessionId,
+              studentId: input.studentId,
+              status: 'PRESENT',
+              checkInTime: input.timeStr,
+              markedById: input.markedById,
+              qualification,
+            },
+            update: { status: 'PRESENT', checkInTime: input.timeStr, markedById: input.markedById, qualification },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      )
+    );
+    return 'CHECKED_IN';
+  }
+  await prisma.goHallAttendance.update({ where, data: { checkOutTime: input.timeStr, markedById: input.markedById } });
+  return 'CHECKED_OUT';
+}
+
 async function getTodayCandidates(
   studentId: string,
   date: Date,
@@ -857,8 +904,13 @@ async function getTodayCandidates(
   markedById: string
 ): Promise<CheckInCandidate[]> {
   const weekday = date.getUTCDay();
+  // GoHallSession dates should be UTC midnight, but legacy rows created from
+  // a GMT+8 browser carry a 16:00Z time-of-day — match by UTC calendar day
+  // (see listAttendanceSessionsForDate) so those rows are still found.
+  const dayStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const nextDayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-  const [enrollments, insertions, oneOnOnes, leaveRequests, tutoringBookings] = await Promise.all([
+  const [enrollments, insertions, oneOnOnes, leaveRequests, tutoringBookings, goHallRegistrations] = await Promise.all([
     prisma.classEnrollment.findMany({
       where: { studentId, class: { weekday } },
       select: {
@@ -888,6 +940,13 @@ async function getTodayCandidates(
         startTime: true,
         endTime: true,
         window: { select: { teacher: { select: { user: { select: { name: true } } } }, program: { select: { name: true } } } },
+      },
+    }),
+    prisma.goHallRegistration.findMany({
+      where: { studentId, session: { date: { gte: dayStart, lt: nextDayStart } } },
+      select: {
+        sessionId: true,
+        session: { select: { startTime: true, endTime: true, teacher: { select: { user: { select: { name: true } } } } } },
       },
     }),
   ]);
@@ -961,6 +1020,23 @@ async function getTodayCandidates(
     });
   }
 
+  for (const reg of goHallRegistrations) {
+    const existing = await prisma.goHallAttendance.findUnique({
+      where: { sessionId_studentId: { sessionId: reg.sessionId, studentId } },
+    });
+    candidates.push({
+      key: `gohall:${reg.sessionId}`,
+      title: '弈廳',
+      timeLabel: `${reg.session.startTime}-${reg.session.endTime}`,
+      teacherName: reg.session.teacher.user.name,
+      startMinutes: toMinutes(reg.session.startTime),
+      checkInTime: existing?.checkInTime ?? null,
+      checkOutTime: existing?.checkOutTime ?? null,
+      goHallSessionId: reg.sessionId,
+      apply: () => applyGoHallAttendance({ sessionId: reg.sessionId, studentId, timeStr, markedById }),
+    });
+  }
+
   return candidates;
 }
 
@@ -1021,6 +1097,9 @@ async function notifyAttendanceResult(
     }
     if (action === 'CHECKED_IN' && match.classId) {
       await maybeNotifyLowQuota(student, match.classId);
+    }
+    if (action === 'CHECKED_IN' && match.goHallSessionId) {
+      await maybeNotifyLowGoHallTickets(student.id);
     }
   } catch (err) {
     console.error('notifyAttendanceResult failed', err);
