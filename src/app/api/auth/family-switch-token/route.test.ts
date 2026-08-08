@@ -57,4 +57,17 @@ describe('POST /api/auth/family-switch-token', () => {
     expect(res.status).toBe(200);
     expect(typeof (await res.json()).switchToken).toBe('string');
   });
+
+  it('403 when the target belongs to a different family group', async () => {
+    const a = await createStudent({ name: 'A', email: 'a3@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'b3@x.com', password: 'pw' });
+    const x = await createStudent({ name: 'X', email: 'x3@x.com', password: 'pw' });
+    const y = await createStudent({ name: 'Y', email: 'y3@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id]);
+    await setSiblings(x.id, [y.id]);
+    sessionMock.mockResolvedValue({ user: { id: await userIdOf(a.id), role: 'STUDENT' } });
+
+    const res = await POST(postReq({ targetStudentId: x.id }));
+    expect(res.status).toBe(403);
+  });
 });

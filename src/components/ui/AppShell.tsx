@@ -6,6 +6,7 @@ import { signIn, signOut } from 'next-auth/react';
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
+import { useToast } from './Toast';
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
@@ -54,6 +55,7 @@ const HOME_HREF: Record<Role, string> = {
 
 export default function AppShell({ role, children }: { role: Role; children: ReactNode }) {
   const pathname = usePathname();
+  const { showToast } = useToast();
   const [siblings, setSiblings] = useState<{ id: string; name: string }[]>([]);
   const [selfName, setSelfName] = useState('');
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -82,7 +84,10 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetStudentId }),
       });
-      if (!tokenRes.ok) return;
+      if (!tokenRes.ok) {
+        showToast('切換失敗，可能已解除手足關係，請重新整理');
+        return;
+      }
       const { switchToken } = await tokenRes.json();
       const result = await signIn('credentials', { switchToken, redirect: false });
       // A full navigation (not router.push) is required here: this component
@@ -91,7 +96,11 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
       // component's own siblings-fetch effect for a same-route transition.
       // Without a hard reload, the header and page content would keep
       // showing the OLD identity even though the session cookie has changed.
-      if (!result?.error) window.location.href = '/student';
+      if (result?.error) {
+        showToast('切換失敗，請稍後再試');
+        return;
+      }
+      window.location.href = '/student';
     } finally {
       setSwitching(false);
       setSwitcherOpen(false);

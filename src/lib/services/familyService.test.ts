@@ -48,6 +48,35 @@ describe('setSiblings', () => {
     const a = await createStudent({ name: 'A', email: 'a5@x.com', password: 'pw' });
     await expect(setSiblings(a.id, ['nonexistent-id'])).rejects.toThrow('SIBLING_NOT_FOUND');
   });
+
+  it('unlinks a sibling that is left unchecked', async () => {
+    const a = await createStudent({ name: 'A', email: 'unlink-a@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'unlink-b@x.com', password: 'pw' });
+    const c = await createStudent({ name: 'C', email: 'unlink-c@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id, c.id]);
+
+    await setSiblings(a.id, [b.id]); // uncheck c
+
+    const siblingsOfA = await listSiblings(await userIdOf(a.id));
+    expect(siblingsOfA.map((s) => s.name)).toEqual(['B']);
+    const siblingsOfC = await listSiblings(await userIdOf(c.id));
+    expect(siblingsOfC).toEqual([]);
+  });
+
+  it('pulls a selected sibling\'s own group members along, not just the individual', async () => {
+    const a = await createStudent({ name: 'A', email: 'merge-a@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'merge-b@x.com', password: 'pw' });
+    const c = await createStudent({ name: 'C', email: 'merge-c@x.com', password: 'pw' });
+    const d = await createStudent({ name: 'D', email: 'merge-d@x.com', password: 'pw' });
+    const e = await createStudent({ name: 'E', email: 'merge-e@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id]); // group 1: a,b
+    await setSiblings(c.id, [d.id]); // group 2: c,d
+
+    await setSiblings(e.id, [a.id, c.id]); // e picks one member from each group
+
+    const siblingsOfB = await listSiblings(await userIdOf(b.id));
+    expect(siblingsOfB.map((s) => s.name).sort()).toEqual(['A', 'C', 'D', 'E']);
+  });
 });
 
 describe('createSwitchToken', () => {
@@ -74,6 +103,17 @@ describe('createSwitchToken', () => {
     await setSiblings(a.id, [b.id]);
 
     await expect(createSwitchToken(await userIdOf(a.id), outsider.id)).rejects.toThrow('NOT_A_SIBLING');
+  });
+
+  it('rejects a target that belongs to a different family group', async () => {
+    const a = await createStudent({ name: 'A', email: 'xgroup-a@x.com', password: 'pw' });
+    const b = await createStudent({ name: 'B', email: 'xgroup-b@x.com', password: 'pw' });
+    const x = await createStudent({ name: 'X', email: 'xgroup-x@x.com', password: 'pw' });
+    const y = await createStudent({ name: 'Y', email: 'xgroup-y@x.com', password: 'pw' });
+    await setSiblings(a.id, [b.id]);
+    await setSiblings(x.id, [y.id]);
+
+    await expect(createSwitchToken(await userIdOf(a.id), x.id)).rejects.toThrow('NOT_A_SIBLING');
   });
 });
 
