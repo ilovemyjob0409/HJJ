@@ -14,6 +14,8 @@ import Link from 'next/link';
 import QRCode from 'qrcode';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
+import { withStopPropagation } from '@/components/ui/stopPropagation';
+import FamilySiblingModal from './FamilySiblingModal';
 
 interface EnrollmentQuota {
   classId: string;
@@ -27,6 +29,7 @@ interface StudentRow {
   parentPhone: string | null;
   studentNumber: string | null;
   lineUserId: string | null;
+  familyGroupId: string | null;
   user: { name: string; email: string };
   enrollments: EnrollmentQuota[];
 }
@@ -117,6 +120,7 @@ function StudentsContent() {
   const [formClassQuery, setFormClassQuery] = useState('');
   const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<StudentRow | null>(null);
+  const [familyModalStudent, setFamilyModalStudent] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '', studentNumber: '' });
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
   const [addClassQuery, setAddClassQuery] = useState('');
@@ -415,9 +419,14 @@ function StudentsContent() {
     {
       header: '操作',
       render: (s) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(s)}>
-          編輯
-        </button>
+        <div className="flex flex-col items-center gap-1">
+          <button className="text-brandDark hover:underline" onClick={() => openEdit(s)}>
+            編輯
+          </button>
+          <button className="text-brandDark hover:underline" onClick={withStopPropagation(() => setFamilyModalStudent(s))}>
+            設定手足
+          </button>
+        </div>
       ),
     },
   ];
@@ -831,6 +840,14 @@ function StudentsContent() {
           </form>
         )}
       </Modal>
+      {familyModalStudent && (
+        <FamilySiblingModal
+          student={familyModalStudent}
+          allStudents={students}
+          onClose={() => setFamilyModalStudent(null)}
+          onSaved={load}
+        />
+      )}
       {ConfirmDialog}
     </>
   );
