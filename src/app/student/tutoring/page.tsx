@@ -40,6 +40,7 @@ export default function StudentTutoringPage() {
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>('');
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [makeupFor, setMakeupFor] = useState<BookingRow | null>(null);
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
 
   async function loadEnrollments() {
     const res = await fetch('/api/tutoring-enrollments/me');
@@ -71,6 +72,7 @@ export default function StudentTutoringPage() {
       return;
     }
     showToast('已取消');
+    setCalendarRefreshKey((k) => k + 1);
     loadBookings();
     loadEnrollments();
   }
@@ -146,6 +148,7 @@ export default function StudentTutoringPage() {
           <Card className="mb-6">
             {selectedEnrollment && (
               <TutoringBookingCalendar
+                key={`${selectedEnrollment.id}-${makeupFor ? 'makeup' : 'regular'}-${calendarRefreshKey}`}
                 enrollmentId={selectedEnrollment.id}
                 defaultDurationMinutes={selectedEnrollment.defaultDurationMinutes}
                 mode={makeupFor ? 'makeup' : 'regular'}
