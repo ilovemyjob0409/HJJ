@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
+import { createProgram } from './tutoringProgramService';
 import {
   DRAW_COST,
   AWARD_MAX,
@@ -241,5 +242,27 @@ describe('listStudentPointSummaries', () => {
     const hua = summaries.find((s) => s.id === other.id);
     expect(ming).toMatchObject({ regular: 8, redeemOnly: 5 });
     expect(hua).toMatchObject({ regular: 0, redeemOnly: 0 });
+  });
+
+  it('includes active tutoring enrollments in classes, alongside regular classes', async () => {
+    const student = await createStudent({ name: '小英', email: 'pt-sum-ying@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
+
+    const summaries = await listStudentPointSummaries();
+
+    const ying = summaries.find((s) => s.id === student.id);
+    expect(ying?.classes).toEqual([{ id: program.id, name: program.name }]);
+  });
+
+  it('excludes inactive tutoring enrollments from classes', async () => {
+    const student = await createStudent({ name: '小華2', email: 'pt-sum-hua2@example.com', password: 'x' });
+    const program = await createProgram({ name: '數學個別輔導' });
+    await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id, active: false } });
+
+    const summaries = await listStudentPointSummaries();
+
+    const hua2 = summaries.find((s) => s.id === student.id);
+    expect(hua2?.classes).toEqual([]);
   });
 });

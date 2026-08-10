@@ -286,10 +286,10 @@ export default function ClassesPage() {
             </Select>
             <Input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} />
             <Input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} />
-            {editError && <p className="text-sm text-rejected">{editError}</p>}
             <Button type="submit" loading={submitting}>儲存</Button>
           </form>
         )}
+        {editError && <p className="mt-3 text-sm text-rejected">{editError}</p>}
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
           刪除班級
         </button>

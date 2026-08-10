@@ -116,7 +116,7 @@ export function redeemPoints(input: { studentId: string; points: number; descrip
   );
 }
 
-// 行政「集點」主表：每位學生的兩桶餘額＋就讀班級（供班級／名字篩選）。
+// 行政「集點」主表：每位學生的兩桶餘額＋就讀班級（含個別輔導方案，供班級／名字篩選）。
 // 餘額用一次 groupBy 聚合，避免逐學生查詢。
 export async function listStudentPointSummaries() {
   const [students, sums] = await Promise.all([
@@ -126,6 +126,10 @@ export async function listStudentPointSummaries() {
         studentNumber: true,
         user: { select: { name: true } },
         enrollments: { select: { class: { select: { id: true, name: true } } } },
+        tutoringEnrollments: {
+          where: { active: true },
+          select: { program: { select: { id: true, name: true } } },
+        },
       },
       orderBy: { user: { name: 'asc' } },
     }),
@@ -144,7 +148,7 @@ export async function listStudentPointSummaries() {
     id: s.id,
     name: s.user.name,
     studentNumber: s.studentNumber,
-    classes: s.enrollments.map((e) => e.class),
+    classes: [...s.enrollments.map((e) => e.class), ...s.tutoringEnrollments.map((e) => e.program)],
     regular: balances.get(s.id)?.regular ?? 0,
     redeemOnly: balances.get(s.id)?.redeemOnly ?? 0,
   }));
