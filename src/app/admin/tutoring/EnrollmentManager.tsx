@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Modal from '@/components/ui/Modal';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
+import AdminBookingModal from './AdminBookingModal';
 
 interface EnrollmentRow {
   id: string;
@@ -14,6 +16,7 @@ interface EnrollmentRow {
   studentName: string;
   programId: string;
   programName: string;
+  defaultDurationMinutes: number;
   monthlyQuota: number;
   active: boolean;
   locked: number;
@@ -41,6 +44,8 @@ export default function EnrollmentManager() {
   const [programId, setProgramId] = useState('');
   const [newMonthlyQuota, setNewMonthlyQuota] = useState('');
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
+  const [editingEnrollment, setEditingEnrollment] = useState<EnrollmentRow | null>(null);
+  const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
 
   async function load() {
     const [enrollmentsRes, studentsRes, programsRes] = await Promise.all([
@@ -146,34 +151,11 @@ export default function EnrollmentManager() {
       ),
     },
     {
-      header: '額度覆寫',
-      render: (r) => (
-        <div className="flex items-center gap-1">
-          <Input
-            type="number"
-            min={0}
-            placeholder="預設"
-            value={quotaOverride[r.id] ?? ''}
-            onChange={(e) => setQuotaOverride((prev) => ({ ...prev, [r.id]: e.target.value }))}
-            className="w-16 py-1 text-xs"
-          />
-          <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => saveQuotaOverride(r)}>
-            儲存
-          </Button>
-        </div>
-      ),
-    },
-    {
       header: '操作',
       render: (r) => (
-        <div className="flex gap-2">
-          <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => toggleActive(r)}>
-            {r.active ? '停用' : '啟用'}
-          </Button>
-          <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => removeEnrollment(r)}>
-            移除
-          </Button>
-        </div>
+        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setEditingEnrollment(r)}>
+          編輯
+        </Button>
       ),
     },
   ];
@@ -282,6 +264,54 @@ export default function EnrollmentManager() {
       <Card>
         <DataTable columns={columns} rows={enrollments} keyField={(r) => r.id} emptyText="目前沒有學生報名個別輔導" />
       </Card>
+      <Modal
+        open={editingEnrollment !== null}
+        onClose={() => setEditingEnrollment(null)}
+        title={`${editingEnrollment?.studentName ?? ''}・${editingEnrollment?.programName ?? ''}`}
+      >
+        {editingEnrollment && (
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="mb-1 text-xs font-medium text-inkMuted">每月堂數覆寫</p>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="預設"
+                  value={quotaOverride[editingEnrollment.id] ?? ''}
+                  onChange={(e) => setQuotaOverride((prev) => ({ ...prev, [editingEnrollment.id]: e.target.value }))}
+                  className="w-20 py-1 text-sm"
+                />
+                <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => saveQuotaOverride(editingEnrollment)}>
+                  儲存
+                </Button>
+              </div>
+            </div>
+            <Button onClick={() => setBookingTarget(editingEnrollment)}>預約</Button>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                await toggleActive(editingEnrollment);
+                setEditingEnrollment(null);
+              }}
+            >
+              {editingEnrollment.active ? '停用' : '啟用'}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                await removeEnrollment(editingEnrollment);
+                setEditingEnrollment(null);
+              }}
+            >
+              移除
+            </Button>
+          </div>
+        )}
+      </Modal>
+      {bookingTarget && (
+        <AdminBookingModal enrollment={bookingTarget} onClose={() => setBookingTarget(null)} onBooked={load} />
+      )}
       {ConfirmDialog}
     </>
   );
