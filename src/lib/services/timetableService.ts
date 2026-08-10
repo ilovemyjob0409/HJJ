@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 
 export function listClassesForTimetable() {
   return prisma.class.findMany({
+    where: { active: true },
     select: {
       id: true,
       name: true,

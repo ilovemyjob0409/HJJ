@@ -73,6 +73,7 @@ const SUBJECT_ORDER = ['圍棋', '英文', '數學'];
 
 export async function listClasses() {
   const classes = await prisma.class.findMany({
+    where: { active: true },
     select: CLASS_WITH_TEACHER_SELECT,
     orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
   });
@@ -128,7 +129,7 @@ export interface TeacherClassSummary {
 // usedSessions，避免每位學生各發一次查詢（N+1）。
 export async function listClassesForTeacher(teacherId: string): Promise<TeacherClassSummary[]> {
   const classes = await prisma.class.findMany({
-    where: { teacherId },
+    where: { teacherId, active: true },
     select: TEACHER_CLASS_SELECT,
     orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
   });
@@ -166,6 +167,7 @@ export async function listClassesForTeacher(teacherId: string): Promise<TeacherC
 // phone/email. ADMIN keeps the full listClasses() projection.
 export function listClassesForBooking() {
   return prisma.class.findMany({
+    where: { active: true },
     select: CLASS_BOOKING_SELECT,
     orderBy: { name: 'asc' },
   });
@@ -176,6 +178,7 @@ export function listClassesBySubjectAndLevel(subject: string, level: string, exc
     where: {
       subject,
       level,
+      active: true,
       ...(excludeClassId ? { id: { not: excludeClassId } } : {}),
     },
     // Only ever called from the student-facing makeup-request eligible-class
@@ -303,23 +306,17 @@ export async function listStudentEnrolledClasses(studentId: string) {
   return Promise.all(classes.map(async (c) => ({ ...c, quota: await getClassEnrollmentQuota(c.id, studentId) })));
 }
 
-// Blocks deletion when the class has leave-request or substitute-request
-// history — those are records and must survive. Enrollments are current
-// state, not history, so they're cleared as part of the delete. Any
-// makeup request that targets this class (an optional reference) keeps
-// its own row but loses the target-class link.
+// Soft-deletes: leave-request, substitute-request, and attendance history
+// must survive, so the Class row itself is never hard-deleted — it's just
+// flagged inactive and drops out of every forward-looking list (timetable,
+// class pickers, attendance-taking, teacher's "帶班班級"). Enrollments are
+// current state, not history, so they're cleared. Any makeup request that
+// targets this class (an optional reference) keeps its own row but loses
+// the target-class link.
 export async function deleteClass(id: string) {
-  const [leaveRequestCount, substituteRequestCount] = await Promise.all([
-    prisma.leaveRequest.count({ where: { classId: id } }),
-    prisma.substituteRequest.count({ where: { classId: id } }),
-  ]);
-  if (leaveRequestCount > 0 || substituteRequestCount > 0) {
-    throw new Error('CLASS_HAS_RECORDS');
-  }
-
   await prisma.$transaction([
     prisma.classEnrollment.deleteMany({ where: { classId: id } }),
     prisma.makeupRequest.updateMany({ where: { targetClassId: id }, data: { targetClassId: null } }),
-    prisma.class.delete({ where: { id } }),
+    prisma.class.update({ where: { id }, data: { active: false } }),
   ]);
 }

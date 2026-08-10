@@ -532,6 +532,7 @@ export async function listAttendanceSessionsForDate(
     prisma.class.findMany({
       where: {
         weekday,
+        active: true,
         ...(teacherId ? { OR: [{ teacherId }, { id: { in: substituteClassIds } }] } : {}),
       },
       select: { id: true, name: true, startTime: true, endTime: true, teacherId: true, _count: { select: { enrollments: true } } },

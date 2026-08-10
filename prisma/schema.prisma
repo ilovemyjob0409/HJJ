@@ -150,6 +150,7 @@ model Class {
   weekday          Int
   startTime        String
   endTime          String
+  active           Boolean             @default(true)
   enrollments      ClassEnrollment[]
   leaveRequests    LeaveRequest[]
   substituteReqs   SubstituteRequest[]

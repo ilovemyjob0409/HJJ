@@ -334,7 +334,7 @@ describe('listStudentEnrolledClasses', () => {
 });
 
 describe('deleteClass', () => {
-  it('deletes a class with no history, clearing its enrollments', async () => {
+  it('soft-deletes a class with no history, clearing its enrollments', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'class-delete-chen@example.com', password: 'x', subjects: '數學' });
     const student = await createStudent({ name: '小明', email: 'class-delete-ming@example.com', password: 'x' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
@@ -342,19 +342,40 @@ describe('deleteClass', () => {
 
     await deleteClass(cls.id);
 
-    expect(await prisma.class.findUnique({ where: { id: cls.id } })).toBeNull();
+    expect(await prisma.class.findUnique({ where: { id: cls.id } })).toMatchObject({ active: false });
     expect(await prisma.classEnrollment.findMany({ where: { classId: cls.id } })).toHaveLength(0);
+    expect(await listClasses()).toHaveLength(0);
   });
 
-  it('throws CLASS_HAS_RECORDS and does not delete when the class has a leave request', async () => {
+  it('soft-deletes a class that has a leave request, keeping the leave request intact', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'class-delete-block-chen@example.com', password: 'x', subjects: '數學' });
     const student = await createStudent({ name: '小明', email: 'class-delete-block-ming@example.com', password: 'x' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
     await enrollStudent(cls.id, student.id);
-    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
 
-    await expect(deleteClass(cls.id)).rejects.toThrow('CLASS_HAS_RECORDS');
-    expect(await prisma.class.findUnique({ where: { id: cls.id } })).not.toBeNull();
+    await deleteClass(cls.id);
+
+    expect(await prisma.class.findUnique({ where: { id: cls.id } })).toMatchObject({ active: false });
+    expect(await prisma.leaveRequest.findUnique({ where: { id: leave.id } })).toMatchObject({ classId: cls.id });
+  });
+
+  it('soft-deletes a class that has attendance history, keeping the attendance row intact', async () => {
+    const marker = await prisma.user.create({
+      data: { email: 'class-delete-block-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-delete-block-att-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-delete-block-att-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    const attendance = await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-03'), status: 'PRESENT', markedById: marker.id },
+    });
+
+    await deleteClass(cls.id);
+
+    expect(await prisma.class.findUnique({ where: { id: cls.id } })).toMatchObject({ active: false });
+    expect(await prisma.classAttendance.findUnique({ where: { id: attendance.id } })).toMatchObject({ classId: cls.id });
   });
 });
 

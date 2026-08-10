@@ -149,7 +149,7 @@ export default function ClassesPage() {
     const res = await fetch(`/api/classes/${editing.id}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json();
-      setEditError(data.error === 'CLASS_HAS_RECORDS' ? '此班級仍有請假或代課紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
+      setEditError(`錯誤：${data.error}`);
       return;
     }
     setEditing(null);
