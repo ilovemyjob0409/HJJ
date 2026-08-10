@@ -19,10 +19,11 @@ export default function TimetableModal({ open, onClose, onClassClick }: Timetabl
   useEffect(() => {
     if (!open) return;
     fetch('/api/subject-colors')
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json() : []))
       .then((rows: { subject: string; color: string }[]) => {
         setColors(Object.fromEntries(rows.map((r) => [r.subject, r.color])));
-      });
+      })
+      .catch(() => setColors({}));
   }, [open]);
 
   async function handleColorChange(subject: string, color: string) {

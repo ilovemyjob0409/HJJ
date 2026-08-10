@@ -41,10 +41,14 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
 
   useEffect(() => {
     fetch('/api/timetable')
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json() : { classes: [], tutoringSlots: [] }))
       .then((data: { classes: TimetableClass[]; tutoringSlots: TutoringSlot[] }) => {
         setClasses(data.classes);
         setTutoringSlots(data.tutoringSlots);
+      })
+      .catch(() => {
+        setClasses([]);
+        setTutoringSlots([]);
       });
   }, []);
 

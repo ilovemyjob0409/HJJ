@@ -9,10 +9,11 @@ export default function StudentTimetablePage() {
 
   useEffect(() => {
     fetch('/api/subject-colors')
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json() : []))
       .then((rows: { subject: string; color: string }[]) => {
         setColors(Object.fromEntries(rows.map((r) => [r.subject, r.color])));
-      });
+      })
+      .catch(() => setColors({}));
   }, []);
 
   return (
