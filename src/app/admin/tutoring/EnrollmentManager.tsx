@@ -205,7 +205,7 @@ export default function EnrollmentManager() {
               </div>
             )}
             <div className="relative mt-1">
-              <div className="flex items-center gap-1.5 rounded-lg border border-borderSubtle bg-card px-2 py-1">
+              <div className="flex h-9 items-center gap-1.5 rounded-lg border border-borderSubtle bg-card px-2">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -256,7 +256,7 @@ export default function EnrollmentManager() {
           </label>
           <label className="text-xs text-inkMuted">
             課程
-            <select value={programId} onChange={(e) => setProgramId(e.target.value)} className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink">
+            <select value={programId} onChange={(e) => setProgramId(e.target.value)} className="mt-1 block h-9 rounded-lg border border-borderSubtle bg-card px-2 text-sm text-ink">
               <option value="">請選擇</option>
               {programs.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -267,13 +267,13 @@ export default function EnrollmentManager() {
           </label>
           <label className="text-xs text-inkMuted">
             每月堂數
-            <Input
+            <input
               type="number"
               min={0}
               placeholder="預設"
               value={newMonthlyQuota}
               onChange={(e) => setNewMonthlyQuota(e.target.value)}
-              className="mt-1 block w-20 py-1 text-sm"
+              className="mt-1 block h-9 w-20 rounded-lg border border-borderSubtle bg-card px-2 text-sm text-ink"
             />
           </label>
           <Button onClick={createEnrollments} loading={submitting}>新增報名</Button>
