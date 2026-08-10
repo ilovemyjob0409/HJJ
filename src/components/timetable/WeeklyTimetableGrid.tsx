@@ -26,6 +26,9 @@ interface TutoringSlot {
 
 type DayCard = { kind: 'class'; data: TimetableClass } | { kind: 'tutoring'; data: TutoringSlot };
 
+// School is closed Sunday (0) and Monday (1); only render Tue-Sat.
+const OPEN_WEEKDAYS = [2, 3, 4, 5, 6];
+
 interface WeeklyTimetableGridProps {
   colors: Record<string, string>;
   onClassClick?: (id: string) => void;
@@ -65,22 +68,24 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[840px] rounded-xl bg-brand p-5">
+      <div className="min-w-[700px] rounded-xl bg-brand p-5">
         <div className="mb-4 flex flex-col items-center text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/hjj-logo.png" alt="黑嘉嘉圍棋" className="mb-1.5 h-14 w-auto" />
+          <img src="/hjj-logo.png" alt="黑嘉嘉圍棋" className="mb-1.5 h-20 w-auto" />
           <p className="text-sm font-bold text-brandInk">台中大雅分校</p>
         </div>
-        <div className="grid grid-cols-7 gap-2">
-          {WEEKDAY_LABELS.map((w) => (
-            <div key={w} className="flex justify-center pb-1">
+        <div className="grid grid-cols-5 gap-2">
+          {OPEN_WEEKDAYS.map((wd) => (
+            <div key={wd} className="flex justify-center pb-1">
               <span className="flex h-6 min-w-[40px] items-center justify-center rounded-full bg-brandInk px-2.5 text-xs font-bold text-brand">
-                {w}
+                {WEEKDAY_LABELS[wd]}
               </span>
             </div>
           ))}
-          {byDay.map((day, d) => (
-            <div key={d} className="flex min-h-[90px] flex-col gap-1.5 rounded-lg bg-[#FFF6E6] p-1.5">
+          {OPEN_WEEKDAYS.map((wd) => {
+            const day = byDay[wd];
+            return (
+            <div key={wd} className="flex min-h-[90px] flex-col gap-1.5 rounded-lg bg-[#FFF6E6] p-1.5">
               {day.length === 0 ? (
                 <p className="pt-3 text-center text-xs text-[#b89a5c]">無課程</p>
               ) : (
@@ -135,7 +140,8 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
                 })
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
