@@ -126,7 +126,16 @@ export default function EnrollmentManager() {
   const columns: Column<EnrollmentRow>[] = [
     { header: '學生', render: (r) => r.studentName },
     { header: '課程', render: (r) => r.programName },
-    { header: '本月狀態', render: (r) => `已計次 ${r.locked}／${r.monthlyQuota} 堂（另 ${r.upcoming} 堂待到）` },
+    {
+      header: '本月狀態',
+      render: (r) => (
+        <>
+          已計次 {r.locked}／{r.monthlyQuota} 堂
+          <br />
+          <span className="text-xs text-inkMuted">（另 {r.upcoming} 堂待到）</span>
+        </>
+      ),
+    },
     {
       header: '額度覆寫',
       render: (r) => (
