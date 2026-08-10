@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from '@/components/ui/Modal';
+import Button from '@/components/ui/Button';
 import WeeklyTimetableGrid from '@/components/timetable/WeeklyTimetableGrid';
 import { UNSET_SUBJECT_COLOR, MORANDI_PALETTE } from '@/lib/timetable';
 
@@ -15,6 +16,8 @@ export default function TimetableModal({ open, onClose, onClassClick }: Timetabl
   const [colors, setColors] = useState<Record<string, string>>({});
   const [subjects, setSubjects] = useState<string[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const posterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -31,6 +34,22 @@ export default function TimetableModal({ open, onClose, onClassClick }: Timetabl
     await fetch('/api/subject-colors', { method: 'POST', body: JSON.stringify({ subject, color }) });
   }
 
+  async function handleExport() {
+    if (!posterRef.current || exporting) return;
+    setExporting(true);
+    try {
+      const { toPng } = await import('html-to-image');
+      const dataUrl = await toPng(posterRef.current, { pixelRatio: 2 });
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `週課表-${today}.png`;
+      link.click();
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <Modal open={open} onClose={onClose} title="週課表" maxWidthClassName="max-w-5xl">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -45,13 +64,24 @@ export default function TimetableModal({ open, onClose, onClassClick }: Timetabl
             </span>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setPanelOpen((v) => !v)}
-          className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-brandInk hover:bg-brandDark"
-        >
-          色塊調整
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            loading={exporting}
+            onClick={handleExport}
+            className="px-3 py-1.5 text-xs"
+          >
+            匯出圖片
+          </Button>
+          <button
+            type="button"
+            onClick={() => setPanelOpen((v) => !v)}
+            className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-brandInk hover:bg-brandDark"
+          >
+            色塊調整
+          </button>
+        </div>
       </div>
 
       <div
@@ -99,7 +129,12 @@ export default function TimetableModal({ open, onClose, onClassClick }: Timetabl
         </div>
       </div>
 
-      <WeeklyTimetableGrid colors={colors} onClassClick={onClassClick} onSubjectsChange={setSubjects} />
+      <WeeklyTimetableGrid
+        colors={colors}
+        onClassClick={onClassClick}
+        onSubjectsChange={setSubjects}
+        posterRef={posterRef}
+      />
     </Modal>
   );
 }

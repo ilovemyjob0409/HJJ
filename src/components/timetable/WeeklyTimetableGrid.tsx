@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type RefObject } from 'react';
 import { stripWeekday, levelColor, UNSET_SUBJECT_COLOR } from '@/lib/timetable';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
@@ -33,9 +33,10 @@ interface WeeklyTimetableGridProps {
   colors: Record<string, string>;
   onClassClick?: (id: string) => void;
   onSubjectsChange?: (subjects: string[]) => void;
+  posterRef?: RefObject<HTMLDivElement>;
 }
 
-export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsChange }: WeeklyTimetableGridProps) {
+export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsChange, posterRef }: WeeklyTimetableGridProps) {
   const [classes, setClasses] = useState<TimetableClass[]>([]);
   const [tutoringSlots, setTutoringSlots] = useState<TutoringSlot[]>([]);
 
@@ -72,7 +73,7 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[700px] rounded-xl bg-brand p-5">
+      <div ref={posterRef} className="min-w-[700px] rounded-xl bg-brand p-5">
         <div className="mb-4 flex flex-col items-center text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/hjj-logo.png" alt="黑嘉嘉圍棋" className="mb-1.5 h-20 w-auto" />
