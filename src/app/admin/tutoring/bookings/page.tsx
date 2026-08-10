@@ -11,8 +11,6 @@ import DataTable from '@/components/ui/DataTable';
 import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
-import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
 
 interface OverviewRow {
   id: string;
@@ -24,28 +22,6 @@ interface OverviewRow {
   endTime: string;
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
-}
-
-interface EnrollmentOption {
-  id: string;
-  studentName: string;
-  programName: string;
-  defaultDurationMinutes: number;
-}
-
-interface EnrollmentApiRow {
-  id: string;
-  active: boolean;
-  studentName: string;
-  programName: string;
-  defaultDurationMinutes: number;
-}
-
-interface MissedBookingOption {
-  id: string;
-  date: string;
-  startTime: string;
-  endTime: string;
 }
 
 interface SummaryRow {
@@ -68,33 +44,12 @@ export default function AdminTutoringBookingsPage() {
   const { confirm, ConfirmDialog } = useConfirm();
   const [date, setDate] = useState(todayDateInput());
   const [rows, setRows] = useState<OverviewRow[]>([]);
-  const [enrollments, setEnrollments] = useState<EnrollmentOption[]>([]);
-  const [newBookingEnrollmentId, setNewBookingEnrollmentId] = useState('');
-  const [newBookingKind, setNewBookingKind] = useState<'regular' | 'makeup'>('regular');
-  const [missedBookings, setMissedBookings] = useState<MissedBookingOption[]>([]);
-  const [makeupOriginalId, setMakeupOriginalId] = useState('');
   const [month, setMonth] = useState(todayDateInput().slice(0, 7));
   const [summary, setSummary] = useState<SummaryRow[]>([]);
-  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
 
   async function loadOverview() {
     const res = await fetch(`/api/tutoring-bookings/overview?date=${date}`);
     setRows(await res.json());
-  }
-
-  async function loadOptions() {
-    const res = await fetch('/api/tutoring-enrollments');
-    const enrollmentData: EnrollmentApiRow[] = await res.json();
-    setEnrollments(
-      enrollmentData
-        .filter((e) => e.active)
-        .map((e) => ({
-          id: e.id,
-          studentName: e.studentName,
-          programName: e.programName,
-          defaultDurationMinutes: e.defaultDurationMinutes,
-        }))
-    );
   }
 
   async function loadSummary() {
@@ -108,25 +63,9 @@ export default function AdminTutoringBookingsPage() {
   }, [date]);
 
   useEffect(() => {
-    loadOptions();
-  }, []);
-
-  useEffect(() => {
     loadSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
-
-  useEffect(() => {
-    if (newBookingKind !== 'makeup' || !newBookingEnrollmentId) {
-      setMissedBookings([]);
-      setMakeupOriginalId('');
-      return;
-    }
-    setMakeupOriginalId('');
-    fetch(`/api/tutoring-bookings/makeup-eligible?enrollmentId=${newBookingEnrollmentId}`)
-      .then((res) => res.json())
-      .then(setMissedBookings);
-  }, [newBookingEnrollmentId, newBookingKind, calendarRefreshKey]);
 
   async function cancel(row: OverviewRow, countsTowardQuota: boolean) {
     const message = countsTowardQuota ? '確定要取消並計入這位學生本月次數嗎？' : '確定要取消嗎？此次不計入學生次數。';
@@ -138,10 +77,7 @@ export default function AdminTutoringBookingsPage() {
     });
     showToast('已取消');
     loadOverview();
-    setCalendarRefreshKey((k) => k + 1);
   }
-
-  const newBookingEnrollment = enrollments.find((e) => e.id === newBookingEnrollmentId);
 
   const columns: Column<OverviewRow>[] = [
     { header: '學生', render: (r) => r.studentName },
@@ -195,75 +131,6 @@ export default function AdminTutoringBookingsPage() {
 
       <Card className="mb-6">
         <DataTable columns={columns} rows={rows} keyField={(r) => r.id} emptyText="這天沒有預約" />
-      </Card>
-
-      <Card className="mb-6">
-        <p className="mb-2 font-semibold text-ink">新增預約</p>
-        <div className="mb-3 flex flex-wrap items-end gap-2">
-          <label className="text-xs text-inkMuted">
-            學生
-            <select
-              value={newBookingEnrollmentId}
-              onChange={(e) => setNewBookingEnrollmentId(e.target.value)}
-              className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-            >
-              <option value="">請選擇</option>
-              {enrollments.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.studentName}・{e.programName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-inkMuted">
-            類型
-            <select
-              value={newBookingKind}
-              onChange={(e) => setNewBookingKind(e.target.value as 'regular' | 'makeup')}
-              className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-            >
-              <option value="regular">一般</option>
-              <option value="makeup">補課</option>
-            </select>
-          </label>
-          {newBookingKind === 'makeup' && (
-            <label className="text-xs text-inkMuted">
-              要補的缺席紀錄
-              <select
-                value={makeupOriginalId}
-                onChange={(e) => setMakeupOriginalId(e.target.value)}
-                className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-              >
-                <option value="">請選擇</option>
-                {missedBookings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {formatDateWithWeekday(b.date)}・{b.startTime}-{b.endTime}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-
-        {!newBookingEnrollmentId && <p className="text-sm text-inkMuted">請先選擇學生</p>}
-        {newBookingEnrollmentId && newBookingKind === 'makeup' && missedBookings.length === 0 && (
-          <p className="text-sm text-inkMuted">這位學生目前沒有可補課的紀錄</p>
-        )}
-        {newBookingEnrollment && (newBookingKind === 'regular' || makeupOriginalId) && (
-          <TutoringBookingCalendar
-            key={`${newBookingEnrollmentId}-${newBookingKind}-${makeupOriginalId}-${calendarRefreshKey}`}
-            enrollmentId={newBookingEnrollment.id}
-            defaultDurationMinutes={newBookingEnrollment.defaultDurationMinutes}
-            mode={newBookingKind}
-            makeupForBookingId={newBookingKind === 'makeup' ? makeupOriginalId : undefined}
-            successMessage={newBookingKind === 'makeup' ? '已建立補課預約' : '已新增預約'}
-            onBooked={() => {
-              loadOverview();
-              setCalendarRefreshKey((k) => k + 1);
-              setMakeupOriginalId('');
-            }}
-          />
-        )}
       </Card>
 
       <div className="mb-2 mt-6 flex items-center justify-between">
