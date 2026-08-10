@@ -36,7 +36,7 @@ export default function EnrollmentManager() {
   const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
-  const [studentId, setStudentId] = useState('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentQuery, setStudentQuery] = useState('');
   const [programId, setProgramId] = useState('');
   const [newMonthlyQuota, setNewMonthlyQuota] = useState('');
@@ -57,29 +57,38 @@ export default function EnrollmentManager() {
     load();
   }, []);
 
-  async function createEnrollment() {
-    if (!studentId || !programId) {
-      showToast('請選擇學生與課程');
+  async function createEnrollments() {
+    if (selectedStudentIds.length === 0 || !programId) {
+      showToast('請選擇至少一位學生與課程');
       return;
     }
-    const res = await fetch('/api/tutoring-enrollments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        studentId,
-        programId,
-        monthlyQuota: newMonthlyQuota === '' ? undefined : Number(newMonthlyQuota),
-      }),
-    });
-    if (!res.ok) {
-      showToast('新增失敗，該學生可能已報名此課程');
-      return;
+    const quota = newMonthlyQuota === '' ? undefined : Number(newMonthlyQuota);
+    const results = await Promise.all(
+      selectedStudentIds.map(async (id) => {
+        const res = await fetch('/api/tutoring-enrollments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentId: id, programId, monthlyQuota: quota }),
+        });
+        const name = students.find((s) => s.id === id)?.user.name ?? id;
+        return { name, ok: res.ok };
+      })
+    );
+    const failed = results.filter((r) => !r.ok);
+    const succeeded = results.length - failed.length;
+    if (failed.length === 0) {
+      showToast(`已新增 ${succeeded} 筆報名`);
+    } else if (succeeded === 0) {
+      showToast(`新增失敗：${failed.map((f) => f.name).join('、')}（可能已報名此課程）`);
+    } else {
+      showToast(`已新增 ${succeeded} 筆報名，${failed.length} 筆失敗：${failed.map((f) => f.name).join('、')}`);
     }
-    setStudentId('');
+    if (succeeded > 0) {
+      setSelectedStudentIds([]);
+      setProgramId('');
+      setNewMonthlyQuota('');
+    }
     setStudentQuery('');
-    setProgramId('');
-    setNewMonthlyQuota('');
-    showToast('已新增報名');
     load();
   }
 
@@ -193,19 +202,18 @@ export default function EnrollmentManager() {
                 <input
                   type="text"
                   placeholder="搜尋學生姓名"
-                  value={studentId ? (students.find((s) => s.id === studentId)?.user.name ?? '') : studentQuery}
-                  onChange={(e) => {
-                    setStudentId('');
-                    setStudentQuery(e.target.value);
-                  }}
+                  value={studentQuery}
+                  onChange={(e) => setStudentQuery(e.target.value)}
                   className="w-32 bg-transparent text-sm text-ink outline-none"
                 />
               </div>
-              {!studentId && studentQuery.trim() && (
+              {studentQuery.trim() && (
                 <div className="absolute z-10 mt-1 max-h-48 w-48 overflow-y-auto rounded-lg border border-borderStrong bg-card shadow-lg">
                   {(() => {
                     const q = studentQuery.trim().toLowerCase();
-                    const matches = students.filter((s) => s.user.name.toLowerCase().includes(q)).slice(0, 8);
+                    const matches = students
+                      .filter((s) => !selectedStudentIds.includes(s.id) && s.user.name.toLowerCase().includes(q))
+                      .slice(0, 8);
                     if (matches.length === 0) {
                       return <p className="p-2 text-xs text-inkMuted">找不到符合的學生</p>;
                     }
@@ -214,7 +222,7 @@ export default function EnrollmentManager() {
                         key={s.id}
                         type="button"
                         onClick={() => {
-                          setStudentId(s.id);
+                          setSelectedStudentIds((prev) => (prev.includes(s.id) ? prev : [...prev, s.id]));
                           setStudentQuery('');
                         }}
                         className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-stripe"
@@ -226,6 +234,25 @@ export default function EnrollmentManager() {
                 </div>
               )}
             </div>
+            {selectedStudentIds.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {selectedStudentIds.map((id) => {
+                  const name = students.find((s) => s.id === id)?.user.name ?? id;
+                  return (
+                    <span key={id} className="flex items-center gap-1 rounded-full bg-stripe px-2 py-0.5 text-xs text-inkMuted">
+                      {name}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudentIds((prev) => prev.filter((sid) => sid !== id))}
+                        className="text-rejected"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </label>
           <label className="text-xs text-inkMuted">
             課程
@@ -249,7 +276,7 @@ export default function EnrollmentManager() {
               className="mt-1 block w-20 py-1 text-sm"
             />
           </label>
-          <Button onClick={createEnrollment}>新增報名</Button>
+          <Button onClick={createEnrollments}>新增報名</Button>
         </div>
       </Card>
       <Card>
