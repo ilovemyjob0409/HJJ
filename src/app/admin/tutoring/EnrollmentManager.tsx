@@ -256,7 +256,11 @@ export default function EnrollmentManager() {
           </label>
           <label className="text-xs text-inkMuted">
             課程
-            <select value={programId} onChange={(e) => setProgramId(e.target.value)} className="mt-1 block h-9 rounded-lg border border-borderSubtle bg-card px-2 text-sm text-ink">
+            <select
+              value={programId}
+              onChange={(e) => setProgramId(e.target.value)}
+              className={`mt-1 block h-9 rounded-lg border border-borderSubtle bg-card px-2 text-sm ${programId ? 'text-ink' : 'text-inkMuted'}`}
+            >
               <option value="">請選擇</option>
               {programs.map((p) => (
                 <option key={p.id} value={p.id}>
