@@ -158,7 +158,7 @@ export default function EnrollmentManager() {
         <>
           已計次 {r.locked}／{r.monthlyQuota} 堂
           <br />
-          <span className="text-xs text-inkMuted">（另 {r.upcoming} 堂待到）</span>
+          <span className="text-xs text-inkMuted">（已預約 {r.upcoming} 堂）</span>
           {!r.active && (
             <>
               <br />
