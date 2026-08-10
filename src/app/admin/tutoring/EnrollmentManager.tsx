@@ -259,7 +259,7 @@ export default function EnrollmentManager() {
             <select
               value={programId}
               onChange={(e) => setProgramId(e.target.value)}
-              className={`mt-1 block h-9 rounded-lg border border-borderSubtle bg-card px-2 text-sm ${programId ? 'text-ink' : 'text-inkMuted'}`}
+              className={`mt-1 block h-9 rounded-lg border border-borderSubtle bg-card px-2 text-sm ${programId ? 'text-ink' : 'text-gray-400'}`}
             >
               <option value="">請選擇</option>
               {programs.map((p) => (
