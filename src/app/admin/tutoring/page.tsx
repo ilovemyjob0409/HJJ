@@ -313,12 +313,7 @@ export default function AdminTutoringPage() {
             <summary className="mb-3 flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-2">
                 <span className="text-inkMuted transition-transform group-open:rotate-180">▾</span>
-                <div>
-                  <p className="font-semibold text-ink">{program.name}</p>
-                  <p className="text-xs text-inkMuted">
-                    每月預設 {program.defaultMonthlyQuota} 堂・單次預設 {program.defaultDurationMinutes} 分鐘
-                  </p>
-                </div>
+                <p className="font-semibold text-ink">{program.name}</p>
               </div>
               <div className="flex gap-2">
                 <Button

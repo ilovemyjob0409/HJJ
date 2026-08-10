@@ -237,7 +237,7 @@ export default function EnrollmentManager() {
               placeholder="預設"
               value={newMonthlyQuota}
               onChange={(e) => setNewMonthlyQuota(e.target.value)}
-              className="mt-1 w-20 py-1 text-sm"
+              className="mt-1 block w-20 py-1 text-sm"
             />
           </label>
           <Button onClick={createEnrollment}>新增報名</Button>
