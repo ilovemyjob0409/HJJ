@@ -113,7 +113,7 @@ export default function EnrollmentManager() {
     load();
   }
 
-  async function toggleActive(row: EnrollmentRow) {
+  async function toggleActive(row: EnrollmentRow): Promise<boolean> {
     const res = await fetch(`/api/tutoring-enrollments/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -121,20 +121,22 @@ export default function EnrollmentManager() {
     });
     if (!res.ok) {
       showToast('更新失敗，請稍後再試');
-      return;
+      return false;
     }
     load();
+    return true;
   }
 
-  async function removeEnrollment(row: EnrollmentRow) {
-    if (!(await confirm(`確定要移除「${row.studentName}」的「${row.programName}」報名嗎？`, { danger: true }))) return;
+  async function removeEnrollment(row: EnrollmentRow): Promise<boolean> {
+    if (!(await confirm(`確定要移除「${row.studentName}」的「${row.programName}」報名嗎？`, { danger: true }))) return false;
     const res = await fetch(`/api/tutoring-enrollments/${row.id}`, { method: 'DELETE' });
     if (!res.ok) {
       showToast('刪除失敗，可能仍有預約紀錄');
-      return;
+      return false;
     }
     showToast('已移除');
     load();
+    return true;
   }
 
   const columns: Column<EnrollmentRow>[] = [
@@ -291,8 +293,7 @@ export default function EnrollmentManager() {
             <Button
               variant="secondary"
               onClick={async () => {
-                await toggleActive(editingEnrollment);
-                setEditingEnrollment(null);
+                if (await toggleActive(editingEnrollment)) setEditingEnrollment(null);
               }}
             >
               {editingEnrollment.active ? '停用' : '啟用'}
@@ -300,8 +301,7 @@ export default function EnrollmentManager() {
             <Button
               variant="secondary"
               onClick={async () => {
-                await removeEnrollment(editingEnrollment);
-                setEditingEnrollment(null);
+                if (await removeEnrollment(editingEnrollment)) setEditingEnrollment(null);
               }}
             >
               移除
