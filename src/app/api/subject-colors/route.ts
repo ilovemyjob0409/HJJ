@@ -5,8 +5,8 @@ import { listSubjectColors, setSubjectColor } from '@/lib/services/subjectColorS
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   return NextResponse.json(await listSubjectColors());
 }
