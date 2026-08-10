@@ -185,6 +185,25 @@ export default function EnrollmentManager() {
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs text-inkMuted">
             學生
+            {selectedStudentIds.length > 0 && (
+              <div className="mb-1 flex flex-wrap gap-1">
+                {selectedStudentIds.map((id) => {
+                  const name = students.find((s) => s.id === id)?.user.name ?? id;
+                  return (
+                    <span key={id} className="flex items-center gap-1 rounded-full bg-stripe px-2 py-0.5 text-xs text-inkMuted">
+                      {name}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudentIds((prev) => prev.filter((sid) => sid !== id))}
+                        className="text-rejected"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div className="relative mt-1">
               <div className="flex items-center gap-1.5 rounded-lg border border-borderSubtle bg-card px-2 py-1">
                 <svg
@@ -234,25 +253,6 @@ export default function EnrollmentManager() {
                 </div>
               )}
             </div>
-            {selectedStudentIds.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {selectedStudentIds.map((id) => {
-                  const name = students.find((s) => s.id === id)?.user.name ?? id;
-                  return (
-                    <span key={id} className="flex items-center gap-1 rounded-full bg-stripe px-2 py-0.5 text-xs text-inkMuted">
-                      {name}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedStudentIds((prev) => prev.filter((sid) => sid !== id))}
-                        className="text-rejected"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
           </label>
           <label className="text-xs text-inkMuted">
             課程
