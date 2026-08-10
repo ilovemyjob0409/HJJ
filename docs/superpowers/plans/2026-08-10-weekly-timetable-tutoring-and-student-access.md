@@ -16,6 +16,7 @@
 - `/api/classes` and `/api/tutoring-programs` (and their existing role-based branching) are not modified by this plan.
 - Individual-tutoring cards on the grid: colored using the same subject-color system (program name treated as the color key), no level accent bar, never clickable (no `onClick`, not wrapped in a `<button>`).
 - Reuse existing UI components/utilities exactly as already used elsewhere (`Card`, `Modal`, `Button`, `stripWeekday`/`levelColor`/`MORANDI_PALETTE`/`UNSET_SUBJECT_COLOR` from `@/lib/timetable`, `WEEKDAY_LABELS` from `@/lib/dateFormat`) — no new styling primitives.
+- `WeeklyTimetableGrid` renders its own branded "poster" look — confirmed with the user via mockups (see Task 3): the whole grid area (header + weekday pills + day columns) sits on a `bg-brand` (gold) background, a logo image (`public/hjj-logo.png`, already added — a real black-on-transparent PNG of the school's actual logo, background already removed, do not regenerate or replace it) plus the literal text "台中大雅分校" are centered above the grid, weekday pills are inverted to `bg-brandInk`/`text-brand` (dark pill, gold text — the opposite of the pill styling used elsewhere in this codebase, e.g. `TimetableModal`'s own legend), and every day column uses a fixed cream background (`#FFF6E6`) instead of the alternating-stripe treatment used before. This applies identically to both the admin (`TimetableModal`) and student (`/student/timetable`) surfaces, since both render the same shared component. "台中大雅分校" is a hardcoded string (no branch/location data model exists in this codebase) — not sourced from settings or the database.
 - This codebase has no component-test convention (only `src/**/*.test.ts` service/route tests run under Vitest). Do not add `.test.tsx` files; verify frontend tasks by running the dev server and checking in the browser.
 - `npx tsc --noEmit` and `npm test` must stay clean after every task.
 
@@ -400,6 +401,7 @@ git commit -m "feat(timetable): let any authenticated role read subject colors"
 - Create: `src/components/timetable/WeeklyTimetableGrid.tsx`
 - Modify: `src/app/admin/classes/TimetableModal.tsx` (full rewrite)
 - Modify: `src/app/admin/classes/page.tsx`
+- Already present (added by the controller ahead of this task, not something to create): `public/hjj-logo.png` — the school's actual logo, background already removed and recolored to black, ready to reference as `<img src="/hjj-logo.png">`.
 
 **Interfaces:**
 - Consumes: `GET /api/timetable` from Task 1 (shape `{classes, tutoringSlots}`). `stripWeekday`/`levelColor`/`UNSET_SUBJECT_COLOR`/`MORANDI_PALETTE` from `@/lib/timetable` (unchanged). `WEEKDAY_LABELS` from `@/lib/dateFormat` (unchanged).
@@ -479,79 +481,85 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
 
   return (
     <div className="overflow-x-auto">
-      <div className="grid min-w-[840px] grid-cols-7 bg-card p-2">
-        {WEEKDAY_LABELS.map((w) => (
-          <div key={w} className="flex justify-center pb-2">
-            <span className="flex h-6 min-w-[40px] items-center justify-center rounded-full bg-brand px-2.5 text-xs font-bold text-brandInk">
-              {w}
-            </span>
-          </div>
-        ))}
-        {byDay.map((day, d) => (
-          <div
-            key={d}
-            className={`flex min-h-[90px] flex-col gap-1.5 rounded-lg px-1.5 pb-2 pt-1 ${d % 2 === 1 ? 'bg-stripe' : ''}`}
-          >
-            {day.length === 0 ? (
-              <p className="pt-3 text-center text-xs text-inkMuted">無課程</p>
-            ) : (
-              day.map((card) => {
-                if (card.kind === 'tutoring') {
-                  return (
-                    <div
-                      key={card.data.id}
-                      className="overflow-hidden rounded-md py-1.5 pl-2 pr-2 text-left"
-                      style={{ background: colors[card.data.programName] ?? UNSET_SUBJECT_COLOR }}
-                    >
-                      <p className="text-xs font-bold text-brandInk">{card.data.programName}</p>
+      <div className="min-w-[840px] rounded-xl bg-brand p-5">
+        <div className="mb-4 flex flex-col items-center text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/hjj-logo.png" alt="黑嘉嘉圍棋" className="mb-1.5 h-14 w-auto" />
+          <p className="text-sm font-bold text-brandInk">台中大雅分校</p>
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {WEEKDAY_LABELS.map((w) => (
+            <div key={w} className="flex justify-center pb-1">
+              <span className="flex h-6 min-w-[40px] items-center justify-center rounded-full bg-brandInk px-2.5 text-xs font-bold text-brand">
+                {w}
+              </span>
+            </div>
+          ))}
+          {byDay.map((day, d) => (
+            <div key={d} className="flex min-h-[90px] flex-col gap-1.5 rounded-lg bg-[#FFF6E6] p-1.5">
+              {day.length === 0 ? (
+                <p className="pt-3 text-center text-xs text-[#b89a5c]">無課程</p>
+              ) : (
+                day.map((card) => {
+                  if (card.kind === 'tutoring') {
+                    return (
+                      <div
+                        key={card.data.id}
+                        className="overflow-hidden rounded-md py-1.5 pl-2 pr-2 text-left"
+                        style={{ background: colors[card.data.programName] ?? UNSET_SUBJECT_COLOR }}
+                      >
+                        <p className="text-xs font-bold text-brandInk">{card.data.programName}</p>
+                        <p className="mt-0.5 text-[11px] text-brandInk/80">
+                          {card.data.startTime}-{card.data.endTime}
+                        </p>
+                        <p className="text-[10px] text-brandInk/60">{card.data.teacher.user.name}</p>
+                      </div>
+                    );
+                  }
+                  const content = (
+                    <>
+                      <span
+                        className="absolute bottom-0 right-0 top-0 w-2.5"
+                        style={{ background: levelColor(card.data.level) }}
+                      />
+                      <p className="text-xs font-bold text-brandInk">{stripWeekday(card.data.name)}</p>
                       <p className="mt-0.5 text-[11px] text-brandInk/80">
                         {card.data.startTime}-{card.data.endTime}
                       </p>
-                      <p className="text-[10px] text-brandInk/60">{card.data.teacher.user.name}</p>
+                      <p className="text-[10px] text-brandInk/60">
+                        {card.data.teacher.user.name}・{card.data.level}
+                      </p>
+                    </>
+                  );
+                  const cardClassName = 'relative overflow-hidden rounded-md py-1.5 pl-2 pr-4 text-left';
+                  const cardStyle = { background: colors[card.data.subject] ?? UNSET_SUBJECT_COLOR };
+                  return onClassClick ? (
+                    <button
+                      key={card.data.id}
+                      type="button"
+                      onClick={() => onClassClick(card.data.id)}
+                      className={`${cardClassName} transition-[filter] hover:brightness-110`}
+                      style={cardStyle}
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={card.data.id} className={cardClassName} style={cardStyle}>
+                      {content}
                     </div>
                   );
-                }
-                const content = (
-                  <>
-                    <span
-                      className="absolute bottom-0 right-0 top-0 w-2.5"
-                      style={{ background: levelColor(card.data.level) }}
-                    />
-                    <p className="text-xs font-bold text-brandInk">{stripWeekday(card.data.name)}</p>
-                    <p className="mt-0.5 text-[11px] text-brandInk/80">
-                      {card.data.startTime}-{card.data.endTime}
-                    </p>
-                    <p className="text-[10px] text-brandInk/60">
-                      {card.data.teacher.user.name}・{card.data.level}
-                    </p>
-                  </>
-                );
-                const cardClassName = 'relative overflow-hidden rounded-md py-1.5 pl-2 pr-4 text-left';
-                const cardStyle = { background: colors[card.data.subject] ?? UNSET_SUBJECT_COLOR };
-                return onClassClick ? (
-                  <button
-                    key={card.data.id}
-                    type="button"
-                    onClick={() => onClassClick(card.data.id)}
-                    className={`${cardClassName} transition-[filter] hover:brightness-110`}
-                    style={cardStyle}
-                  >
-                    {content}
-                  </button>
-                ) : (
-                  <div key={card.data.id} className={cardClassName} style={cardStyle}>
-                    {content}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        ))}
+                })
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 ```
+
+Note this task's version of `stripWeekday`/`levelColor`/`UNSET_SUBJECT_COLOR` imports and the `TimetableClass`/`TutoringSlot`/`DayCard`/`WeeklyTimetableGridProps` types/state/effects above this return statement are unchanged from the original extraction — only the JSX inside `return (...)` changed (gold poster wrapper, logo + branch-name header, inverted weekday pill colors, fixed cream day-column background). `bg-stripe` is no longer used anywhere in this file.
 
 - [ ] **Step 2: Replace the full contents of `TimetableModal.tsx`**
 
@@ -712,9 +720,11 @@ npm run dev
 ```
 
 Log in as admin, go to `/admin/classes`, click 週課表:
-- Confirm regular class cards look exactly as before (subject color, level accent bar on the right, clickable — clicking closes the timetable and opens 編輯班級 for that class).
+- Confirm the grid area renders on a gold (`bg-brand`) background with rounded corners, the school logo (`/hjj-logo.png`) and "台中大雅分校" text centered above the grid, and weekday pills are dark with gold text (inverted from the legend/color-picker pills above, which stay as they were).
+- Confirm every day column has the same cream background, not the old alternating-stripe treatment.
+- Confirm regular class cards still look correct (subject color from the Morandi palette, level accent bar on the right, clickable — clicking closes the timetable and opens 編輯班級 for that class).
 - Confirm individual-tutoring time slots (e.g. any windows you've set up under `/admin/tutoring`) now appear in their correct weekday column: colored (using the program name as the color key), no accent bar, and clicking them does nothing.
-- Confirm the 科目顏色 legend at the top lists both class subjects and tutoring program names, with no duplicates.
+- Confirm the 科目顏色 legend at the top (outside the gold poster area, in the Modal's normal chrome) lists both class subjects and tutoring program names, with no duplicates.
 - Click 色塊調整, confirm it lists every subject (class subjects + tutoring program names), pick a new color for a tutoring program name, confirm it immediately re-colors that program's cards on the grid below, and confirm it's saved (`GET /api/subject-colors` reflects it, e.g. by closing and reopening the modal).
 - Confirm the class list/table and the 新增班級/編輯班級 flows on `/admin/classes` still work unaffected (the page's own `classes` state is untouched by this change).
 
@@ -824,7 +834,7 @@ npm run dev
 ```
 
 Log in as a student, confirm 週課表 appears in the nav bar (right after 個別輔導), click it:
-- Confirm the same grid content as the admin view (full school — every class and every active tutoring slot), with the same colors.
+- Confirm the same gold poster look as the admin view (logo, "台中大雅分校", inverted weekday pills, cream day columns) and the same grid content (full school — every class and every active tutoring slot), with the same colors.
 - Confirm there is no 色塊調整 button and no color-picker panel anywhere on the page.
 - Confirm no card (class or tutoring) responds to a click.
 - Confirm the rest of the student nav/pages are unaffected.
