@@ -17,6 +17,8 @@
 - Individual-tutoring cards on the grid: colored using the same subject-color system (program name treated as the color key), no level accent bar, never clickable (no `onClick`, not wrapped in a `<button>`).
 - Reuse existing UI components/utilities exactly as already used elsewhere (`Card`, `Modal`, `Button`, `stripWeekday`/`levelColor`/`MORANDI_PALETTE`/`UNSET_SUBJECT_COLOR` from `@/lib/timetable`, `WEEKDAY_LABELS` from `@/lib/dateFormat`) — no new styling primitives.
 - `WeeklyTimetableGrid` renders its own branded "poster" look — confirmed with the user via mockups (see Task 3): the whole grid area (header + weekday pills + day columns) sits on a `bg-brand` (gold) background, a logo image (`public/hjj-logo.png`, already added — a real black-on-transparent PNG of the school's actual logo, background already removed, do not regenerate or replace it) plus the literal text "台中大雅分校" are centered above the grid, weekday pills are inverted to `bg-brandInk`/`text-brand` (dark pill, gold text — the opposite of the pill styling used elsewhere in this codebase, e.g. `TimetableModal`'s own legend), and every day column uses a fixed cream background (`#FFF6E6`) instead of the alternating-stripe treatment used before. This applies identically to both the admin (`TimetableModal`) and student (`/student/timetable`) surfaces, since both render the same shared component. "台中大雅分校" is a hardcoded string (no branch/location data model exists in this codebase) — not sourced from settings or the database.
+- The grid only ever displays **週二～週六 (Tuesday–Saturday), 5 columns** — the school is closed Sunday and Monday, confirmed by the user. `WEEKDAY_LABELS`/`byDay` still index all 7 weekdays internally (unchanged, still 0=Sun..6=Sat), but the rendered grid iterates a fixed `[2, 3, 4, 5, 6]` list and uses `grid-cols-5` — Sunday/Monday columns are never rendered, even if data happens to exist for them.
+- The logo image renders larger than its first cut (`h-20` not `h-14`) so its own baked-in wordmark ("黑嘉嘉圍棋") reads visually bigger than the separate "台中大雅分校" line below it — confirmed by the user.
 - This codebase has no component-test convention (only `src/**/*.test.ts` service/route tests run under Vitest). Do not add `.test.tsx` files; verify frontend tasks by running the dev server and checking in the browser.
 - `npx tsc --noEmit` and `npm test` must stay clean after every task.
 
@@ -442,6 +444,10 @@ interface TutoringSlot {
 
 type DayCard = { kind: 'class'; data: TimetableClass } | { kind: 'tutoring'; data: TutoringSlot };
 
+// 週二～週六（星期日／星期一店休，不顯示這兩欄）。WEEKDAY_LABELS/getUTCDay
+// convention: 0=日 1=一 2=二 3=三 4=四 5=五 6=六.
+const OPEN_WEEKDAYS = [2, 3, 4, 5, 6];
+
 interface WeeklyTimetableGridProps {
   colors: Record<string, string>;
   onClassClick?: (id: string) => void;
@@ -481,26 +487,26 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[840px] rounded-xl bg-brand p-5">
+      <div className="min-w-[700px] rounded-xl bg-brand p-5">
         <div className="mb-4 flex flex-col items-center text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/hjj-logo.png" alt="黑嘉嘉圍棋" className="mb-1.5 h-14 w-auto" />
+          <img src="/hjj-logo.png" alt="黑嘉嘉圍棋" className="mb-1.5 h-20 w-auto" />
           <p className="text-sm font-bold text-brandInk">台中大雅分校</p>
         </div>
-        <div className="grid grid-cols-7 gap-2">
-          {WEEKDAY_LABELS.map((w) => (
-            <div key={w} className="flex justify-center pb-1">
+        <div className="grid grid-cols-5 gap-2">
+          {OPEN_WEEKDAYS.map((wd) => (
+            <div key={wd} className="flex justify-center pb-1">
               <span className="flex h-6 min-w-[40px] items-center justify-center rounded-full bg-brandInk px-2.5 text-xs font-bold text-brand">
-                {w}
+                {WEEKDAY_LABELS[wd]}
               </span>
             </div>
           ))}
-          {byDay.map((day, d) => (
-            <div key={d} className="flex min-h-[90px] flex-col gap-1.5 rounded-lg bg-[#FFF6E6] p-1.5">
-              {day.length === 0 ? (
+          {OPEN_WEEKDAYS.map((wd) => (
+            <div key={wd} className="flex min-h-[90px] flex-col gap-1.5 rounded-lg bg-[#FFF6E6] p-1.5">
+              {byDay[wd].length === 0 ? (
                 <p className="pt-3 text-center text-xs text-[#b89a5c]">無課程</p>
               ) : (
-                day.map((card) => {
+                byDay[wd].map((card) => {
                   if (card.kind === 'tutoring') {
                     return (
                       <div
@@ -559,7 +565,7 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
 }
 ```
 
-Note this task's version of `stripWeekday`/`levelColor`/`UNSET_SUBJECT_COLOR` imports and the `TimetableClass`/`TutoringSlot`/`DayCard`/`WeeklyTimetableGridProps` types/state/effects above this return statement are unchanged from the original extraction — only the JSX inside `return (...)` changed (gold poster wrapper, logo + branch-name header, inverted weekday pill colors, fixed cream day-column background). `bg-stripe` is no longer used anywhere in this file.
+Note this task's version of `stripWeekday`/`levelColor`/`UNSET_SUBJECT_COLOR` imports and the `TimetableClass`/`TutoringSlot`/`DayCard`/`WeeklyTimetableGridProps` types/state/effects above this return statement are unchanged from the original extraction, aside from the new `OPEN_WEEKDAYS` constant shown above — the JSX inside `return (...)` changed (gold poster wrapper, logo + branch-name header, inverted weekday pill colors, fixed cream day-column background, 5-column Tue–Sat grid instead of 7-column Sun–Sat). `bg-stripe` is no longer used anywhere in this file. `byDay` itself still tracks all 7 weekday indices internally (its construction logic is unchanged) — only the render loop was narrowed to `OPEN_WEEKDAYS`, so nothing needs to change in how `byDay` is built, just in which indices of it get rendered.
 
 - [ ] **Step 2: Replace the full contents of `TimetableModal.tsx`**
 
@@ -720,7 +726,8 @@ npm run dev
 ```
 
 Log in as admin, go to `/admin/classes`, click 週課表:
-- Confirm the grid area renders on a gold (`bg-brand`) background with rounded corners, the school logo (`/hjj-logo.png`) and "台中大雅分校" text centered above the grid, and weekday pills are dark with gold text (inverted from the legend/color-picker pills above, which stay as they were).
+- Confirm the grid area renders on a gold (`bg-brand`) background with rounded corners, the school logo (`/hjj-logo.png`, rendered clearly larger than the "台中大雅分校" text below it) and "台中大雅分校" text centered above the grid, and weekday pills are dark with gold text (inverted from the legend/color-picker pills above, which stay as they were).
+- Confirm the grid only shows 5 columns, 週二～週六 — no 週日/週一 columns at all.
 - Confirm every day column has the same cream background, not the old alternating-stripe treatment.
 - Confirm regular class cards still look correct (subject color from the Morandi palette, level accent bar on the right, clickable — clicking closes the timetable and opens 編輯班級 for that class).
 - Confirm individual-tutoring time slots (e.g. any windows you've set up under `/admin/tutoring`) now appear in their correct weekday column: colored (using the program name as the color key), no accent bar, and clicking them does nothing.
