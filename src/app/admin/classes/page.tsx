@@ -343,7 +343,6 @@ export default function ClassesPage() {
       <TimetableModal
         open={showTimetable}
         onClose={() => setShowTimetable(false)}
-        classes={classes}
         onClassClick={(id) => {
           const c = classes.find((cls) => cls.id === id);
           if (!c) return;
