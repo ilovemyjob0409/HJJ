@@ -46,6 +46,7 @@ export default function EnrollmentManager() {
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
   const [editingEnrollment, setEditingEnrollment] = useState<EnrollmentRow | null>(null);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   async function load() {
     const [enrollmentsRes, studentsRes, programsRes] = await Promise.all([
@@ -68,33 +69,42 @@ export default function EnrollmentManager() {
       return;
     }
     const quota = newMonthlyQuota === '' ? undefined : Number(newMonthlyQuota);
-    const results = await Promise.all(
-      selectedStudentIds.map(async (id) => {
-        const res = await fetch('/api/tutoring-enrollments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId: id, programId, monthlyQuota: quota }),
-        });
-        const name = students.find((s) => s.id === id)?.user.name ?? id;
-        return { name, ok: res.ok };
-      })
-    );
-    const failed = results.filter((r) => !r.ok);
-    const succeeded = results.length - failed.length;
-    if (failed.length === 0) {
-      showToast(`已新增 ${succeeded} 筆報名`);
-    } else if (succeeded === 0) {
-      showToast(`新增失敗：${failed.map((f) => f.name).join('、')}（可能已報名此課程）`);
-    } else {
-      showToast(`已新增 ${succeeded} 筆報名，${failed.length} 筆失敗：${failed.map((f) => f.name).join('、')}`);
+    setSubmitting(true);
+    try {
+      const results = await Promise.all(
+        selectedStudentIds.map(async (id) => {
+          const name = students.find((s) => s.id === id)?.user.name ?? id;
+          try {
+            const res = await fetch('/api/tutoring-enrollments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ studentId: id, programId, monthlyQuota: quota }),
+            });
+            return { name, ok: res.ok };
+          } catch {
+            return { name, ok: false };
+          }
+        })
+      );
+      const failed = results.filter((r) => !r.ok);
+      const succeeded = results.length - failed.length;
+      if (failed.length === 0) {
+        showToast(`已新增 ${succeeded} 筆報名`);
+      } else if (succeeded === 0) {
+        showToast(`新增失敗：${failed.map((f) => f.name).join('、')}（可能已報名此課程）`);
+      } else {
+        showToast(`已新增 ${succeeded} 筆報名，${failed.length} 筆失敗：${failed.map((f) => f.name).join('、')}`);
+      }
+      if (succeeded > 0) {
+        setSelectedStudentIds([]);
+        setProgramId('');
+        setNewMonthlyQuota('');
+      }
+      setStudentQuery('');
+      load();
+    } finally {
+      setSubmitting(false);
     }
-    if (succeeded > 0) {
-      setSelectedStudentIds([]);
-      setProgramId('');
-      setNewMonthlyQuota('');
-    }
-    setStudentQuery('');
-    load();
   }
 
   async function saveQuotaOverride(row: EnrollmentRow) {
@@ -149,6 +159,12 @@ export default function EnrollmentManager() {
           已計次 {r.locked}／{r.monthlyQuota} 堂
           <br />
           <span className="text-xs text-inkMuted">（另 {r.upcoming} 堂待到）</span>
+          {!r.active && (
+            <>
+              <br />
+              <span className="text-xs text-rejected">（已停用）</span>
+            </>
+          )}
         </>
       ),
     },
@@ -260,7 +276,7 @@ export default function EnrollmentManager() {
               className="mt-1 block w-20 py-1 text-sm"
             />
           </label>
-          <Button onClick={createEnrollments}>新增報名</Button>
+          <Button onClick={createEnrollments} loading={submitting}>新增報名</Button>
         </div>
       </Card>
       <Card>
@@ -289,7 +305,11 @@ export default function EnrollmentManager() {
                 </Button>
               </div>
             </div>
-            <Button onClick={() => setBookingTarget(editingEnrollment)}>預約</Button>
+            {editingEnrollment.active ? (
+              <Button onClick={() => setBookingTarget(editingEnrollment)}>預約</Button>
+            ) : (
+              <p className="text-xs text-inkMuted">已停用，請先啟用才能預約</p>
+            )}
             <Button
               variant="secondary"
               onClick={async () => {
