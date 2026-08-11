@@ -5,15 +5,30 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
+import StatusBadge from '@/components/ui/StatusBadge';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface TeacherRow {
   id: string;
   subjects: string;
   phone: string | null;
   user: { name: string; email: string };
+}
+
+interface OneOnOneSlotRow {
+  id: string;
+  status: string;
+  slotDate: string;
+  slotStartTime: string;
+  slotEndTime: string;
+  leaveRequest: {
+    student: { user: { name: string } };
+    class: { name: string };
+  };
 }
 
 export default function TeachersPage() {
@@ -29,6 +44,8 @@ export default function TeachersPage() {
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [oneOnOneSlots, setOneOnOneSlots] = useState<OneOnOneSlotRow[]>([]);
+  const [oneOnOneLoading, setOneOnOneLoading] = useState(false);
 
   async function load() {
     try {
@@ -67,6 +84,12 @@ export default function TeachersPage() {
     setEditing(t);
     setEditForm({ name: t.user.name, email: t.user.email, password: '', subjects: t.subjects, phone: t.phone ?? '' });
     setEditError('');
+    setOneOnOneLoading(true);
+    fetch(`/api/teachers/${t.id}/one-on-one-slots`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setOneOnOneSlots)
+      .catch(() => setOneOnOneSlots([]))
+      .finally(() => setOneOnOneLoading(false));
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -114,6 +137,14 @@ export default function TeachersPage() {
       (t.phone ?? '').toLowerCase().includes(q)
     );
   });
+
+  const oneOnOneColumns: Column<OneOnOneSlotRow>[] = [
+    { header: '日期', render: (r) => formatDateWithWeekday(r.slotDate) },
+    { header: '時段', render: (r) => `${r.slotStartTime}-${r.slotEndTime}` },
+    { header: '學生', render: (r) => r.leaveRequest.student.user.name },
+    { header: '原班級', render: (r) => r.leaveRequest.class.name },
+    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
+  ];
 
   const columns: Column<TeacherRow>[] = [
     { header: '姓名', render: (t) => t.user.name },
@@ -201,6 +232,24 @@ export default function TeachersPage() {
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
           刪除老師
         </button>
+
+        {editing && (
+          <div className="mt-4 border-t border-borderStrong pt-3">
+            <p className="mb-2 text-sm font-medium text-ink">一對一補課時段（{oneOnOneSlots.length}）</p>
+            {oneOnOneLoading ? (
+              <p className="text-sm text-inkMuted">載入中…</p>
+            ) : oneOnOneSlots.length === 0 ? (
+              <p className="text-sm text-inkMuted">尚無一對一補課時段</p>
+            ) : (
+              <CollapsibleDataTable
+                columns={oneOnOneColumns}
+                rows={oneOnOneSlots}
+                keyField={(r) => r.id}
+                maxRows={3}
+              />
+            )}
+          </div>
+        )}
       </Modal>
       {ConfirmDialog}
     </>

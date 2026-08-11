@@ -18,6 +18,7 @@ import {
   arrangeOneOnOneMakeup,
   arrangeLeaveOnly,
   listAssignedOneOnOneForTeacher,
+  listOneOnOneHistoryForTeacher,
   listOneOnOneSlotOptions,
   requestMakeupCancellation,
   rejectMakeupCancellation,
@@ -877,6 +878,58 @@ describe('listAssignedOneOnOneForTeacher', () => {
     expect(results[0].leaveRequest.class.name).toBe('圍棋A班');
     expect(results[0].slotStartTime).toBe('16:00');
     expect(results[0].slotEndTime).toBe('16:40');
+  });
+});
+
+describe('listOneOnOneHistoryForTeacher', () => {
+  it('lists all one-on-ones for the teacher regardless of status or date, sorted most recent first', async () => {
+    const { teacher, classA } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+
+    async function makeStudentWithLeave(name: string, email: string, leaveDay: number) {
+      const s = await createStudent({ name, email, password: 'x' });
+      await setStudentEnrollments(s.id, [{ classId: classA.id, totalSessions: 12 }]);
+      const l = await createLeaveRequest({ studentId: s.id, classId: classA.id, date: new Date(2026, 7, leaveDay), reason: '事假' });
+      return { student: s, leave: l };
+    }
+
+    const a = await makeStudentWithLeave('學生甲', 'oo-hist-a@example.com', 10);
+    const rFuture = await createOneOnOneMakeupRequest({
+      leaveRequestId: a.leave.id, studentId: a.student.id, teacherId: teacher.id,
+      slotDate: new Date('2030-01-02'), slotStartTime: '17:00',
+    });
+    await decideMakeupRequest(rFuture.id, 'APPROVED');
+
+    // 過去的已核准：老師名單要能看到，跟 listAssignedOneOnOneForTeacher 不同
+    const b = await makeStudentWithLeave('學生乙', 'oo-hist-b@example.com', 11);
+    const rPast = await createOneOnOneMakeupRequest({
+      leaveRequestId: b.leave.id, studentId: b.student.id, teacherId: teacher.id,
+      slotDate: new Date('2020-01-01'), slotStartTime: '16:00',
+    });
+    await decideMakeupRequest(rPast.id, 'APPROVED');
+
+    // 被拒絕的：老師名單也要能看到
+    const c = await makeStudentWithLeave('學生丙', 'oo-hist-c@example.com', 12);
+    const rRejected = await createOneOnOneMakeupRequest({
+      leaveRequestId: c.leave.id, studentId: c.student.id, teacherId: teacher.id,
+      slotDate: new Date('2020-01-08'), slotStartTime: '16:00',
+    });
+    await decideMakeupRequest(rRejected.id, 'REJECTED');
+
+    // 指派給別的老師的：不出現
+    const teacher2 = await createTeacher({ name: '別師', email: 'oo-hist-t2@example.com', password: 'x', subjects: '圍棋' });
+    await setTeacherAvailability(teacher2.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    const d = await makeStudentWithLeave('學生丁', 'oo-hist-d@example.com', 13);
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: d.leave.id, studentId: d.student.id, teacherId: teacher2.id,
+      slotDate: new Date('2030-01-02'), slotStartTime: '16:00',
+    });
+
+    const results = await listOneOnOneHistoryForTeacher(teacher.id);
+
+    expect(results.map((r) => r.id)).toEqual([rFuture.id, rRejected.id, rPast.id]);
+    expect(results.map((r) => r.status)).toEqual(['APPROVED', 'REJECTED', 'APPROVED']);
+    expect(results[0].leaveRequest.student.user.name).toBe('學生甲');
   });
 });
 
