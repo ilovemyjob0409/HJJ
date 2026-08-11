@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { getClassEnrollmentQuota } from './attendanceService';
+import { taipeiDateKey, utcDateKey } from './tutoringBookingService';
 
 export interface CreateClassInput {
   name: string;
@@ -291,6 +292,52 @@ export async function addEnrollmentSessions(
     ),
   ]);
   return prisma.classEnrollment.findUniqueOrThrow({ where: { id: enrollment.id } });
+}
+
+// 「未報名」日期的獨立調整（不綁續報）：只管「今天（台北）起」的未來日期，
+// 過去的點名是歷史紀錄，這裡不碰。
+export async function listNotRegisteredDates(classId: string, studentId: string): Promise<Date[]> {
+  await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
+  const todayKey = taipeiDateKey(new Date());
+  const rows = await prisma.classAttendance.findMany({
+    where: { classId, studentId, status: 'NOT_REGISTERED' },
+    select: { date: true },
+    orderBy: { date: 'asc' },
+  });
+  return rows.map((r) => r.date).filter((d) => utcDateKey(d) >= todayKey);
+}
+
+// 把「今天（台北）起」的未報名標記同步成 dates 給的集合：新勾的日期 upsert 成
+// NOT_REGISTERED（與續報流程同語意，既有其他狀態會被覆蓋——行政明確點了就是
+// 要標）；原本標了但這次沒勾的，只刪 status 仍是 NOT_REGISTERED 的列，其他狀
+// 態（例如後來真的到場被點名）不動。
+export async function setNotRegisteredDates(classId: string, studentId: string, dates: Date[], markedById: string) {
+  await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
+  const cls = await prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { weekday: true } });
+  const todayKey = taipeiDateKey(new Date());
+  for (const date of dates) {
+    // 日期由 date-only 字串解析為 UTC 午夜，取 UTC 星期幾（同點名慣例）。
+    if (date.getUTCDay() !== cls.weekday) throw new Error('INVALID_DATE');
+    if (utcDateKey(date) < todayKey) throw new Error('INVALID_DATE');
+  }
+
+  const targetKeys = new Set(dates.map((d) => utcDateKey(d)));
+  const existing = await prisma.classAttendance.findMany({
+    where: { classId, studentId, status: 'NOT_REGISTERED' },
+    select: { id: true, date: true },
+  });
+  const toRemove = existing.filter((r) => utcDateKey(r.date) >= todayKey && !targetKeys.has(utcDateKey(r.date)));
+
+  await prisma.$transaction([
+    ...(toRemove.length > 0 ? [prisma.classAttendance.deleteMany({ where: { id: { in: toRemove.map((r) => r.id) } } })] : []),
+    ...dates.map((date) =>
+      prisma.classAttendance.upsert({
+        where: { classId_studentId_date: { classId, studentId, date } },
+        update: { status: 'NOT_REGISTERED', checkInTime: null, checkOutTime: null, markedById },
+        create: { classId, studentId, date, status: 'NOT_REGISTERED', markedById },
+      })
+    ),
+  ]);
 }
 
 export function unenrollStudent(classId: string, studentId: string) {

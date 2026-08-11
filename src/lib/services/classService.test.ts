@@ -13,6 +13,8 @@ import {
   updateClass,
   setStudentEnrollments,
   addEnrollmentSessions,
+  listNotRegisteredDates,
+  setNotRegisteredDates,
   unenrollStudent,
   listStudentEnrolledClasses,
   deleteClass,
@@ -445,6 +447,73 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
       where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11') } },
     });
     expect(row.status).toBe('NOT_REGISTERED');
+  });
+});
+
+describe('listNotRegisteredDates / setNotRegisteredDates', () => {
+  // 未來日期用 2099 年，讓「今天（台北）起」的過濾在任何執行時間都穩定。
+  // 2099-01-02、01-09、01-16 都是週五（weekday 5）；2020-08-07 也是週五（過去）。
+  const FRI_1 = new Date('2099-01-02');
+  const FRI_2 = new Date('2099-01-09');
+  const FRI_3 = new Date('2099-01-16');
+  const PAST_FRI = new Date('2020-08-07');
+
+  async function setupFridayClass() {
+    const marker = await prisma.user.create({
+      data: { email: 'nr-adjust-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const teacher = await createTeacher({ name: '陳老師', email: 'nr-adjust-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'nr-adjust-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週五班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 5, startTime: '14:00', endTime: '16:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 10 }]);
+    return { marker, student, cls };
+  }
+
+  it('syncs future NOT_REGISTERED marks to the given set: adds new dates, removes unchecked ones', async () => {
+    const { marker, student, cls } = await setupFridayClass();
+
+    await setNotRegisteredDates(cls.id, student.id, [FRI_1, FRI_2], marker.id);
+    expect((await listNotRegisteredDates(cls.id, student.id)).map((d) => d.toISOString().slice(0, 10))).toEqual([
+      '2099-01-02',
+      '2099-01-09',
+    ]);
+
+    // 第二次同步：取消 FRI_1、新增 FRI_3
+    await setNotRegisteredDates(cls.id, student.id, [FRI_2, FRI_3], marker.id);
+    expect((await listNotRegisteredDates(cls.id, student.id)).map((d) => d.toISOString().slice(0, 10))).toEqual([
+      '2099-01-09',
+      '2099-01-16',
+    ]);
+  });
+
+  it('never deletes rows whose status is no longer NOT_REGISTERED, and hides past marks from the list', async () => {
+    const { marker, student, cls } = await setupFridayClass();
+    // 過去的未報名標記：list 不顯示、sync 不刪
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: PAST_FRI, status: 'NOT_REGISTERED', markedById: marker.id },
+    });
+    // 未來但已被點名為 PRESENT 的列：sync 給空集合也不能刪
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: FRI_1, status: 'PRESENT', markedById: marker.id },
+    });
+
+    expect(await listNotRegisteredDates(cls.id, student.id)).toEqual([]);
+
+    await setNotRegisteredDates(cls.id, student.id, [], marker.id);
+    expect(await prisma.classAttendance.count({ where: { studentId: student.id } })).toBe(2);
+  });
+
+  it('rejects wrong-weekday and past dates with INVALID_DATE', async () => {
+    const { marker, student, cls } = await setupFridayClass();
+    await expect(setNotRegisteredDates(cls.id, student.id, [new Date('2099-01-03')], marker.id)).rejects.toThrow('INVALID_DATE'); // Saturday
+    await expect(setNotRegisteredDates(cls.id, student.id, [PAST_FRI], marker.id)).rejects.toThrow('INVALID_DATE');
+  });
+
+  it('rejects when the student is not enrolled in the class', async () => {
+    const { marker, cls } = await setupFridayClass();
+    const outsider = await createStudent({ name: '小華', email: 'nr-adjust-hua@example.com', password: 'x' });
+    await expect(setNotRegisteredDates(cls.id, outsider.id, [FRI_1], marker.id)).rejects.toThrow();
+    await expect(listNotRegisteredDates(cls.id, outsider.id)).rejects.toThrow();
   });
 });
 

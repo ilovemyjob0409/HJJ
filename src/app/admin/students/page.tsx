@@ -135,6 +135,13 @@ function StudentsContent() {
   // 未報名日期區塊預設收合，有需要再展開
   const [renewDatesOpen, setRenewDatesOpen] = useState(false);
   const [renewBusy, setRenewBusy] = useState(false);
+  // 未報名日期獨立調整彈窗（不綁續報）：目標班級、勾選狀態、已標記的日期
+  const [nrTarget, setNrTarget] = useState<ClassOption | null>(null);
+  const [nrDates, setNrDates] = useState<Record<string, boolean>>({});
+  const [nrExistingDates, setNrExistingDates] = useState<string[]>([]);
+  const [nrWeeks, setNrWeeks] = useState('16');
+  const [nrLoading, setNrLoading] = useState(false);
+  const [nrBusy, setNrBusy] = useState(false);
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -339,6 +346,61 @@ function StudentsContent() {
       load();
     } finally {
       setRenewBusy(false);
+    }
+  }
+
+  // 實際列出的週數：1–52 的整數，其他輸入退回預設 16（同續報彈窗）
+  const nrWeeksCount = (() => {
+    const n = Number(nrWeeks);
+    return Number.isInteger(n) && n >= 1 ? Math.min(n, 52) : 16;
+  })();
+  // 清單＝未來 N 週的上課日 ∪ 已標記的日期：已標記的永遠列出來（即使超出
+  // 週數範圍），否則被藏起來的勾選會在儲存時被誤刪。
+  const nrDateOptions = nrTarget
+    ? Array.from(new Set([...upcomingClassDates(nrTarget.weekday, nrWeeksCount), ...nrExistingDates])).sort()
+    : [];
+  const nrSelectedDates = nrDateOptions.filter((d) => nrDates[d]);
+
+  async function openNotRegistered(cls: ClassOption) {
+    if (!editing) return;
+    setNrTarget(cls);
+    setNrDates({});
+    setNrExistingDates([]);
+    setNrWeeks('16');
+    setNrLoading(true);
+    try {
+      const res = await fetch(`/api/classes/${cls.id}/not-registered-dates?studentId=${editing.id}`);
+      if (!res.ok) {
+        showToast('讀取未報名日期失敗');
+        setNrTarget(null);
+        return;
+      }
+      const { dates }: { dates: string[] } = await res.json();
+      setNrExistingDates(dates);
+      setNrDates(Object.fromEntries(dates.map((d) => [d, true])));
+    } finally {
+      setNrLoading(false);
+    }
+  }
+
+  async function handleNotRegisteredSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing || !nrTarget) return;
+    setNrBusy(true);
+    try {
+      const res = await fetch(`/api/classes/${nrTarget.id}/not-registered-dates`, {
+        method: 'PUT',
+        body: JSON.stringify({ studentId: editing.id, dates: nrSelectedDates }),
+      });
+      if (!res.ok) {
+        showToast('儲存未報名日期失敗，請稍後再試');
+        return;
+      }
+      showToast(nrSelectedDates.length > 0 ? `已更新未報名日期（共 ${nrSelectedDates.length} 天）` : '已清除所有未報名日期');
+      setNrTarget(null);
+      load();
+    } finally {
+      setNrBusy(false);
     }
   }
 
@@ -659,6 +721,33 @@ function StudentsContent() {
                         },
                       },
                       {
+                        header: (
+                          <span className="flex items-center justify-center gap-1">
+                            未報名
+                            <HintButton
+                              label="未報名日期說明"
+                              active={openHintClassId === 'nr-header'}
+                              onToggle={() => setOpenHintClassId((prev) => (prev === 'nr-header' ? null : 'nr-header'))}
+                            >
+                              調整這位學生未來不出席的上課日：勾選的日期會在點名中預先標為「未報名」（不扣堂）；取消勾選會移除標記。只能調整今天以後的日期。
+                            </HintButton>
+                          </span>
+                        ),
+                        render: (c) => {
+                          const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                          if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => openNotRegistered(c)}
+                              className="whitespace-nowrap text-xs text-brandDark hover:underline"
+                            >
+                              調整
+                            </button>
+                          );
+                        },
+                      },
+                      {
                         header: '',
                         render: (c) => (
                           <button type="button" className="text-xs text-rejected hover:underline" onClick={() => toggleClass(c.id)}>
@@ -874,6 +963,51 @@ function StudentsContent() {
           </form>
         )}
       </Modal>
+      <Modal
+        open={nrTarget !== null}
+        onClose={() => setNrTarget(null)}
+        title={`未報名日期：${editing?.user.name ?? ''}（${nrTarget?.name ?? ''}）`}
+      >
+        {nrTarget &&
+          (nrLoading ? (
+            <div className="flex flex-col gap-2">
+              <div className="skeleton-shimmer h-4 w-full rounded" />
+              <div className="skeleton-shimmer h-4 w-full rounded" />
+              <div className="skeleton-shimmer h-4 w-full rounded" />
+            </div>
+          ) : (
+            <form onSubmit={handleNotRegisteredSubmit} className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-xs text-inkMuted">
+                <span>列出未來</span>
+                <Input type="number" min={1} max={52} value={nrWeeks} onChange={(e) => setNrWeeks(e.target.value)} className="w-16" />
+                <span>週的上課日</span>
+              </div>
+              <p className="text-xs text-inkMuted">
+                勾選＝這天不出席，點名會預先標為「未報名」（不扣堂）；取消勾選＝移除標記。已標記的日期一定會列出，只能調整今天以後的日期。
+              </p>
+              <div className="flex max-h-64 flex-col overflow-y-auto rounded-lg border border-borderSubtle">
+                {nrDateOptions.map((d) => {
+                  const selected = !!nrDates[d];
+                  return (
+                    <label
+                      key={d}
+                      className={`flex cursor-pointer items-center gap-2 border-b border-borderSubtle px-3 py-2 text-sm last:border-b-0 ${
+                        selected ? 'bg-stripe font-semibold text-brandDark' : 'text-ink hover:bg-stripe'
+                      }`}
+                    >
+                      <input type="checkbox" checked={selected} onChange={() => setNrDates((prev) => ({ ...prev, [d]: !prev[d] }))} />
+                      {formatDateWithWeekday(d)}
+                    </label>
+                  );
+                })}
+              </div>
+              <Button type="submit" loading={nrBusy}>
+                儲存{nrSelectedDates.length > 0 ? `（已選 ${nrSelectedDates.length} 天未報名）` : '（清除所有未報名標記）'}
+              </Button>
+            </form>
+          ))}
+      </Modal>
+
       {familyModalStudent && (
         <FamilySiblingModal
           student={familyModalStudent}
