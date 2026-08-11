@@ -6,10 +6,12 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
+import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import StatusBadge from '@/components/ui/StatusBadge';
 import RevokeLeaveButton from '@/components/RevokeLeaveButton';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { matchesLeaveSearch } from '../leaveSearch';
 
 interface LeaveRow {
   id: string;
@@ -109,6 +111,8 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
   const [rows, setRows] = useState<LeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const filteredRows = rows.filter((r) => matchesLeaveSearch(r, search));
 
   async function load() {
     try {
@@ -231,14 +235,17 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
 
   return (
     <>
-      <h2 className="mb-2 mt-6 font-bold text-ink">請假申請紀錄</h2>
+      <div className="mb-2 mt-6 flex items-center gap-3">
+        <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">請假申請紀錄</h2>
+        <CollapsibleSearchInput placeholder="搜尋學生、班級或補課狀態" value={search} onChange={setSearch} />
+      </div>
       <Card>
         <CollapsibleDataTable
           columns={columns}
-          rows={rows}
+          rows={filteredRows}
           keyField={(r) => r.id}
           loading={loading}
-          maxRows={3}
+          maxRows={search.trim() ? undefined : 3}
           emptyText="目前沒有請假紀錄"
           rowClassName={(r) => (r.makeupRequest?.cancelRequestedAt ? 'bg-pendingBg/40' : '')}
         />
