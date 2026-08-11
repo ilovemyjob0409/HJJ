@@ -60,13 +60,9 @@ function WindowFieldInputs({
 }) {
   return (
     <>
-      <label className="text-xs text-inkMuted">
+      <label className="flex flex-col gap-1 text-xs text-inkMuted">
         星期
-        <Select
-          value={values.weekday}
-          onChange={(e) => onChange({ weekday: e.target.value })}
-          className="mt-1 block text-sm"
-        >
+        <Select value={values.weekday} onChange={(e) => onChange({ weekday: e.target.value })} className="text-sm">
           {WEEKDAY_LABELS.map((label, i) => (
             <option key={i} value={i}>
               週{label}
@@ -74,31 +70,27 @@ function WindowFieldInputs({
           ))}
         </Select>
       </label>
-      <label className="text-xs text-inkMuted">
+      <label className="flex flex-col gap-1 text-xs text-inkMuted">
         開始
-        <Input type="time" value={values.startTime} onChange={(e) => onChange({ startTime: e.target.value })} className="mt-1 w-24 text-sm" />
+        <Input type="time" value={values.startTime} onChange={(e) => onChange({ startTime: e.target.value })} className="w-24 text-sm" />
       </label>
-      <label className="text-xs text-inkMuted">
+      <label className="flex flex-col gap-1 text-xs text-inkMuted">
         結束
-        <Input type="time" value={values.endTime} onChange={(e) => onChange({ endTime: e.target.value })} className="mt-1 w-24 text-sm" />
+        <Input type="time" value={values.endTime} onChange={(e) => onChange({ endTime: e.target.value })} className="w-24 text-sm" />
       </label>
-      <label className="text-xs text-inkMuted">
+      <label className="flex flex-col gap-1 text-xs text-inkMuted">
         容量
         <Input
           type="number"
           min={1}
           value={values.capacity}
           onChange={(e) => onChange({ capacity: e.target.value })}
-          className="mt-1 w-20 text-sm"
+          className="w-20 text-sm"
         />
       </label>
-      <label className="text-xs text-inkMuted">
+      <label className="flex flex-col gap-1 text-xs text-inkMuted">
         老師
-        <Select
-          value={values.teacherId}
-          onChange={(e) => onChange({ teacherId: e.target.value })}
-          className="mt-1 block text-sm"
-        >
+        <Select value={values.teacherId} onChange={(e) => onChange({ teacherId: e.target.value })} className="text-sm">
           <option value="">請選擇</option>
           {teachers.map((t) => (
             <option key={t.id} value={t.id}>
