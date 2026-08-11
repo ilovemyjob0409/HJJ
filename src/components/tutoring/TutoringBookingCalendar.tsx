@@ -3,26 +3,18 @@
 import { useEffect, useState } from 'react';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
-import { WEEKDAY_LABELS } from '@/lib/dateFormat';
+import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
 
 export interface AvailabilityDay {
   date: string;
   windowId: string;
-  windowStartTime: string;
-  windowEndTime: string;
   capacity: number;
-  slots: { startTime: string; remaining: number }[];
+  remaining: number;
 }
 
 interface MonthCell {
   day: number;
   dateKey: string;
-}
-
-function addMinutes(hhmm: string, minutes: number): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  const total = h * 60 + m + minutes;
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function buildMonthCells(year: number, month: number): MonthCell[] {
@@ -36,7 +28,6 @@ function buildMonthCells(year: number, month: number): MonthCell[] {
 
 interface TutoringBookingCalendarProps {
   enrollmentId: string;
-  defaultDurationMinutes: number;
   mode: 'regular' | 'makeup';
   makeupForBookingId?: string;
   successMessage?: string;
@@ -44,9 +35,11 @@ interface TutoringBookingCalendarProps {
   onBooked: () => void;
 }
 
+// 預約不再選時段，一天就是一格：一般預約可以連點好幾天再一次送出（每天各
+// 自建立一筆預約、各自檢查容量）；補課是在補一筆特定的缺席，維持點一天就
+// 直接送出。格子上顯示當天剩餘名額。
 export default function TutoringBookingCalendar({
   enrollmentId,
-  defaultDurationMinutes,
   mode,
   makeupForBookingId,
   successMessage,
@@ -55,9 +48,7 @@ export default function TutoringBookingCalendar({
 }: TutoringBookingCalendarProps) {
   const { showToast } = useToast();
   const [availability, setAvailability] = useState<AvailabilityDay[]>([]);
-  const [openDay, setOpenDay] = useState<string | null>(null);
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   async function loadAvailability() {
@@ -75,11 +66,18 @@ export default function TutoringBookingCalendar({
   const calendarYear = now.getFullYear();
   const calendarMonth = now.getMonth() + 1;
   const availabilityByDate = new Map(availability.map((day) => [day.date, day]));
-  const openDayData = openDay ? availabilityByDate.get(openDay) : undefined;
 
   const nextMonthDate = new Date(Date.UTC(calendarYear, calendarMonth, 1));
   const nextCalendarYear = nextMonthDate.getUTCFullYear();
   const nextCalendarMonth = nextMonthDate.getUTCMonth() + 1;
+
+  function toggleDay(day: AvailabilityDay) {
+    if (mode === 'makeup') {
+      submitMakeup(day);
+      return;
+    }
+    setSelectedDates((prev) => (prev.includes(day.date) ? prev.filter((d) => d !== day.date) : [...prev, day.date].sort()));
+  }
 
   function renderMonthGrid(year: number, month: number) {
     const cells = buildMonthCells(year, month);
@@ -100,20 +98,29 @@ export default function TutoringBookingCalendar({
           ))}
           {cells.map((cell) => {
             const day = availabilityByDate.get(cell.dateKey);
+            const bookable = !!day && day.remaining > 0;
+            const selected = selectedDates.includes(cell.dateKey);
             return (
               <button
                 key={cell.dateKey}
-                disabled={!day}
-                onClick={() => day && openDayForBooking(day)}
-                className={`rounded-lg py-2 text-sm ${
-                  openDay === cell.dateKey
+                disabled={!bookable}
+                onClick={() => day && toggleDay(day)}
+                className={`flex flex-col items-center rounded-lg py-1.5 text-sm ${
+                  selected
                     ? 'bg-brand font-semibold text-brandInk'
-                    : day
+                    : bookable
                       ? 'bg-approvedBg font-semibold text-approved'
-                      : 'text-inkMuted opacity-50'
+                      : day
+                        ? 'bg-stripe text-inkMuted'
+                        : 'text-inkMuted opacity-50'
                 }`}
               >
-                {cell.day}
+                <span>{cell.day}</span>
+                {day && (
+                  <span className={`text-[10px] font-normal ${selected ? 'text-brandInk' : 'text-inkMuted'}`}>
+                    {day.remaining > 0 ? `剩${day.remaining}` : '已滿'}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -122,40 +129,47 @@ export default function TutoringBookingCalendar({
     );
   }
 
-  function openDayForBooking(day: AvailabilityDay) {
-    setOpenDay(day.date);
-    const firstAvailable = day.slots.find((s) => s.remaining > 0);
-    const start = firstAvailable?.startTime ?? day.windowStartTime;
-    setStartTime(start);
-    setEndTime(addMinutes(start, defaultDurationMinutes));
-  }
-
-  async function submit(day: AvailabilityDay) {
+  async function submitMakeup(day: AvailabilityDay) {
     setSubmitting(true);
     try {
-      const url = mode === 'makeup' ? `/api/tutoring-bookings/${makeupForBookingId}/makeup` : '/api/tutoring-bookings';
-      const body =
-        mode === 'makeup'
-          ? { windowId: day.windowId, date: day.date, startTime, endTime }
-          : { enrollmentId, windowId: day.windowId, date: day.date, startTime, endTime };
-      const res = await fetch(url, {
+      const res = await fetch(`/api/tutoring-bookings/${makeupForBookingId}/makeup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ windowId: day.windowId, date: day.date }),
       });
       if (!res.ok) {
         const { error } = await res.json();
-        showToast(
-          error === 'WINDOW_FULL'
-            ? '這段時間名額已滿，請選別的時間'
-            : mode === 'makeup'
-              ? '申請失敗，請確認時間範圍'
-              : '預約失敗，請確認時間範圍'
-        );
+        showToast(error === 'WINDOW_FULL' ? '這天名額已滿，請選別天' : '申請失敗，請稍後再試');
         return;
       }
-      showToast(successMessage ?? (mode === 'makeup' ? '已送出補課申請，待行政核准' : '預約成功'));
-      setOpenDay(null);
+      showToast(successMessage ?? '已送出補課申請，待行政核准');
+      onBooked();
+      loadAvailability();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitSelected() {
+    setSubmitting(true);
+    try {
+      const failed: string[] = [];
+      for (const date of selectedDates) {
+        const day = availabilityByDate.get(date);
+        if (!day) continue;
+        const res = await fetch('/api/tutoring-bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enrollmentId, windowId: day.windowId, date }),
+        });
+        if (!res.ok) failed.push(date);
+      }
+      if (failed.length === 0) {
+        showToast(successMessage ?? `已預約 ${selectedDates.length} 天`);
+      } else {
+        showToast(`${failed.map((d) => formatDateWithWeekday(d, 'zh-TW')).join('、')} 預約失敗（可能已滿），其餘已預約`);
+      }
+      setSelectedDates([]);
       onBooked();
       loadAvailability();
     } finally {
@@ -168,56 +182,35 @@ export default function TutoringBookingCalendar({
       {renderMonthGrid(calendarYear, calendarMonth)}
       {mode === 'makeup' && renderMonthGrid(nextCalendarYear, nextCalendarMonth)}
 
-      {openDayData && (
-        <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-borderSubtle pt-3">
-          <label className="text-xs text-inkMuted">
-            開始
-            <select
-              value={startTime}
-              onChange={(e) => {
-                setStartTime(e.target.value);
-                setEndTime(addMinutes(e.target.value, defaultDurationMinutes));
-              }}
-              className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-            >
-              {openDayData.slots.map((s) => (
-                <option key={s.startTime} value={s.startTime} disabled={s.remaining === 0}>
-                  {s.startTime}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-inkMuted">
-            結束
-            <select
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-            >
-              {openDayData.slots
-                .map((s) => s.startTime)
-                .concat(openDayData.windowEndTime)
-                .filter((t) => t > startTime)
-                .map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <Button loading={submitting} onClick={() => submit(openDayData)}>
-            {mode === 'makeup' ? '確定補課時間' : '確定預約'}
-          </Button>
+      {mode === 'makeup' ? (
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-borderSubtle pt-3">
+          <p className="text-sm text-inkMuted">{submitting ? '送出中…' : '點選日期即送出補課申請'}</p>
           <Button
             variant="secondary"
             onClick={() => {
-              setOpenDay(null);
               onCancel?.();
             }}
           >
             取消
           </Button>
         </div>
+      ) : (
+        selectedDates.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-borderSubtle pt-3">
+            <p className="text-sm text-ink">
+              已選 <b>{selectedDates.length}</b> 天：
+              <span className="text-inkMuted"> {selectedDates.map((d) => formatDateWithWeekday(d, 'zh-TW')).join('、')}</span>
+            </p>
+            <div className="flex gap-2">
+              <Button loading={submitting} onClick={submitSelected}>
+                確定預約
+              </Button>
+              <Button variant="secondary" onClick={() => setSelectedDates([])}>
+                清除
+              </Button>
+            </div>
+          </div>
+        )
       )}
     </>
   );

@@ -489,7 +489,6 @@ export interface TutoringRosterEntry {
   bookingId: string;
   studentId: string;
   studentName: string;
-  timeLabel: string;
   isMakeup: boolean;
   status: AttendanceStatusValue | null;
   checkInTime: string | null;
@@ -502,8 +501,6 @@ export async function getTutoringRoster(windowId: string, date: Date): Promise<T
     where: { windowId, date, status: 'BOOKED' },
     select: {
       id: true,
-      startTime: true,
-      endTime: true,
       kind: true,
       enrollment: { select: { id: true, studentId: true, student: { select: NAME_SELECT } } },
       attendance: true,
@@ -517,7 +514,6 @@ export async function getTutoringRoster(windowId: string, date: Date): Promise<T
         bookingId: b.id,
         studentId: b.enrollment.studentId,
         studentName: b.enrollment.student.user.name,
-        timeLabel: `${b.startTime}-${b.endTime}`,
         isMakeup: b.kind === 'MAKEUP',
         status: (b.attendance?.status as AttendanceStatusValue) ?? null,
         checkInTime: b.attendance?.checkInTime ?? null,
@@ -526,7 +522,7 @@ export async function getTutoringRoster(windowId: string, date: Date): Promise<T
       };
     })
   );
-  return rows.sort((a, b) => a.timeLabel.localeCompare(b.timeLabel));
+  return rows.sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }
 
 export interface SaveTutoringAttendanceInput {

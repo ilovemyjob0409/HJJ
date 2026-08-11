@@ -60,7 +60,6 @@ interface TutoringRosterApiRow {
   bookingId: string;
   studentId: string;
   studentName: string;
-  timeLabel: string;
   isMakeup: boolean;
   status: string | null;
   checkInTime: string | null;

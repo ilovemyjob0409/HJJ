@@ -29,7 +29,7 @@ async function setupMissedBooking(capacity = 8) {
   const program = await createProgram({ name: '英文個別輔導' });
   const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity, teacherId: teacher.id });
   const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
-  const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+  const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
   await adminCancelBooking(original.id, true); // CANCELLED_LATE, eligible for makeup
   return { studentUserId: userId, window, enrollment, original };
 }
@@ -38,7 +38,7 @@ function postBody(windowId: string) {
   return new NextRequest('http://x', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ windowId, date: '2026-08-07', startTime: '16:00', endTime: '18:00' }),
+    body: JSON.stringify({ windowId, date: '2026-08-07' }),
   });
 }
 
@@ -75,7 +75,7 @@ describe('POST /api/tutoring-bookings/[id]/makeup', () => {
 
   it('ADMIN: WINDOW_FULL surfaces as 409 without auto-approving', async () => {
     const { window, enrollment, original } = await setupMissedBooking(1);
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
 
     asAdmin();
     const res = await POST(postBody(window.id), { params: { id: original.id } });

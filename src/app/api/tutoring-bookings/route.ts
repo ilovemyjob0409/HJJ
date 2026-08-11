@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
-  if (!body.enrollmentId || !body.windowId || !body.date || !body.startTime || !body.endTime) {
+  if (!body.enrollmentId || !body.windowId || !body.date) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
   let enrollmentId: string = body.enrollmentId;
@@ -38,8 +38,6 @@ export async function POST(req: NextRequest) {
       enrollmentId,
       windowId: body.windowId,
       date: new Date(body.date),
-      startTime: body.startTime,
-      endTime: body.endTime,
     });
     return NextResponse.json(booking, { status: 201 });
   } catch (err) {

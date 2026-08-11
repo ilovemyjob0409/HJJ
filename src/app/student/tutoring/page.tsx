@@ -15,7 +15,6 @@ interface Enrollment {
   id: string;
   programId: string;
   programName: string;
-  defaultDurationMinutes: number;
   monthlyQuota: number;
   locked: number;
   upcoming: number;
@@ -25,8 +24,6 @@ interface BookingRow {
   id: string;
   programName: string;
   date: string;
-  startTime: string;
-  endTime: string;
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
   canCancelFree: boolean;
@@ -80,7 +77,6 @@ export default function StudentTutoringPage() {
   const bookingColumns: Column<BookingRow>[] = [
     { header: '課程', render: (r) => r.programName },
     { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
-    { header: '時間', render: (r) => `${r.startTime}-${r.endTime}` },
     { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般') },
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
     {
@@ -144,13 +140,12 @@ export default function StudentTutoringPage() {
             </Card>
           )}
 
-          <h2 className="mb-2 font-bold text-ink">{makeupFor ? '本月及下月可預約時段' : '本月可預約時段'}</h2>
+          <h2 className="mb-2 font-bold text-ink">{makeupFor ? '本月及下月可預約日期' : '本月可預約日期'}</h2>
           <Card className="mb-6">
             {selectedEnrollment && (
               <TutoringBookingCalendar
                 key={`${selectedEnrollment.id}-${makeupFor ? 'makeup' : 'regular'}-${calendarRefreshKey}`}
                 enrollmentId={selectedEnrollment.id}
-                defaultDurationMinutes={selectedEnrollment.defaultDurationMinutes}
                 mode={makeupFor ? 'makeup' : 'regular'}
                 makeupForBookingId={makeupFor?.id}
                 onCancel={() => setMakeupFor(null)}
@@ -166,8 +161,7 @@ export default function StudentTutoringPage() {
           {makeupFor && (
             <Card className="mb-6 border-pending">
               <p className="text-sm text-ink">
-                正在為 <b>{formatDateWithWeekday(makeupFor.date)}（{makeupFor.startTime}-{makeupFor.endTime}）</b>
-                的缺席選一個補課時間，請在上方點選日期。
+                正在為 <b>{formatDateWithWeekday(makeupFor.date)}</b> 的缺席選一個補課日期，請在上方點選日期。
               </p>
             </Card>
           )}

@@ -25,7 +25,7 @@ async function setup() {
   const program = await createProgram({ name: '英文個別輔導' });
   const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
   const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
-  const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+  const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
   await adminCancelBooking(missed.id, true);
   return { enrollment, missed };
 }

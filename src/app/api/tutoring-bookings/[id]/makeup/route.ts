@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const body = await req.json().catch(() => ({}));
-  if (!body.windowId || !body.date || !body.startTime || !body.endTime) {
+  if (!body.windowId || !body.date) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
   try {
@@ -30,8 +30,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       originalBookingId: params.id,
       windowId: body.windowId,
       date: new Date(body.date),
-      startTime: body.startTime,
-      endTime: body.endTime,
     });
     if (session.user.role === 'ADMIN') {
       await decideMakeup(makeup.id, 'APPROVED');

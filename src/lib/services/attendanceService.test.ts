@@ -1085,7 +1085,7 @@ async function setupTutoringBooking() {
   const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
   const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
   const date = new Date('2026-08-07'); // Friday
-  const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date, startTime: '16:00', endTime: '18:00' });
+  const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date });
   return { teacher, student, program, window, enrollment, date, booking };
 }
 

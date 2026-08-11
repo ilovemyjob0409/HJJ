@@ -3,19 +3,6 @@ import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { pushLineMessage } from './lineService';
 
-export const SLOT_MINUTES = 30;
-
-export function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
-
-export function minutesToHHMM(total: number): string {
-  const h = Math.floor(total / 60).toString().padStart(2, '0');
-  const m = (total % 60).toString().padStart(2, '0');
-  return `${h}:${m}`;
-}
-
 export function utcDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -46,44 +33,6 @@ export function daysRemainingThroughNextTaipeiMonth(now: Date): number {
   return remaining + daysInNextMonth;
 }
 
-export function countOverlapsInSlot(slotStart: number, slotEnd: number, ranges: { startTime: string; endTime: string }[]): number {
-  return ranges.filter((r) => toMinutes(r.startTime) < slotEnd && toMinutes(r.endTime) > slotStart).length;
-}
-
-export function buildSlotRemaining(
-  windowStartTime: string,
-  windowEndTime: string,
-  capacity: number,
-  existingRanges: { startTime: string; endTime: string }[]
-): { startTime: string; remaining: number }[] {
-  const start = toMinutes(windowStartTime);
-  const end = toMinutes(windowEndTime);
-  const slots: { startTime: string; remaining: number }[] = [];
-  for (let t = start; t < end; t += SLOT_MINUTES) {
-    const used = countOverlapsInSlot(t, t + SLOT_MINUTES, existingRanges);
-    slots.push({ startTime: minutesToHHMM(t), remaining: Math.max(0, capacity - used) });
-  }
-  return slots;
-}
-
-export function hasCapacityForRange(
-  windowStartTime: string,
-  windowEndTime: string,
-  capacity: number,
-  existingRanges: { startTime: string; endTime: string }[],
-  candidate: { startTime: string; endTime: string }
-): boolean {
-  const windowStart = toMinutes(windowStartTime);
-  const windowEnd = toMinutes(windowEndTime);
-  const candStart = toMinutes(candidate.startTime);
-  const candEnd = toMinutes(candidate.endTime);
-  for (let t = Math.max(windowStart, candStart); t < Math.min(windowEnd, candEnd); t += SLOT_MINUTES) {
-    const used = countOverlapsInSlot(t, t + SLOT_MINUTES, existingRanges);
-    if (used + 1 > capacity) return false;
-  }
-  return true;
-}
-
 // 前一天 23:59（台北）為分界：今天（台北）已到達或超過預約日期＝當天取消或更晚，視為 late。
 export function isCancellationLate(bookingDateUtcKey: string, nowTaipeiKey: string): boolean {
   return nowTaipeiKey >= bookingDateUtcKey;
@@ -93,12 +42,14 @@ export interface CreateBookingInput {
   enrollmentId: string;
   windowId: string;
   date: Date;
-  startTime: string;
-  endTime: string;
   kind?: 'REGULAR' | 'MAKEUP';
   makeupForId?: string;
 }
 
+// 預約不再選時段：一筆預約＝「這位學生這天會來」，booking 的 startTime/endTime
+// 直接沿用窗口本身的時段（DB 欄位保留，kiosk 掃碼簽到等既有流程仍靠它排序
+// 與顯示）。容量也因此簡化成當天人數上限：BOOKED＋PENDING_ADMIN 的既有預約
+// 數達到 window.capacity 就滿了。
 export function createBooking(input: CreateBookingInput): Promise<{ id: string }> {
   return runSerializableWithRetry(() =>
     prisma.$transaction(
@@ -111,10 +62,6 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
         if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
         if (!enrollment.active) throw new Error('ENROLLMENT_INACTIVE');
         if (window.programId !== enrollment.programId) throw new Error('PROGRAM_MISMATCH');
-        if (toMinutes(input.endTime) <= toMinutes(input.startTime)) throw new Error('INVALID_RANGE');
-        if (toMinutes(input.startTime) < toMinutes(window.startTime) || toMinutes(input.endTime) > toMinutes(window.endTime)) {
-          throw new Error('OUT_OF_WINDOW');
-        }
         if (input.date.getUTCDay() !== window.weekday) throw new Error('INVALID_WEEKDAY');
 
         const closure = await tx.tutoringWindowClosure.findUnique({
@@ -122,21 +69,18 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
         });
         if (closure) throw new Error('WINDOW_CLOSED');
 
-        const existing = await tx.tutoringBooking.findMany({
+        const booked = await tx.tutoringBooking.count({
           where: { windowId: input.windowId, date: input.date, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
-          select: { startTime: true, endTime: true },
         });
-        if (!hasCapacityForRange(window.startTime, window.endTime, window.capacity, existing, input)) {
-          throw new Error('WINDOW_FULL');
-        }
+        if (booked >= window.capacity) throw new Error('WINDOW_FULL');
 
         return tx.tutoringBooking.create({
           data: {
             enrollmentId: input.enrollmentId,
             windowId: input.windowId,
             date: input.date,
-            startTime: input.startTime,
-            endTime: input.endTime,
+            startTime: window.startTime,
+            endTime: window.endTime,
             kind: input.kind ?? 'REGULAR',
             status: input.kind === 'MAKEUP' ? 'PENDING_ADMIN' : 'BOOKED',
             makeupForId: input.makeupForId,
@@ -192,8 +136,6 @@ export async function requestMakeup(input: {
   originalBookingId: string;
   windowId: string;
   date: Date;
-  startTime: string;
-  endTime: string;
 }): Promise<{ id: string }> {
   const original = await prisma.tutoringBooking.findUniqueOrThrow({
     where: { id: input.originalBookingId },
@@ -209,8 +151,6 @@ export async function requestMakeup(input: {
       enrollmentId: original.enrollmentId,
       windowId: input.windowId,
       date: input.date,
-      startTime: input.startTime,
-      endTime: input.endTime,
       kind: 'MAKEUP',
       makeupForId: original.id,
     });
@@ -282,10 +222,8 @@ export async function getMonthlyQuotaStatus(
 export interface AvailabilityDay {
   date: string;
   windowId: string;
-  windowStartTime: string;
-  windowEndTime: string;
   capacity: number;
-  slots: { startTime: string; remaining: number }[];
+  remaining: number;
 }
 
 export async function listAvailability(enrollmentId: string, days = 14): Promise<AvailabilityDay[]> {
@@ -306,17 +244,14 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
     });
     if (closure) continue;
 
-    const existing = await prisma.tutoringBooking.findMany({
+    const booked = await prisma.tutoringBooking.count({
       where: { windowId: window.id, date: d, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
-      select: { startTime: true, endTime: true },
     });
     result.push({
       date: utcDateKey(d),
       windowId: window.id,
-      windowStartTime: window.startTime,
-      windowEndTime: window.endTime,
       capacity: window.capacity,
-      slots: buildSlotRemaining(window.startTime, window.endTime, window.capacity, existing),
+      remaining: Math.max(0, window.capacity - booked),
     });
   }
   return result;
@@ -326,8 +261,6 @@ export interface StudentBookingRow {
   id: string;
   programName: string;
   date: Date;
-  startTime: string;
-  endTime: string;
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
   canCancelFree: boolean;
@@ -340,8 +273,6 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
     select: {
       id: true,
       date: true,
-      startTime: true,
-      endTime: true,
       kind: true,
       status: true,
       window: { select: { program: { select: { name: true } } } },
@@ -358,8 +289,6 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
       id: b.id,
       programName: b.window.program.name,
       date: b.date,
-      startTime: b.startTime,
-      endTime: b.endTime,
       kind: b.kind as 'REGULAR' | 'MAKEUP',
       status: b.status as StudentBookingRow['status'],
       canCancelFree: b.status === 'BOOKED' && dateKey > todayKey,
@@ -402,8 +331,6 @@ export async function getTutoringDeductionLedger(
     select: {
       id: true,
       date: true,
-      startTime: true,
-      endTime: true,
       kind: true,
       status: true,
       attendance: { select: { checkInTime: true } },
@@ -456,8 +383,6 @@ export async function getTutoringDeductionLedger(
 export interface MissedBookingRow {
   id: string;
   date: Date;
-  startTime: string;
-  endTime: string;
 }
 
 export async function listMissedBookingsForEnrollment(enrollmentId: string): Promise<MissedBookingRow[]> {
@@ -466,8 +391,6 @@ export async function listMissedBookingsForEnrollment(enrollmentId: string): Pro
     select: {
       id: true,
       date: true,
-      startTime: true,
-      endTime: true,
       status: true,
       attendance: { select: { status: true } },
       makeupChild: { select: { id: true } },
@@ -476,7 +399,7 @@ export async function listMissedBookingsForEnrollment(enrollmentId: string): Pro
   });
   return bookings
     .filter((b) => (b.status === 'CANCELLED_LATE' || b.attendance?.status === 'ABSENT') && !b.makeupChild)
-    .map((b) => ({ id: b.id, date: b.date, startTime: b.startTime, endTime: b.endTime }));
+    .map((b) => ({ id: b.id, date: b.date }));
 }
 
 export interface OverviewBookingRow {
@@ -485,8 +408,6 @@ export interface OverviewBookingRow {
   programName: string;
   windowId: string;
   date: Date;
-  startTime: string;
-  endTime: string;
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
 }
@@ -496,8 +417,6 @@ export async function listBookingsOverview(date: Date): Promise<OverviewBookingR
     where: { date },
     select: {
       id: true,
-      startTime: true,
-      endTime: true,
       kind: true,
       status: true,
       date: true,
@@ -505,19 +424,18 @@ export async function listBookingsOverview(date: Date): Promise<OverviewBookingR
       enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
       window: { select: { program: { select: { name: true } } } },
     },
-    orderBy: { startTime: 'asc' },
   });
-  return bookings.map((b) => ({
-    id: b.id,
-    studentName: b.enrollment.student.user.name,
-    programName: b.window.program.name,
-    windowId: b.windowId,
-    date: b.date,
-    startTime: b.startTime,
-    endTime: b.endTime,
-    kind: b.kind as 'REGULAR' | 'MAKEUP',
-    status: b.status as OverviewBookingRow['status'],
-  }));
+  return bookings
+    .map((b) => ({
+      id: b.id,
+      studentName: b.enrollment.student.user.name,
+      programName: b.window.program.name,
+      windowId: b.windowId,
+      date: b.date,
+      kind: b.kind as 'REGULAR' | 'MAKEUP',
+      status: b.status as OverviewBookingRow['status'],
+    }))
+    .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }
 
 export interface PendingMakeupRow {
@@ -526,8 +444,6 @@ export interface PendingMakeupRow {
   programName: string;
   originalDate: Date;
   date: Date;
-  startTime: string;
-  endTime: string;
 }
 
 export async function listPendingTutoringMakeupRequests(): Promise<PendingMakeupRow[]> {
@@ -536,8 +452,6 @@ export async function listPendingTutoringMakeupRequests(): Promise<PendingMakeup
     select: {
       id: true,
       date: true,
-      startTime: true,
-      endTime: true,
       enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
       window: { select: { program: { select: { name: true } } } },
       makeupFor: { select: { date: true } },
@@ -550,8 +464,6 @@ export async function listPendingTutoringMakeupRequests(): Promise<PendingMakeup
     programName: r.window.program.name,
     originalDate: r.makeupFor!.date,
     date: r.date,
-    startTime: r.startTime,
-    endTime: r.endTime,
   }));
 }
 

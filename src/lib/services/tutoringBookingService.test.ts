@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  toMinutes,
-  minutesToHHMM,
   utcDateKey,
-  countOverlapsInSlot,
-  buildSlotRemaining,
-  hasCapacityForRange,
   isCancellationLate,
   daysRemainingInTaipeiMonth,
   daysRemainingThroughNextTaipeiMonth,
@@ -18,15 +13,6 @@ import { createBooking, cancelBooking, adminCancelBooking, requestMakeup, decide
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment } from './tutoringBookingService';
-
-describe('toMinutes / minutesToHHMM', () => {
-  it('round-trips', () => {
-    expect(toMinutes('16:00')).toBe(960);
-    expect(toMinutes('21:30')).toBe(1290);
-    expect(minutesToHHMM(960)).toBe('16:00');
-    expect(minutesToHHMM(1290)).toBe('21:30');
-  });
-});
 
 describe('utcDateKey / taipeiDateKey', () => {
   it('formats as YYYY-MM-DD', () => {
@@ -58,51 +44,6 @@ describe('daysRemainingThroughNextTaipeiMonth', () => {
   });
 });
 
-describe('countOverlapsInSlot', () => {
-  it('counts ranges whose interval overlaps the slot, excluding head-to-tail touches', () => {
-    const ranges = [
-      { startTime: '16:00', endTime: '18:00' },
-      { startTime: '18:00', endTime: '20:00' }, // touches the first range's end, not an overlap
-    ];
-    expect(countOverlapsInSlot(toMinutes('16:00'), toMinutes('16:30'), ranges)).toBe(1);
-    expect(countOverlapsInSlot(toMinutes('17:30'), toMinutes('18:00'), ranges)).toBe(1);
-    expect(countOverlapsInSlot(toMinutes('18:00'), toMinutes('18:30'), ranges)).toBe(1);
-  });
-});
-
-describe('buildSlotRemaining', () => {
-  it('returns one entry per 30-minute slot with remaining = capacity - overlap count', () => {
-    const slots = buildSlotRemaining('16:00', '17:00', 8, [{ startTime: '16:00', endTime: '16:30' }]);
-    expect(slots).toEqual([
-      { startTime: '16:00', remaining: 7 },
-      { startTime: '16:30', remaining: 8 },
-    ]);
-  });
-
-  it('never goes below zero when already over capacity', () => {
-    const existing = Array.from({ length: 9 }, () => ({ startTime: '16:00', endTime: '16:30' }));
-    const slots = buildSlotRemaining('16:00', '16:30', 8, existing);
-    expect(slots[0].remaining).toBe(0);
-  });
-});
-
-describe('hasCapacityForRange', () => {
-  it('allows a candidate when every covered slot is under capacity', () => {
-    const existing = [{ startTime: '16:00', endTime: '18:00' }];
-    expect(hasCapacityForRange('16:00', '21:00', 2, existing, { startTime: '16:00', endTime: '18:00' })).toBe(true);
-  });
-
-  it('rejects when any covered slot would reach capacity', () => {
-    const existing = [{ startTime: '16:00', endTime: '18:00' }];
-    expect(hasCapacityForRange('16:00', '21:00', 1, existing, { startTime: '17:00', endTime: '19:00' })).toBe(false);
-  });
-
-  it('allows a candidate that starts exactly when an existing one ends (no overlap at the boundary)', () => {
-    const existing = [{ startTime: '16:00', endTime: '18:00' }];
-    expect(hasCapacityForRange('16:00', '21:00', 1, existing, { startTime: '18:00', endTime: '20:00' })).toBe(true);
-  });
-});
-
 describe('isCancellationLate', () => {
   it('is not late when today is before the booking date', () => {
     expect(isCancellationLate('2026-08-15', '2026-08-14')).toBe(false);
@@ -130,26 +71,30 @@ async function setupProgramWithEnrollment(capacity = 8) {
 const FRIDAY = new Date('2026-08-07');
 
 describe('createBooking', () => {
-  it('creates a REGULAR booking as BOOKED', async () => {
+  it('creates a REGULAR booking as BOOKED, carrying the window times', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
     expect(row.status).toBe('BOOKED');
     expect(row.kind).toBe('REGULAR');
+    // 不再由學生選時段：booking 直接沿用窗口本身的時段
+    expect(row.startTime).toBe('16:00');
+    expect(row.endTime).toBe('21:00');
   });
 
-  it('rejects a time range outside the window', async () => {
+  it('rejects a date that falls on a different weekday than the window', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
+    const thursday = new Date('2026-08-06');
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '15:00', endTime: '17:00' })
-    ).rejects.toThrow('OUT_OF_WINDOW');
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: thursday })
+    ).rejects.toThrow('INVALID_WEEKDAY');
   });
 
-  it('rejects when the window is full for the requested time', async () => {
+  it('rejects when the day already has capacity-many people booked', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment(1);
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '17:00', endTime: '19:00' })
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('WINDOW_FULL');
   });
 
@@ -157,14 +102,14 @@ describe('createBooking', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     await prisma.tutoringWindowClosure.create({ data: { windowId: window.id, date: FRIDAY } });
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('WINDOW_CLOSED');
   });
 
   it('rejects a nonexistent window id', async () => {
     const { enrollment } = await setupProgramWithEnrollment();
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: 'nonexistent-window-id', date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+      createBooking({ enrollmentId: enrollment.id, windowId: 'nonexistent-window-id', date: FRIDAY })
     ).rejects.toThrow('WINDOW_NOT_FOUND');
   });
 
@@ -174,7 +119,7 @@ describe('createBooking', () => {
     const otherProgram = await createProgram({ name: '數學個別輔導' });
     const otherWindow = await createWindow({ programId: otherProgram.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 4, teacherId: otherTeacher.id });
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: otherWindow.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+      createBooking({ enrollmentId: enrollment.id, windowId: otherWindow.id, date: FRIDAY })
     ).rejects.toThrow('PROGRAM_MISMATCH');
   });
 
@@ -182,7 +127,7 @@ describe('createBooking', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { active: false } });
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('ENROLLMENT_INACTIVE');
   });
 });
@@ -191,7 +136,7 @@ describe('cancelBooking', () => {
   it('deletes the booking outright when cancelled before the day-before cutoff', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2)); // Friday, far in the future
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
     await cancelBooking(booking.id, enrollment.studentId);
     expect(await prisma.tutoringBooking.findUnique({ where: { id: booking.id } })).toBeNull();
   });
@@ -199,7 +144,7 @@ describe('cancelBooking', () => {
   it('marks the booking CANCELLED_LATE when the date has already arrived', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07'); // a Friday well in the past
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await cancelBooking(booking.id, enrollment.studentId);
     const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
     expect(row.status).toBe('CANCELLED_LATE');
@@ -208,7 +153,7 @@ describe('cancelBooking', () => {
   it('rejects cancellation by a student who does not own the booking', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
     await expect(cancelBooking(booking.id, 'someone-else')).rejects.toThrow('NOT_OWNER');
   });
 
@@ -220,14 +165,14 @@ describe('cancelBooking', () => {
 describe('adminCancelBooking', () => {
   it('deletes the booking when countsTowardQuota is false', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await adminCancelBooking(booking.id, false);
     expect(await prisma.tutoringBooking.findUnique({ where: { id: booking.id } })).toBeNull();
   });
 
   it('marks CANCELLED_LATE when countsTowardQuota is true', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await adminCancelBooking(booking.id, true);
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('CANCELLED_LATE');
   });
@@ -236,19 +181,19 @@ describe('adminCancelBooking', () => {
 describe('requestMakeup / decideMakeup', () => {
   it('rejects a makeup request for a booking that was not missed', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await expect(
-      requestMakeup({ originalBookingId: booking.id, windowId: window.id, date: FRIDAY, startTime: '18:00', endTime: '20:00' })
+      requestMakeup({ originalBookingId: booking.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('NOT_ELIGIBLE');
   });
 
   it('creates a PENDING_ADMIN MAKEUP booking for a late-cancelled original, and approving it flips status without re-checking capacity', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment(1);
     const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await adminCancelBooking(original.id, true); // CANCELLED_LATE
 
-    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
     let row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } });
     expect(row.kind).toBe('MAKEUP');
     expect(row.status).toBe('PENDING_ADMIN');
@@ -256,7 +201,7 @@ describe('requestMakeup / decideMakeup', () => {
 
     // capacity is 1 and already reserved by the PENDING_ADMIN makeup — a second regular booking for the same slot must fail
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' })
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('WINDOW_FULL');
 
     await decideMakeup(makeup.id, 'APPROVED');
@@ -267,21 +212,21 @@ describe('requestMakeup / decideMakeup', () => {
   it('rejects a second makeup request for the same original booking', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await adminCancelBooking(original.id, true);
-    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
 
     await expect(
-      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '18:00', endTime: '20:00' })
+      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('ALREADY_REQUESTED');
   });
 
   it('sets status to REJECTED when the admin rejects', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await adminCancelBooking(original.id, true);
-    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
 
     await decideMakeup(makeup.id, 'REJECTED');
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } })).status).toBe('REJECTED');
@@ -290,12 +235,12 @@ describe('requestMakeup / decideMakeup', () => {
   it('allows only one of two concurrent makeup requests for the same original booking to succeed', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await adminCancelBooking(original.id, true);
 
     const results = await Promise.allSettled([
-      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' }),
-      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' }),
+      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY }),
+      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY }),
     ]);
 
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
@@ -311,9 +256,9 @@ describe('requestMakeup / decideMakeup', () => {
   it('rejects deciding the same makeup booking twice', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await adminCancelBooking(original.id, true);
-    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
 
     await decideMakeup(makeup.id, 'APPROVED');
     await expect(decideMakeup(makeup.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
@@ -321,7 +266,7 @@ describe('requestMakeup / decideMakeup', () => {
 
   it('rejects deciding a REGULAR booking', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await expect(decideMakeup(booking.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
   });
 
@@ -334,12 +279,12 @@ describe('getMonthlyQuotaStatus', () => {
   it('counts a past-dated REGULAR booking as locked regardless of status, and excludes MAKEUP bookings', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07'); // locked (date has passed)
-    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
     // requestMakeup requires the original to be missed (CANCELLED_LATE or ABSENT); mark it so
     // it's eligible, while its status still counts toward `locked` regardless of status.
     await adminCancelBooking(attended.id, true);
-    await requestMakeup({ originalBookingId: attended.id, windowId: window.id, date: new Date('2020-08-21'), startTime: '16:00', endTime: '18:00' });
+    await requestMakeup({ originalBookingId: attended.id, windowId: window.id, date: new Date('2020-08-21') });
 
     const status = await getMonthlyQuotaStatus(enrollment.id, '2020-08');
     expect(status.locked).toBe(2); // the two REGULAR bookings, MAKEUP excluded
@@ -349,7 +294,7 @@ describe('getMonthlyQuotaStatus', () => {
   it('counts a future BOOKED REGULAR booking as upcoming, not locked', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
 
     const status = await getMonthlyQuotaStatus(enrollment.id, '2099-01');
     expect(status.locked).toBe(0);
@@ -369,12 +314,16 @@ describe('getMonthlyQuotaStatus', () => {
 });
 
 describe('listAvailability', () => {
-  it('lists remaining capacity for the matching weekday within the horizon, skipping closed dates', async () => {
+  it('lists remaining headcount for the matching weekday within the horizon, skipping closed dates', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment(8);
     const days = await listAvailability(enrollment.id, 14);
     const fridays = days.filter((d) => d.windowId === window.id);
     expect(fridays.length).toBeGreaterThan(0);
-    expect(fridays[0].slots[0]).toEqual({ startTime: '16:00', remaining: 8 });
+    expect(fridays[0]).toMatchObject({ capacity: 8, remaining: 8 });
+
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(fridays[0].date) });
+    const daysAfterBooking = await listAvailability(enrollment.id, 14);
+    expect(daysAfterBooking.find((d) => d.date === fridays[0].date)).toMatchObject({ capacity: 8, remaining: 7 });
 
     await prisma.tutoringWindowClosure.create({ data: { windowId: window.id, date: new Date(fridays[0].date) } });
     const daysAfterClosure = await listAvailability(enrollment.id, 14);
@@ -390,9 +339,9 @@ describe('listBookingsForStudent', () => {
   it('flags canCancelFree for a future booking and canRequestMakeup for a late-cancelled one', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
     const past = new Date('2020-08-07');
-    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await adminCancelBooking(missed.id, true);
 
     const rows = await listBookingsForStudent(enrollment.studentId);
@@ -407,10 +356,10 @@ describe('listBookingsForStudent', () => {
 describe('getTutoringDeductionLedger', () => {
   it('adds a GRANT row for each month and counts past REGULAR bookings as DEDUCT within their own month, resetting at each month boundary', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment(); // quota 8 (program default)
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21'), startTime: '16:00', endTime: '18:00' });
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04'), startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04') });
 
     const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
     expect(monthlyQuota).toBe(8);
@@ -427,10 +376,10 @@ describe('getTutoringDeductionLedger', () => {
   it('excludes a MAKEUP booking and a REGULAR booking whose date has not passed yet, keeping only the GRANT and the actual deduction', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
-    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
+    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
     await adminCancelBooking(missed.id, true);
-    await requestMakeup({ originalBookingId: missed.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+    await requestMakeup({ originalBookingId: missed.id, windowId: window.id, date: new Date('2020-08-14') });
 
     const { history } = await getTutoringDeductionLedger(enrollment.id);
     // the future REGULAR booking and the MAKEUP booking are both omitted — only
@@ -451,18 +400,18 @@ describe('listMissedBookingsForEnrollment', () => {
   it('returns only missed REGULAR bookings without an existing makeup child, scoped to the given enrollment', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
 
-    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
     await adminCancelBooking(missed.id, true); // CANCELLED_LATE, eligible
 
-    const alreadyRequested = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+    const alreadyRequested = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
     await adminCancelBooking(alreadyRequested.id, true);
-    await requestMakeup({ originalBookingId: alreadyRequested.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await requestMakeup({ originalBookingId: alreadyRequested.id, windowId: window.id, date: FRIDAY });
 
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21'), startTime: '16:00', endTime: '18:00' }); // BOOKED, not missed
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') }); // BOOKED, not missed
 
     const otherStudent = await createStudent({ name: '小華', email: `hua-${Date.now()}@example.com`, password: 'x' });
     const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: enrollment.programId, studentId: otherStudent.id } });
-    const otherMissed = await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-28'), startTime: '16:00', endTime: '18:00' });
+    const otherMissed = await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-28') });
     await adminCancelBooking(otherMissed.id, true);
 
     const rows = await listMissedBookingsForEnrollment(enrollment.id);
@@ -479,7 +428,7 @@ describe('listMissedBookingsForEnrollment', () => {
 describe('listBookingsOverview and listPendingTutoringMakeupRequests', () => {
   it('lists all bookings for a date with student and program names', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     const rows = await listBookingsOverview(FRIDAY);
     expect(rows).toHaveLength(1);
     expect(rows[0].studentName).toBe('小明');
@@ -489,9 +438,9 @@ describe('listBookingsOverview and listPendingTutoringMakeupRequests', () => {
   it('lists pending makeup requests with the original booking date', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '18:00' });
+    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await adminCancelBooking(original.id, true);
-    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY, startTime: '16:00', endTime: '18:00' });
+    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
 
     const rows = await listPendingTutoringMakeupRequests();
     expect(rows).toHaveLength(1);
@@ -526,18 +475,18 @@ describe('listMonthlyAttendanceSummary', () => {
     // beforeEach, so the literal 'marker-1' id must be created here first.
     await prisma.user.create({ data: { id: 'marker-1', email: 'tutoring-summary-marker@example.com', password: 'x', name: 'Marker', role: 'ADMIN' } });
     const past = '2020-08-';
-    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '07'), startTime: '16:00', endTime: '18:00' });
+    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '07') });
     await prisma.tutoringAttendance.create({ data: { bookingId: attended.id, status: 'PRESENT', markedById: 'marker-1' } });
 
-    const lateCancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '14'), startTime: '16:00', endTime: '18:00' });
+    const lateCancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '14') });
     await adminCancelBooking(lateCancelled.id, true);
 
-    const absentBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '21'), startTime: '16:00', endTime: '18:00' });
+    const absentBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '21') });
     await prisma.tutoringAttendance.create({ data: { bookingId: absentBooking.id, status: 'ABSENT', markedById: 'marker-1' } });
 
-    const makeupOriginal = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '28'), startTime: '16:00', endTime: '18:00' });
+    const makeupOriginal = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '28') });
     await adminCancelBooking(makeupOriginal.id, true);
-    const makeup = await requestMakeup({ originalBookingId: makeupOriginal.id, windowId: window.id, date: new Date('2020-09-04'), startTime: '16:00', endTime: '18:00' });
+    const makeup = await requestMakeup({ originalBookingId: makeupOriginal.id, windowId: window.id, date: new Date('2020-09-04') });
     await decideMakeup(makeup.id, 'APPROVED');
 
     const augustSummary = await listMonthlyAttendanceSummary('2020-08');

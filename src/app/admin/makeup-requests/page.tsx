@@ -29,8 +29,6 @@ interface TutoringPendingRow {
   programName: string;
   originalDate: string;
   date: string;
-  startTime: string;
-  endTime: string;
 }
 
 interface MergedRow {
@@ -102,7 +100,7 @@ function AdminMakeupRequestsContent() {
         <span className="whitespace-nowrap rounded-full bg-pendingBg px-2.5 py-0.5 text-xs font-bold text-pending">個別輔導補課</span>
       ),
       dateLabel: formatDateWithWeekday(r.date),
-      target: <span className="whitespace-nowrap">{r.startTime}-{r.endTime}</span>,
+      target: <span className="whitespace-nowrap">{r.programName}</span>,
     })),
   ];
   const visibleRows = sourceFilter === 'ALL' ? mergedRows : mergedRows.filter((r) => r.source === sourceFilter);

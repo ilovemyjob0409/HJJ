@@ -18,8 +18,6 @@ interface OverviewRow {
   programName: string;
   windowId: string;
   date: string;
-  startTime: string;
-  endTime: string;
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
 }
@@ -84,7 +82,6 @@ export default function AdminTutoringBookingsPage() {
   const columns: Column<OverviewRow>[] = [
     { header: '學生', render: (r) => r.studentName },
     { header: '課程', render: (r) => r.programName },
-    { header: '時間', render: (r) => `${r.startTime}-${r.endTime}` },
     { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般') },
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
     {

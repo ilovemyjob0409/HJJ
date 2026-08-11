@@ -8,12 +8,10 @@ import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalend
 interface MissedBookingOption {
   id: string;
   date: string;
-  startTime: string;
-  endTime: string;
 }
 
 interface AdminBookingModalProps {
-  enrollment: { id: string; studentId: string; studentName: string; programName: string; defaultDurationMinutes: number };
+  enrollment: { id: string; studentId: string; studentName: string; programName: string };
   onClose: () => void;
   onBooked: () => void;
 }
@@ -60,7 +58,7 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
               <option value="">請選擇</option>
               {missedBookings.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {formatDateWithWeekday(b.date)}・{b.startTime}-{b.endTime}
+                  {formatDateWithWeekday(b.date)}
                 </option>
               ))}
             </select>
@@ -74,7 +72,6 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
         <TutoringBookingCalendar
           key={`${kind}-${makeupOriginalId}`}
           enrollmentId={enrollment.id}
-          defaultDurationMinutes={enrollment.defaultDurationMinutes}
           mode={kind}
           makeupForBookingId={kind === 'makeup' ? makeupOriginalId : undefined}
           successMessage={kind === 'makeup' ? '已建立補課預約' : '已新增預約'}
