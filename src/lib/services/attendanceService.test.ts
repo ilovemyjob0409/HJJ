@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createSubstituteRequest, assignSubstituteTeacher } from './substituteRequestService';
 import { createStudent } from './studentService';
-import { createClass, enrollStudent } from './classService';
+import { createClass, enrollStudent, addEnrollmentSessions } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
 import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance } from './attendanceService';
@@ -194,7 +194,7 @@ describe('getClassEnrollmentQuota', () => {
 });
 
 describe('getClassAttendanceLedger', () => {
-  it('lists every attendance row newest-first with a running remaining-sessions countdown, including non-counting rows', async () => {
+  it('lists only the deducting attendance rows newest-first with a running remaining-sessions countdown, excluding non-counting rows', async () => {
     const { student, cls } = await setupClassWithStudent();
     await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 12 } });
 
@@ -208,12 +208,44 @@ describe('getClassAttendanceLedger', () => {
     expect(ledger.totalSessions).toBe(12);
     expect(ledger.usedSessions).toBe(2);
     expect(ledger.remaining).toBe(10);
-    expect(ledger.history).toHaveLength(4);
-    expect(ledger.history.map((h) => h.status)).toEqual(['NOT_REGISTERED', 'ON_LEAVE', 'ABSENT', 'PRESENT']); // 新到舊
-    expect(ledger.history[0]).toMatchObject({ counted: false, remainingAfter: 10 }); // NOT_REGISTERED 不扣，餘額不變
-    expect(ledger.history[1]).toMatchObject({ counted: false, remainingAfter: 10 }); // ON_LEAVE 不扣
-    expect(ledger.history[2]).toMatchObject({ counted: true, remainingAfter: 10 }); // ABSENT 有扣：這堂結算後還是 10
-    expect(ledger.history[3]).toMatchObject({ counted: true, remainingAfter: 11 }); // 再往前一堂（更早）結算後是 11
+    // ON_LEAVE and NOT_REGISTERED don't deduct, so they're omitted entirely
+    expect(ledger.history).toHaveLength(2);
+    expect(ledger.history.map((h) => [h.kind, h.status, h.amount, h.remainingAfter])).toEqual([
+      ['DEDUCT', 'ABSENT', -1, 10], // this session settled at 10
+      ['DEDUCT', 'PRESENT', -1, 11], // the earlier one settled at 11
+    ]);
+  });
+
+  it('adds a GRANT row for each renewal period, interleaved with deductions by when they happened', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    // first period: initial enrollment for 8 sessions. EnrollmentPeriod.createdAt
+    // defaults to real wall-clock time, so it's pinned to a fixed date here —
+    // otherwise its ordering against the fixed-calendar-date attendance rows
+    // below would depend on when the test happens to run.
+    const enrollment = await prisma.classEnrollment.update({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+      data: { totalSessions: 8, periods: { create: { sessions: 8 } } },
+    });
+    const period1 = await prisma.enrollmentPeriod.findFirstOrThrow({ where: { enrollmentId: enrollment.id } });
+    await prisma.enrollmentPeriod.update({ where: { id: period1.id }, data: { createdAt: new Date('2026-08-01') } });
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    // renewal: a second period adds 4 more sessions
+    await addEnrollmentSessions(cls.id, student.id, 4);
+    const period2 = await prisma.enrollmentPeriod.findFirstOrThrow({ where: { enrollmentId: enrollment.id, id: { not: period1.id } } });
+    await prisma.enrollmentPeriod.update({ where: { id: period2.id }, data: { createdAt: new Date('2026-08-10') } });
+    await saveClassAttendance(cls.id, new Date('2026-08-11'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    const ledger = await getClassAttendanceLedger(cls.id, student.id);
+
+    expect(ledger.totalSessions).toBe(12);
+    expect(ledger.remaining).toBe(10);
+    expect(ledger.history.map((h) => [h.kind, h.amount, h.remainingAfter])).toEqual([
+      ['DEDUCT', -1, 10], // 08-11, after the renewal — today's true remaining
+      ['GRANT', 4, 11], // the renewal itself, right after it there were 11 left (12 - the 08-04 session)
+      ['DEDUCT', -1, 7], // 08-04, before the renewal existed (only the first period's 8 to draw from)
+      ['GRANT', 8, 8], // the initial period, nothing used yet
+    ]);
   });
 
   it('returns null remainingAfter for every row when totalSessions is not set', async () => {

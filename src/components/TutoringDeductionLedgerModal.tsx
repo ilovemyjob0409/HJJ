@@ -10,15 +10,18 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 interface LedgerRow {
   id: string;
   date: string;
-  kind: 'REGULAR' | 'MAKEUP';
-  status: string;
+  kind: 'GRANT' | 'DEDUCT';
+  amount: number;
+  status: string | null;
   checkInTime: string | null;
-  counted: boolean;
   remainingAfter: number;
 }
 
 // 學生自己的個別輔導扣堂紀錄彈窗：由票券管理卡片（首頁）點某一個個別輔導方
-// 案觸發。月額度按月重置，所以「剩餘堂數」是當月的剩餘堂數，不是終身總數。
+// 案觸發。是一份完整的堂數增減帳本——每月月初核發額度（GRANT）加上每一堂真
+// 的扣掉名額的預約（DEDUCT），不含還沒發生的預約或補課本身（那些在
+// /student/tutoring 的「我的預約紀錄」看得到）。月額度按月重置，所以「剩餘
+// 堂數」是當月的剩餘堂數，不是終身總數。
 export default function TutoringDeductionLedgerModal({
   enrollmentId,
   programName,
@@ -43,10 +46,16 @@ export default function TutoringDeductionLedgerModal({
 
   const columns: Column<LedgerRow>[] = [
     { header: '日期', render: (h) => formatDateWithWeekday(h.date, 'zh-TW') },
-    { header: '類型', render: (h) => (h.kind === 'MAKEUP' ? '補課' : '一般') },
-    { header: '狀態', render: (h) => <StatusBadge status={h.status} /> },
+    { header: '項目', render: (h) => (h.kind === 'GRANT' ? '本月核發' : <StatusBadge status={h.status ?? ''} />) },
     { header: '簽到', render: (h) => h.checkInTime ?? <span className="text-inkMuted">-</span> },
-    { header: '扣堂', render: (h) => (h.counted ? <span className="font-semibold text-rejected">-1</span> : <span className="text-inkMuted">不扣</span>) },
+    {
+      header: '堂數',
+      render: (h) => (
+        <span className={`font-semibold ${h.amount > 0 ? 'text-approved' : 'text-rejected'}`}>
+          {h.amount > 0 ? `+${h.amount}` : h.amount}
+        </span>
+      ),
+    },
     { header: '當月剩餘', render: (h) => <span className="font-semibold">{h.remainingAfter}</span> },
   ];
 
@@ -61,7 +70,7 @@ export default function TutoringDeductionLedgerModal({
       ) : (
         <>
           <p className="mb-3 text-xs text-inkMuted">每月固定額度 {data.monthlyQuota} 堂，逾月不累計、不遞補。</p>
-          <CollapsibleDataTable columns={columns} rows={data.history} keyField={(h) => h.id} maxRows={5} emptyText="尚無預約紀錄" />
+          <CollapsibleDataTable columns={columns} rows={data.history} keyField={(h) => h.id} maxRows={5} emptyText="尚無堂數異動紀錄" />
         </>
       )}
     </Modal>

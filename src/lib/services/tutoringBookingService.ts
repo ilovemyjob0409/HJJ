@@ -371,20 +371,21 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
 export interface TutoringLedgerRow {
   id: string;
   date: Date;
-  startTime: string;
-  endTime: string;
-  kind: 'REGULAR' | 'MAKEUP';
-  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+  kind: 'GRANT' | 'DEDUCT';
+  amount: number; // GRANT: +monthlyQuota；DEDUCT: -1
+  status: 'BOOKED' | 'CANCELLED_LATE' | null; // GRANT 沒有對應的預約，是 null
   checkInTime: string | null;
-  counted: boolean;
   remainingAfter: number;
 }
 
-// 學生自己看的個別輔導「扣堂紀錄」：月額度按月重置，跟班級／弈廳的終身堂數池
-// 不同，所以「剩餘堂數」要照預約日期所在月份分組，各自從當月額度倒推，不能
-// 跨月累加。只有 REGULAR 且日期已過的預約才會真的扣掉當月名額（不論後來狀態
-// 是 BOOKED 還是被記為 CANCELLED_LATE，判斷邏輯跟 getMonthlyQuotaStatus 一致）；
-// MAKEUP 預約是把錯過的名額補回來，本身不再扣一次。
+// 學生自己看的個別輔導「扣堂紀錄」：跟班級／弈廳一樣是一份完整的堂數增減
+// 帳本——每個月月初核發當月額度（GRANT，+monthlyQuota）算一筆「建立」，之後
+// 每一堂真的扣掉名額的預約（一般預約且日期已過，不論後來狀態是 BOOKED 還是
+// 被記為 CANCELLED_LATE，判斷邏輯跟 getMonthlyQuotaStatus 一致）算一筆
+// DEDUCT（-1）。還沒發生的預約、補課本身（補課是把名額補回來，不會再扣一
+// 次）都不算增減事件，不放進帳本——那些屬於「我的預約紀錄」。月額度按月重
+// 置，跟班級／弈廳的終身堂數池不同，所以要照預約日期所在月份分組，各自從
+// 當月額度倒推，不能跨月累加。
 export async function getTutoringDeductionLedger(
   enrollmentId: string
 ): Promise<{ monthlyQuota: number; history: TutoringLedgerRow[] }> {
@@ -418,25 +419,35 @@ export async function getTutoringDeductionLedger(
   }
 
   const history: TutoringLedgerRow[] = [];
-  for (const rows of Array.from(monthGroups.values())) {
+  for (const [monthKey, rows] of Array.from(monthGroups.entries())) {
     const countedInMonth = rows.filter((b) => b.kind === 'REGULAR' && utcDateKey(b.date) <= todayKey).length;
     let runningAfter = quota - countedInMonth;
     for (const b of rows) {
       const counted = b.kind === 'REGULAR' && utcDateKey(b.date) <= todayKey;
       const remainingAfter = runningAfter;
       if (counted) runningAfter += 1;
+      if (!counted) continue;
       history.push({
         id: b.id,
         date: b.date,
-        startTime: b.startTime,
-        endTime: b.endTime,
-        kind: b.kind as TutoringLedgerRow['kind'],
+        kind: 'DEDUCT',
+        amount: -1,
         status: b.status as TutoringLedgerRow['status'],
         checkInTime: b.attendance?.checkInTime ?? null,
-        counted,
         remainingAfter,
       });
     }
+    // 處理完這個月所有扣堂後 runningAfter 會加回到 quota 本身——那就是這個月
+    // 核發當下（尚未扣任何一堂）的剩餘堂數。
+    history.push({
+      id: `grant-${monthKey}`,
+      date: new Date(`${monthKey}-01T00:00:00.000Z`),
+      kind: 'GRANT',
+      amount: quota,
+      status: null,
+      checkInTime: null,
+      remainingAfter: runningAfter,
+    });
   }
 
   return { monthlyQuota: quota, history };

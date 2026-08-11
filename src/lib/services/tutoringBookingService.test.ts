@@ -405,7 +405,7 @@ describe('listBookingsForStudent', () => {
 });
 
 describe('getTutoringDeductionLedger', () => {
-  it('counts past REGULAR bookings within their own month, resetting the running remainder at each month boundary', async () => {
+  it('adds a GRANT row for each month and counts past REGULAR bookings as DEDUCT within their own month, resetting at each month boundary', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment(); // quota 8 (program default)
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
@@ -414,15 +414,17 @@ describe('getTutoringDeductionLedger', () => {
 
     const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
     expect(monthlyQuota).toBe(8);
-    expect(history.map((h) => [utcDateKey(h.date), h.counted, h.remainingAfter])).toEqual([
-      ['2020-09-04', true, 7], // September starts its own fresh quota of 8, not continuing from August
-      ['2020-08-21', true, 5],
-      ['2020-08-14', true, 6],
-      ['2020-08-07', true, 7],
+    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.amount, h.remainingAfter])).toEqual([
+      ['2020-09-04', 'DEDUCT', -1, 7],
+      ['2020-09-01', 'GRANT', 8, 8], // September starts its own fresh quota of 8, not continuing from August
+      ['2020-08-21', 'DEDUCT', -1, 5],
+      ['2020-08-14', 'DEDUCT', -1, 6],
+      ['2020-08-07', 'DEDUCT', -1, 7],
+      ['2020-08-01', 'GRANT', 8, 8],
     ]);
   });
 
-  it('does not deduct for a MAKEUP booking or a REGULAR booking whose date has not passed yet', async () => {
+  it('excludes a MAKEUP booking and a REGULAR booking whose date has not passed yet, keeping only the GRANT and the actual deduction', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
@@ -431,10 +433,12 @@ describe('getTutoringDeductionLedger', () => {
     await requestMakeup({ originalBookingId: missed.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
 
     const { history } = await getTutoringDeductionLedger(enrollment.id);
-    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.counted, h.remainingAfter])).toEqual([
-      ['2099-01-02', 'REGULAR', false, 8], // upcoming, hasn't happened yet — doesn't deduct
-      ['2020-08-14', 'MAKEUP', false, 7], // makes up the missed slot, doesn't deduct again
-      ['2020-08-07', 'REGULAR', true, 7], // the missed original booking still deducted its slot
+    // the future REGULAR booking and the MAKEUP booking are both omitted — only
+    // each month's GRANT and the missed original booking's DEDUCT remain
+    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.status, h.remainingAfter])).toEqual([
+      ['2099-01-01', 'GRANT', null, 8],
+      ['2020-08-07', 'DEDUCT', 'CANCELLED_LATE', 7],
+      ['2020-08-01', 'GRANT', null, 8],
     ]);
   });
 

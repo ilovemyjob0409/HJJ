@@ -148,32 +148,58 @@ export async function getClassEnrollmentQuota(classId: string, studentId: string
   };
 }
 
-// 學生自己看的「扣堂紀錄」：跟 getClassEnrollmentQuota 同一套扣堂語意
-// （請假、未報名不扣），但這裡要列出每一堂的明細，不是只算總數——
-// 請假／未報名也一起列出來（金額 0，不影響倒數），讓學生看得到完整出席史，
-// 不是只有真的扣掉的那幾堂。
-export async function getClassAttendanceLedger(classId: string, studentId: string) {
-  const [enrollment, attendances] = await Promise.all([
-    prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } }),
+export interface ClassLedgerRow {
+  id: string;
+  date: Date;
+  kind: 'GRANT' | 'DEDUCT';
+  amount: number; // GRANT：+這一期的堂數；DEDUCT：-1
+  status: string | null; // DEDUCT 才有值（AttendanceStatus）；GRANT 是 null
+  checkInTime: string | null;
+  remainingAfter: number | null;
+}
+
+// 學生自己看的「扣堂紀錄」：跟班級／個別輔導／弈廳一樣是一份完整的堂數增減
+// 帳本——每一期報課／續報（EnrollmentPeriod）算一筆「建立」（GRANT，
+// +這一期的堂數），每一堂真的扣掉名額的點名（跟 getClassEnrollmentQuota 同一
+// 套扣堂語意：請假、未報名不扣）算一筆 DEDUCT（-1）。不扣堂的請假／未報名
+// 點名不算增減事件，不放進帳本。totalSessions 未設定（未設堂數上限）就沒有
+// 倒數概念，每一列 remainingAfter 都是 null。
+export async function getClassAttendanceLedger(classId: string, studentId: string): Promise<{
+  totalSessions: number | null;
+  usedSessions: number;
+  remaining: number | null;
+  history: ClassLedgerRow[];
+}> {
+  const enrollment = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } });
+  const [attendances, periods] = await Promise.all([
+    // 請假與未報名（報名時聲明不來、未繳該堂費用）都不扣堂，不算增減事件。
     prisma.classAttendance.findMany({
-      where: { classId, studentId },
+      where: { classId, studentId, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } },
       select: { id: true, date: true, status: true, checkInTime: true },
-      orderBy: { date: 'desc' },
+    }),
+    prisma.enrollmentPeriod.findMany({
+      where: { enrollmentId: enrollment.id },
+      select: { id: true, sessions: true, createdAt: true },
     }),
   ]);
   const { totalSessions } = enrollment;
-  const NON_COUNTING = new Set(['ON_LEAVE', 'NOT_REGISTERED']);
-  const usedSessions = attendances.filter((a) => !NON_COUNTING.has(a.status)).length;
+  const usedSessions = attendances.length;
   const remaining = totalSessions === null ? null : totalSessions - usedSessions;
 
-  // 新到舊往回推每堂結算後的剩餘堂數：這堂有算的話，往前一堂（更早）結算後
-  // 應該還沒扣掉這堂，所以往回走一步要 +1。totalSessions 未設定就沒有倒數概念。
+  const merged = [
+    ...attendances.map((a) => ({ id: a.id, date: a.date, kind: 'DEDUCT' as const, amount: -1, status: a.status as string, checkInTime: a.checkInTime })),
+    ...periods.map((p) => ({ id: p.id, date: p.createdAt, kind: 'GRANT' as const, amount: p.sessions, status: null, checkInTime: null })),
+  ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  // 新到舊往回推每筆結算後的剩餘堂數：DEDUCT 往回走一步要 +1（回推到還沒扣掉
+  // 這堂之前），GRANT 往回走一步要減掉這一期的堂數（回推到這期還沒核發之
+  // 前）——兩者都等於「remainingAfter 減掉這筆事件本身的 amount」。
+  // totalSessions 未設定就沒有倒數概念。
   let runningAfter = remaining;
-  const history = attendances.map((a) => {
-    const counted = !NON_COUNTING.has(a.status);
+  const history: ClassLedgerRow[] = merged.map((r) => {
     const remainingAfter = runningAfter;
-    if (counted && runningAfter !== null) runningAfter += 1;
-    return { id: a.id, date: a.date, status: a.status, checkInTime: a.checkInTime, counted, remainingAfter };
+    if (runningAfter !== null) runningAfter -= r.amount;
+    return { ...r, remainingAfter };
   });
 
   return { totalSessions, usedSessions, remaining, history };
