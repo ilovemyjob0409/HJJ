@@ -1,7 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createStudent } from './studentService';
-import { taipeiDateKey, getTicketBalance, purchaseTickets, adjustTickets, addSeasonPass, deleteSeasonPass, hasValidSeasonPass, determineQualification, getMyTickets, listStudentTicketSummaries, getTicketDetail } from './goHallTicketService';
+import { createTeacher } from './teacherService';
+import {
+  taipeiDateKey,
+  getTicketBalance,
+  purchaseTickets,
+  adjustTickets,
+  addSeasonPass,
+  deleteSeasonPass,
+  hasValidSeasonPass,
+  determineQualification,
+  getMyTickets,
+  listStudentTicketSummaries,
+  getTicketDetail,
+  getGoHallAttendanceLedger,
+} from './goHallTicketService';
 
 describe('taipeiDateKey', () => {
   it('converts an instant to its Asia/Taipei calendar date', () => {
@@ -174,5 +188,77 @@ describe('getTicketDetail', () => {
     expect(detail.history).toHaveLength(2);
     expect(detail.history[0].kind).toBe('ADMIN_ADJUST'); // 最新在前
     expect(detail.history[0].reason).toBe('登記錯誤');
+  });
+
+  it('computes the running balance after each transaction and the check-in time for ATTEND rows', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'ticket-detail-chen@example.com', password: 'x', subjects: '圍棋' });
+    const marker = await prisma.user.create({
+      data: { email: 'ticket-detail-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const student = await createStudent({ name: '小明', email: 'ticket-detail-ming@example.com', password: 'x' });
+    await purchaseTickets({ studentId: student.id, sessions: 10 });
+    const goHallSession = await prisma.goHallSession.create({
+      data: { date: new Date('2026-08-14'), startTime: '19:00', endTime: '21:00', capacity: 10, teacherId: teacher.id },
+    });
+    await prisma.goHallRegistration.create({ data: { sessionId: goHallSession.id, studentId: student.id } });
+    await prisma.$transaction([
+      prisma.goHallTicketTransaction.create({ data: { studentId: student.id, amount: -1, kind: 'ATTEND', sessionId: goHallSession.id } }),
+      prisma.goHallAttendance.create({
+        data: { sessionId: goHallSession.id, studentId: student.id, status: 'PRESENT', checkInTime: '19:05', markedById: marker.id },
+      }),
+    ]);
+
+    const detail = await getTicketDetail(student.id);
+
+    expect(detail.balance).toBe(9);
+    expect(detail.history).toHaveLength(2);
+    expect(detail.history[0]).toMatchObject({ kind: 'ATTEND', amount: -1, balanceAfter: 9, checkInTime: '19:05' });
+    expect(detail.history[1]).toMatchObject({ kind: 'PURCHASE', amount: 10, balanceAfter: 10, checkInTime: null });
+  });
+});
+
+describe('getGoHallAttendanceLedger', () => {
+  it('merges ticket-affecting transactions with non-deducting (season-pass/single) attendance into one newest-first timeline', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'ledger-chen@example.com', password: 'x', subjects: '圍棋' });
+    const marker = await prisma.user.create({
+      data: { email: 'ledger-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const student = await createStudent({ name: '小明', email: 'ledger-ming@example.com', password: 'x' });
+    await purchaseTickets({ studentId: student.id, sessions: 10 });
+
+    // TICKET 資格到場：扣堂，有對應的 GoHallTicketTransaction
+    const ticketSession = await prisma.goHallSession.create({
+      data: { date: new Date('2026-08-05'), startTime: '19:00', endTime: '21:00', capacity: 10, teacherId: teacher.id },
+    });
+    await prisma.$transaction([
+      prisma.goHallTicketTransaction.create({ data: { studentId: student.id, amount: -1, kind: 'ATTEND', sessionId: ticketSession.id } }),
+      prisma.goHallAttendance.create({
+        data: {
+          sessionId: ticketSession.id, studentId: student.id, status: 'PRESENT', checkInTime: '19:05',
+          qualification: 'TICKET', markedById: marker.id,
+        },
+      }),
+    ]);
+
+    // 季票資格到場：不扣堂，沒有 GoHallTicketTransaction，但仍是一次到場紀錄
+    const seasonSession = await prisma.goHallSession.create({
+      data: { date: new Date('2026-08-12'), startTime: '19:00', endTime: '21:00', capacity: 10, teacherId: teacher.id },
+    });
+    await prisma.goHallAttendance.create({
+      data: {
+        sessionId: seasonSession.id, studentId: student.id, status: 'PRESENT', checkInTime: '19:10',
+        qualification: 'SEASON_PASS', markedById: marker.id,
+      },
+    });
+
+    const ledger = await getGoHallAttendanceLedger(student.id);
+
+    expect(ledger.balance).toBe(9);
+    expect(ledger.history).toHaveLength(3);
+    expect(ledger.history.map((h) => h.kind)).toEqual(['ATTEND_SEASON_PASS', 'ATTEND', 'PURCHASE']);
+    // 季票到場不扣堂：金額 0，餘額不變
+    expect(ledger.history[0]).toMatchObject({ amount: 0, checkInTime: '19:10', balanceAfter: 9 });
+    expect(ledger.history[1]).toMatchObject({ amount: -1, checkInTime: '19:05', balanceAfter: 9 });
+    expect(ledger.history[2]).toMatchObject({ amount: 10, balanceAfter: 10 });
   });
 });

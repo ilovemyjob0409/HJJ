@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
+import StatusBadge from '@/components/ui/StatusBadge';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
@@ -35,12 +36,32 @@ interface SessionDetail extends SessionRow {
 interface RegistrationRow {
   id: string;
   session: SessionRow;
+  attendance: { status: string; checkInTime: string | null; checkOutTime: string | null } | null;
 }
 
 interface MyTickets {
   balance: number;
   activePassEndDate: string | null;
 }
+
+interface TicketHistoryRow {
+  id: string;
+  amount: number;
+  kind: string;
+  reason: string | null;
+  createdAt: string;
+  sessionDate: string | null;
+  checkInTime: string | null;
+  balanceAfter: number;
+}
+
+const TICKET_KIND_LABELS: Record<string, string> = {
+  PURCHASE: '購買',
+  ATTEND: '到場扣堂',
+  ADMIN_ADJUST: '調整',
+  ATTEND_SEASON_PASS: '到場（季票）',
+  ATTEND_SINGLE: '到場（單堂）',
+};
 
 function StudentGoHallContent() {
   const { showToast } = useToast();
@@ -55,6 +76,17 @@ function StudentGoHallContent() {
   const [highlightDismissed, setHighlightDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [ticketHistoryOpen, setTicketHistoryOpen] = useState(false);
+  const [ticketHistory, setTicketHistory] = useState<TicketHistoryRow[] | null>(null);
+
+  function openTicketHistory() {
+    setTicketHistoryOpen(true);
+    setTicketHistory(null);
+    fetch('/api/go-hall-tickets/me/detail')
+      .then((res) => (res.ok ? res.json() : { history: [] }))
+      .then((data) => setTicketHistory(data.history))
+      .catch(() => setTicketHistory([]));
+  }
 
   async function load() {
     try {
@@ -146,6 +178,20 @@ function StudentGoHallContent() {
     { header: '時間', render: (r) => `${r.session.startTime}-${r.session.endTime}` },
     { header: '老師', render: (r) => r.session.teacher.user.name },
     {
+      header: '簽到',
+      render: (r) => {
+        if (!r.attendance) {
+          return <span className="text-inkMuted">{isBeforeToday(r.session.date) ? '未點名' : '—'}</span>;
+        }
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <StatusBadge status={r.attendance.status} />
+            {r.attendance.checkInTime && <span className="text-xs text-inkMuted">{r.attendance.checkInTime} 到場</span>}
+          </div>
+        );
+      },
+    },
+    {
       header: '操作',
       render: (r) =>
         isBeforeToday(r.session.date) ? (
@@ -158,12 +204,52 @@ function StudentGoHallContent() {
     },
   ];
 
+  const ticketHistoryColumns: Column<TicketHistoryRow>[] = [
+    { header: '日期', render: (h) => formatDateWithWeekday(h.createdAt, 'zh-TW') },
+    { header: '類型', render: (h) => TICKET_KIND_LABELS[h.kind] ?? h.kind },
+    {
+      header: '堂數',
+      render: (h) =>
+        h.amount === 0 ? (
+          <span className="text-inkMuted">不扣堂</span>
+        ) : (
+          <span className={h.amount > 0 ? 'font-semibold text-approved' : 'font-semibold text-rejected'}>
+            {h.amount > 0 ? `+${h.amount}` : h.amount}
+          </span>
+        ),
+    },
+    {
+      header: '說明',
+      render: (h) => {
+        if (h.reason) return h.reason;
+        if (h.sessionDate) {
+          return (
+            <span>
+              場次 {formatDateWithWeekday(h.sessionDate, 'zh-TW')}
+              {h.checkInTime && <span className="text-inkMuted">・{h.checkInTime} 到場</span>}
+            </span>
+          );
+        }
+        return '-';
+      },
+    },
+    { header: '剩餘堂數', render: (h) => <span className="font-semibold">{h.balanceAfter}</span> },
+  ];
+
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">弈廳</h1>
 
       <h2 className="mb-2 font-bold text-ink">弈廳資格</h2>
-      <Card className="mb-6">
+      <Card
+        className="mb-6 cursor-pointer transition-shadow hover:shadow-md"
+        role="button"
+        tabIndex={0}
+        onClick={openTicketHistory}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') openTicketHistory();
+        }}
+      >
         {tickets === null ? (
           <div className="flex flex-col gap-2">
             <div className="skeleton-shimmer h-4 w-40 rounded" />
@@ -190,6 +276,7 @@ function StudentGoHallContent() {
                 <p className="text-xs text-inkMuted">現場收費</p>
               </>
             )}
+            <p className="mt-1 text-xs text-brandDark">查看堂票紀錄 →</p>
           </div>
         )}
       </Card>
@@ -242,6 +329,24 @@ function StudentGoHallContent() {
               </ul>
             )}
           </div>
+        )}
+      </Modal>
+
+      <Modal open={ticketHistoryOpen} onClose={() => setTicketHistoryOpen(false)} title="堂票紀錄">
+        {ticketHistory === null ? (
+          <div className="flex flex-col gap-2">
+            <div className="skeleton-shimmer h-4 w-full rounded" />
+            <div className="skeleton-shimmer h-4 w-full rounded" />
+            <div className="skeleton-shimmer h-4 w-full rounded" />
+          </div>
+        ) : (
+          <CollapsibleDataTable
+            columns={ticketHistoryColumns}
+            rows={ticketHistory}
+            keyField={(h) => h.id}
+            maxRows={5}
+            emptyText="尚無堂票異動紀錄"
+          />
         )}
       </Modal>
       {ConfirmDialog}

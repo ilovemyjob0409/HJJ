@@ -102,15 +102,33 @@ export async function adminRemoveRegistration(id: string) {
   await prisma.goHallRegistration.delete({ where: { id } });
 }
 
-export function listRegistrationsForStudent(studentId: string) {
-  return prisma.goHallRegistration.findMany({
+// 學生自己的報名紀錄：附帶簽到資訊（status／checkInTime／checkOutTime），
+// 讓學生知道哪些場次已到場、什麼時候簽到——堂票就是那次簽到扣掉的。
+// GoHallAttendance 跟 GoHallRegistration 之間沒有直接的 Prisma relation
+// （兩者各自用 sessionId+studentId 當複合鍵），所以透過 GoHallSession 的
+// attendances 關聯、用 studentId 過濾出這位學生自己的那一筆（至多一筆）。
+export async function listRegistrationsForStudent(studentId: string) {
+  const rows = await prisma.goHallRegistration.findMany({
     where: { studentId },
     select: {
       id: true,
-      session: { select: SESSION_LIST_SELECT },
+      session: {
+        select: {
+          ...SESSION_LIST_SELECT,
+          attendances: {
+            where: { studentId },
+            select: { status: true, checkInTime: true, checkOutTime: true },
+          },
+        },
+      },
     },
     orderBy: { session: { date: 'desc' } },
   });
+  return rows.map(({ id, session: { attendances, ...session } }) => ({
+    id,
+    session,
+    attendance: attendances[0] ?? null,
+  }));
 }
 
 export function getSessionDetail(id: string) {

@@ -146,20 +146,92 @@ export async function getTicketDetail(studentId: string) {
     }),
     prisma.goHallTicketTransaction.findMany({
       where: { studentId },
-      select: { id: true, amount: true, kind: true, reason: true, createdAt: true, session: { select: { date: true } } },
+      select: {
+        id: true,
+        amount: true,
+        kind: true,
+        reason: true,
+        createdAt: true,
+        session: { select: { date: true, attendances: { where: { studentId }, select: { checkInTime: true } } } },
+      },
       orderBy: { createdAt: 'desc' },
     }),
   ]);
-  return {
-    balance,
-    seasonPasses,
-    history: history.map((h) => ({
+
+  // 依交易時間新到舊算出每筆交易「結算後剩餘堂數」：從目前餘額往回推，
+  // 逐筆扣掉自己的異動量，就是再往前一筆（更早）交易結算後的餘額。
+  let runningAfter = balance;
+  const historyWithBalance = history.map((h) => {
+    const balanceAfter = runningAfter;
+    runningAfter -= h.amount;
+    return {
       id: h.id,
       amount: h.amount,
       kind: h.kind as string,
       reason: h.reason,
       createdAt: h.createdAt,
       sessionDate: h.session?.date ?? null,
+      checkInTime: h.session?.attendances[0]?.checkInTime ?? null,
+      balanceAfter,
+    };
+  });
+
+  return { balance, seasonPasses, history: historyWithBalance };
+}
+
+// 學生自己看的「堂票紀錄」：跟 getTicketDetail 不同，這裡要顯示「所有」到場紀錄
+// （季票／單堂到場不扣堂票，但學生仍要看得到自己何時到場），不是只有真的動到
+// 堂票餘額的交易。堂票交易（購買／扣堂／調整）以外，再把季票／單堂到場的
+// GoHallAttendance 也當成金額 0 的紀錄併進同一份時間軸；只有 TICKET 資格到場
+// 才會有對應的 GoHallTicketTransaction，這裡不用重複列一次。
+export async function getGoHallAttendanceLedger(studentId: string) {
+  const [balance, ticketRows, nonTicketAttendances] = await Promise.all([
+    getTicketBalance(studentId),
+    prisma.goHallTicketTransaction.findMany({
+      where: { studentId },
+      select: {
+        id: true,
+        amount: true,
+        kind: true,
+        reason: true,
+        createdAt: true,
+        session: { select: { date: true, attendances: { where: { studentId }, select: { checkInTime: true } } } },
+      },
+    }),
+    prisma.goHallAttendance.findMany({
+      where: { studentId, qualification: { in: ['SEASON_PASS', 'SINGLE'] } },
+      select: { id: true, qualification: true, checkInTime: true, createdAt: true, session: { select: { date: true } } },
+    }),
+  ]);
+
+  const merged = [
+    ...ticketRows.map((h) => ({
+      id: h.id,
+      amount: h.amount,
+      kind: h.kind as string,
+      reason: h.reason,
+      createdAt: h.createdAt,
+      sessionDate: h.session?.date ?? null,
+      checkInTime: h.session?.attendances[0]?.checkInTime ?? null,
     })),
-  };
+    ...nonTicketAttendances.map((a) => ({
+      id: a.id,
+      amount: 0,
+      kind: a.qualification === 'SEASON_PASS' ? 'ATTEND_SEASON_PASS' : 'ATTEND_SINGLE',
+      reason: null as string | null,
+      createdAt: a.createdAt,
+      sessionDate: a.session.date,
+      checkInTime: a.checkInTime,
+    })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  // 同樣是從目前餘額往回推；金額 0 的到場紀錄自然不影響餘額。
+  let runningAfter = balance;
+  const historyWithBalance = merged.map((row) => {
+    const balanceAfter = runningAfter;
+    runningAfter -= row.amount;
+    return { ...row, balanceAfter };
+  });
+
+  return { balance, history: historyWithBalance };
 }
