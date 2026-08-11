@@ -84,7 +84,7 @@ export default function GuidePage() {
         <div>
           <h1 className="text-xl font-bold text-ink">使用教學</h1>
           <p className="mt-1 text-sm text-inkMuted">
-            這裡是學生帳號的完整操作教學：請假、補課、出席查詢、集點卡、弈廳與活動報名。點擊各章節即可展開。
+            這裡是學生帳號的完整操作教學：請假、補課、出席查詢、集點卡、弈廳、活動報名與週課表查詢。點擊各章節即可展開。
           </p>
         </div>
 
@@ -129,6 +129,10 @@ export default function GuidePage() {
               所有功能都在上方選單，<b className="text-ink">選單和表格都可以左右滑動</b>；最右邊的「登出」用於切換帳號或登出系統。
             </p>
           </div>
+          <Tip title="家裡有手足一起上課？">
+            登出按鈕左邊會顯示您的姓名，若教室已經幫您的手足設定同一個家庭，點姓名旁的<b className="text-ink">▾</b>
+            即可直接切換到手足的帳號操作，不用重新輸入密碼、也不用登出再登入。想設定手足關係請洽櫃檯行政人員。
+          </Tip>
         </Chapter>
 
         <Chapter no="3" title="請假申請">
@@ -267,6 +271,24 @@ export default function GuidePage() {
             每月 1 號重新歸零，「已計次」是當天已到、當天取消、或缺席的預約堂數；申請補課核准後不會重複計次。若快到月底還有很多堂沒約，系統會透過
             LINE 提醒您。
           </Tip>
+        </Chapter>
+
+        <Chapter no="10" title="查看週課表">
+          <div className="text-sm leading-relaxed text-inkMuted">
+            從上方選單進入「週課表」，可以看到<b className="text-ink">全校</b>週二到週六（週日、週一店休）的完整課表，包含所有班級課和個別輔導時段，不只是自己就讀的班級。
+          </div>
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element -- 靜態教學截圖 */}
+            <img
+              src="/manual/m34-student-timetable.png"
+              alt="週課表頁面，顯示全校週二到週六的課表"
+              loading="lazy"
+              className="w-full rounded-xl border border-borderSubtle shadow-sm"
+            />
+            <p className="mt-2 text-sm text-inkMuted">
+              每張卡片顯示<b className="text-ink">班級（或個別輔導方案）名稱、上課時間、老師</b>；同色塊代表同科目。這頁只能查看，不能點選或報名——如果手機畫面顯示不下，可以<b className="text-ink">左右滑動</b>看完整一週。
+            </p>
+          </div>
         </Chapter>
 
         <Tip title="還有問題？">
