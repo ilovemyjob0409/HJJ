@@ -332,7 +332,7 @@ function StudentGoHallContent() {
         )}
       </Modal>
 
-      <Modal open={ticketHistoryOpen} onClose={() => setTicketHistoryOpen(false)} title="堂票紀錄">
+      <Modal open={ticketHistoryOpen} onClose={() => setTicketHistoryOpen(false)} title="堂票紀錄" maxWidthClassName="max-w-2xl">
         {ticketHistory === null ? (
           <div className="flex flex-col gap-2">
             <div className="skeleton-shimmer h-4 w-full rounded" />
