@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
@@ -61,25 +62,25 @@ function WindowFieldInputs({
     <>
       <label className="text-xs text-inkMuted">
         星期
-        <select
+        <Select
           value={values.weekday}
           onChange={(e) => onChange({ weekday: e.target.value })}
-          className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
+          className="mt-1 block text-sm"
         >
           {WEEKDAY_LABELS.map((label, i) => (
             <option key={i} value={i}>
               週{label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <label className="text-xs text-inkMuted">
         開始
-        <Input type="time" value={values.startTime} onChange={(e) => onChange({ startTime: e.target.value })} className="mt-1 w-24 py-1 text-sm" />
+        <Input type="time" value={values.startTime} onChange={(e) => onChange({ startTime: e.target.value })} className="mt-1 w-24 text-sm" />
       </label>
       <label className="text-xs text-inkMuted">
         結束
-        <Input type="time" value={values.endTime} onChange={(e) => onChange({ endTime: e.target.value })} className="mt-1 w-24 py-1 text-sm" />
+        <Input type="time" value={values.endTime} onChange={(e) => onChange({ endTime: e.target.value })} className="mt-1 w-24 text-sm" />
       </label>
       <label className="text-xs text-inkMuted">
         容量
@@ -88,15 +89,15 @@ function WindowFieldInputs({
           min={1}
           value={values.capacity}
           onChange={(e) => onChange({ capacity: e.target.value })}
-          className="mt-1 w-20 py-1 text-sm"
+          className="mt-1 w-20 text-sm"
         />
       </label>
       <label className="text-xs text-inkMuted">
         老師
-        <select
+        <Select
           value={values.teacherId}
           onChange={(e) => onChange({ teacherId: e.target.value })}
-          className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
+          className="mt-1 block text-sm"
         >
           <option value="">請選擇</option>
           {teachers.map((t) => (
@@ -104,7 +105,7 @@ function WindowFieldInputs({
               {t.user.name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
     </>
   );

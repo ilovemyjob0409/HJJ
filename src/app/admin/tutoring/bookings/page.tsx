@@ -46,8 +46,10 @@ export default function AdminTutoringBookingsPage() {
   const [rows, setRows] = useState<OverviewRow[]>([]);
   const [month, setMonth] = useState(todayDateInput().slice(0, 7));
   const [summary, setSummary] = useState<SummaryRow[]>([]);
+  const [choosingId, setChoosingId] = useState<string | null>(null);
 
   async function loadOverview() {
+    setChoosingId(null);
     const res = await fetch(`/api/tutoring-bookings/overview?date=${date}`);
     setRows(await res.json());
   }
@@ -87,19 +89,29 @@ export default function AdminTutoringBookingsPage() {
     { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
     {
       header: '操作',
-      render: (r) =>
-        r.status === 'BOOKED' ? (
-          <div className="flex flex-col gap-1">
+      render: (r) => {
+        if (r.status !== 'BOOKED') return <span className="text-inkMuted">—</span>;
+        if (choosingId !== r.id) {
+          return (
+            <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setChoosingId(r.id)}>
+              取消
+            </Button>
+          );
+        }
+        return (
+          <div className="flex flex-col items-start gap-1">
             <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => cancel(r, false)}>
-              取消（不計次）
+              不計次
             </Button>
             <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => cancel(r, true)}>
-              取消（計次）
+              計次
             </Button>
+            <button type="button" className="text-xs text-inkMuted hover:underline" onClick={() => setChoosingId(null)}>
+              返回
+            </button>
           </div>
-        ) : (
-          <span className="text-inkMuted">—</span>
-        ),
+        );
+      },
     },
   ];
 
