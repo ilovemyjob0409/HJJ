@@ -179,13 +179,15 @@ export async function getTicketDetail(studentId: string) {
   return { balance, seasonPasses, history: historyWithBalance };
 }
 
-// 學生自己看的「堂票紀錄」：跟 getTicketDetail 不同，這裡要顯示「所有」到場紀錄
-// （季票／單堂到場不扣堂票，但學生仍要看得到自己何時到場），不是只有真的動到
-// 堂票餘額的交易。堂票交易（購買／扣堂／調整）以外，再把季票／單堂到場的
-// GoHallAttendance 也當成金額 0 的紀錄併進同一份時間軸；只有 TICKET 資格到場
-// 才會有對應的 GoHallTicketTransaction，這裡不用重複列一次。
+// 學生自己看的「堂票紀錄」：跟 getTicketDetail 不同，這裡要顯示「所有」跟到場
+// 有關的紀錄（季票／單堂到場不扣堂票、缺席也不扣堂票，但學生仍要看得到這些
+// 事件何時發生），不是只有真的動到堂票餘額的交易。堂票交易（購買／扣堂／
+// 調整）以外，再把（1）季票／單堂到場、（2）報名了但未請假、點名時被標記
+// 缺席（status ABSENT，qualification 會是 null，因為只有到場才會戳記資格）
+// 的 GoHallAttendance，一起當成金額 0 的紀錄併進同一份時間軸；只有 TICKET
+// 資格到場才會有對應的 GoHallTicketTransaction，這裡不用重複列一次。
 export async function getGoHallAttendanceLedger(studentId: string) {
-  const [balance, ticketRows, nonTicketAttendances] = await Promise.all([
+  const [balance, ticketRows, nonDeductingAttendances] = await Promise.all([
     getTicketBalance(studentId),
     prisma.goHallTicketTransaction.findMany({
       where: { studentId },
@@ -199,8 +201,8 @@ export async function getGoHallAttendanceLedger(studentId: string) {
       },
     }),
     prisma.goHallAttendance.findMany({
-      where: { studentId, qualification: { in: ['SEASON_PASS', 'SINGLE'] } },
-      select: { id: true, qualification: true, checkInTime: true, createdAt: true, session: { select: { date: true } } },
+      where: { studentId, OR: [{ qualification: { in: ['SEASON_PASS', 'SINGLE'] } }, { status: 'ABSENT' }] },
+      select: { id: true, qualification: true, status: true, checkInTime: true, createdAt: true, session: { select: { date: true } } },
     }),
   ]);
 
@@ -214,10 +216,11 @@ export async function getGoHallAttendanceLedger(studentId: string) {
       sessionDate: h.session?.date ?? null,
       checkInTime: h.session?.attendances[0]?.checkInTime ?? null,
     })),
-    ...nonTicketAttendances.map((a) => ({
+    ...nonDeductingAttendances.map((a) => ({
       id: a.id,
       amount: 0,
-      kind: a.qualification === 'SEASON_PASS' ? 'ATTEND_SEASON_PASS' : 'ATTEND_SINGLE',
+      kind:
+        a.status === 'ABSENT' ? 'ABSENT' : a.qualification === 'SEASON_PASS' ? 'ATTEND_SEASON_PASS' : 'ATTEND_SINGLE',
       reason: null as string | null,
       createdAt: a.createdAt,
       sessionDate: a.session.date,

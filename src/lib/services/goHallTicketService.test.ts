@@ -261,4 +261,29 @@ describe('getGoHallAttendanceLedger', () => {
     expect(ledger.history[1]).toMatchObject({ amount: -1, checkInTime: '19:05', balanceAfter: 9 });
     expect(ledger.history[2]).toMatchObject({ amount: 10, balanceAfter: 10 });
   });
+
+  it('includes no-show absences (registered, marked ABSENT, no leave) as non-deducting rows too', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'ledger-absent-chen@example.com', password: 'x', subjects: '圍棋' });
+    const marker = await prisma.user.create({
+      data: { email: 'ledger-absent-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const student = await createStudent({ name: '小明', email: 'ledger-absent-ming@example.com', password: 'x' });
+    await purchaseTickets({ studentId: student.id, sessions: 10 });
+
+    const absentSession = await prisma.goHallSession.create({
+      data: { date: new Date('2026-08-19'), startTime: '19:00', endTime: '21:00', capacity: 10, teacherId: teacher.id },
+    });
+    await prisma.goHallRegistration.create({ data: { sessionId: absentSession.id, studentId: student.id } });
+    // 報名了、沒請假（Go Hall 沒有請假機制，缺席就是缺席）、點名時被標記缺席：
+    // qualification 維持 null（只有到場才會戳記），沒有 GoHallTicketTransaction。
+    await prisma.goHallAttendance.create({
+      data: { sessionId: absentSession.id, studentId: student.id, status: 'ABSENT', markedById: marker.id },
+    });
+
+    const ledger = await getGoHallAttendanceLedger(student.id);
+
+    expect(ledger.balance).toBe(10); // 缺席不扣堂，餘額不變
+    expect(ledger.history).toHaveLength(2); // PURCHASE + ABSENT
+    expect(ledger.history[0]).toMatchObject({ kind: 'ABSENT', amount: 0, checkInTime: null, balanceAfter: 10 });
+  });
 });

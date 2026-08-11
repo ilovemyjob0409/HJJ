@@ -6,7 +6,7 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance } from './attendanceService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
@@ -190,6 +190,41 @@ describe('getClassEnrollmentQuota', () => {
     expect(quota.totalSessions).toBe(12);
     expect(quota.usedSessions).toBe(2);
     expect(quota.remaining).toBe(10);
+  });
+});
+
+describe('getClassAttendanceLedger', () => {
+  it('lists every attendance row newest-first with a running remaining-sessions countdown, including non-counting rows', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 12 } });
+
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-11'), 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-18'), 'marker-1', [{ studentId: student.id, status: 'ON_LEAVE' }]);
+    await saveClassAttendance(cls.id, new Date('2026-08-25'), 'marker-1', [{ studentId: student.id, status: 'NOT_REGISTERED' }]);
+
+    const ledger = await getClassAttendanceLedger(cls.id, student.id);
+
+    expect(ledger.totalSessions).toBe(12);
+    expect(ledger.usedSessions).toBe(2);
+    expect(ledger.remaining).toBe(10);
+    expect(ledger.history).toHaveLength(4);
+    expect(ledger.history.map((h) => h.status)).toEqual(['NOT_REGISTERED', 'ON_LEAVE', 'ABSENT', 'PRESENT']); // 新到舊
+    expect(ledger.history[0]).toMatchObject({ counted: false, remainingAfter: 10 }); // NOT_REGISTERED 不扣，餘額不變
+    expect(ledger.history[1]).toMatchObject({ counted: false, remainingAfter: 10 }); // ON_LEAVE 不扣
+    expect(ledger.history[2]).toMatchObject({ counted: true, remainingAfter: 10 }); // ABSENT 有扣：這堂結算後還是 10
+    expect(ledger.history[3]).toMatchObject({ counted: true, remainingAfter: 11 }); // 再往前一堂（更早）結算後是 11
+  });
+
+  it('returns null remainingAfter for every row when totalSessions is not set', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+
+    const ledger = await getClassAttendanceLedger(cls.id, student.id);
+
+    expect(ledger.totalSessions).toBeNull();
+    expect(ledger.remaining).toBeNull();
+    expect(ledger.history[0].remainingAfter).toBeNull();
   });
 });
 

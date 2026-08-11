@@ -148,6 +148,37 @@ export async function getClassEnrollmentQuota(classId: string, studentId: string
   };
 }
 
+// 學生自己看的「扣堂紀錄」：跟 getClassEnrollmentQuota 同一套扣堂語意
+// （請假、未報名不扣），但這裡要列出每一堂的明細，不是只算總數——
+// 請假／未報名也一起列出來（金額 0，不影響倒數），讓學生看得到完整出席史，
+// 不是只有真的扣掉的那幾堂。
+export async function getClassAttendanceLedger(classId: string, studentId: string) {
+  const [enrollment, attendances] = await Promise.all([
+    prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId } } }),
+    prisma.classAttendance.findMany({
+      where: { classId, studentId },
+      select: { id: true, date: true, status: true, checkInTime: true },
+      orderBy: { date: 'desc' },
+    }),
+  ]);
+  const { totalSessions } = enrollment;
+  const NON_COUNTING = new Set(['ON_LEAVE', 'NOT_REGISTERED']);
+  const usedSessions = attendances.filter((a) => !NON_COUNTING.has(a.status)).length;
+  const remaining = totalSessions === null ? null : totalSessions - usedSessions;
+
+  // 新到舊往回推每堂結算後的剩餘堂數：這堂有算的話，往前一堂（更早）結算後
+  // 應該還沒扣掉這堂，所以往回走一步要 +1。totalSessions 未設定就沒有倒數概念。
+  let runningAfter = remaining;
+  const history = attendances.map((a) => {
+    const counted = !NON_COUNTING.has(a.status);
+    const remainingAfter = runningAfter;
+    if (counted && runningAfter !== null) runningAfter += 1;
+    return { id: a.id, date: a.date, status: a.status, checkInTime: a.checkInTime, counted, remainingAfter };
+  });
+
+  return { totalSessions, usedSessions, remaining, history };
+}
+
 export interface ClassQuotaSummaryRow {
   studentId: string;
   classId: string;
