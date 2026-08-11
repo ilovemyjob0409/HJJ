@@ -442,28 +442,6 @@ export function listAssignedOneOnOneForTeacher(teacherId: string) {
   });
 }
 
-// 行政「老師名單」查看老師被指派的一對一補課時段：完整歷史（含過去、含所有狀態），
-// 跟 listAssignedOneOnOneForTeacher（老師自己首頁用，只列未來待處理/已核准）不同。
-export function listOneOnOneHistoryForTeacher(teacherId: string) {
-  return prisma.makeupRequest.findMany({
-    where: { type: 'ONE_ON_ONE', teacherId },
-    select: {
-      id: true,
-      status: true,
-      slotDate: true,
-      slotStartTime: true,
-      slotEndTime: true,
-      leaveRequest: {
-        select: {
-          student: { select: { user: { select: SAFE_USER_SELECT } } },
-          class: { select: { name: true } },
-        },
-      },
-    },
-    orderBy: [{ slotDate: 'desc' }, { slotStartTime: 'desc' }],
-  });
-}
-
 export function listInsertionsForTeacherClasses(teacherId: string) {
   return prisma.makeupRequest.findMany({
     where: { type: 'INSERTION', targetClass: { teacherId } },

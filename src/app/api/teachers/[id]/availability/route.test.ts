@@ -6,6 +6,7 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 
 import { GET } from './route';
 import { createTeacher } from '@/lib/services/teacherService';
+import { setTeacherAvailability } from '@/lib/services/availabilityService';
 
 beforeEach(() => {
   sessionMock.mockReset();
@@ -15,7 +16,7 @@ const asAdmin = () => sessionMock.mockResolvedValue({ user: { id: 'admin-1', rol
 const asTeacher = () => sessionMock.mockResolvedValue({ user: { id: 'teacher-1', role: 'TEACHER' } });
 const asAnon = () => sessionMock.mockResolvedValue(null);
 
-describe('GET /api/teachers/[id]/one-on-one-slots', () => {
+describe('GET /api/teachers/[id]/availability', () => {
   it('403 when not admin', async () => {
     asTeacher();
     const res = await GET({} as never, { params: { id: 'x' } });
@@ -28,8 +29,19 @@ describe('GET /api/teachers/[id]/one-on-one-slots', () => {
     expect(res.status).toBe(403);
   });
 
-  it('200 with an empty list for a teacher with no one-on-one slots', async () => {
-    const teacher = await createTeacher({ name: '陳老師', email: 'oo-slots-route-chen@example.com', password: 'x', subjects: '圍棋' });
+  it('200 with the teacher\'s availability windows', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'avail-route-chen@example.com', password: 'x', subjects: '圍棋' });
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    asAdmin();
+    const res = await GET({} as never, { params: { id: teacher.id } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ weekday: 3, startTime: '16:00', endTime: '18:00' });
+  });
+
+  it('200 with an empty list for a teacher with no availability set', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'avail-route-lin@example.com', password: 'x', subjects: '英文' });
     asAdmin();
     const res = await GET({} as never, { params: { id: teacher.id } });
     expect(res.status).toBe(200);

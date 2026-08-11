@@ -7,10 +7,9 @@ import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
-import StatusBadge from '@/components/ui/StatusBadge';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface TeacherRow {
   id: string;
@@ -19,16 +18,11 @@ interface TeacherRow {
   user: { name: string; email: string };
 }
 
-interface OneOnOneSlotRow {
+interface AvailabilityWindowRow {
   id: string;
-  status: string;
-  slotDate: string;
-  slotStartTime: string;
-  slotEndTime: string;
-  leaveRequest: {
-    student: { user: { name: string } };
-    class: { name: string };
-  };
+  weekday: number;
+  startTime: string;
+  endTime: string;
 }
 
 export default function TeachersPage() {
@@ -44,8 +38,8 @@ export default function TeachersPage() {
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [oneOnOneSlots, setOneOnOneSlots] = useState<OneOnOneSlotRow[]>([]);
-  const [oneOnOneLoading, setOneOnOneLoading] = useState(false);
+  const [availabilityWindows, setAvailabilityWindows] = useState<AvailabilityWindowRow[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
 
   async function load() {
     try {
@@ -84,12 +78,12 @@ export default function TeachersPage() {
     setEditing(t);
     setEditForm({ name: t.user.name, email: t.user.email, password: '', subjects: t.subjects, phone: t.phone ?? '' });
     setEditError('');
-    setOneOnOneLoading(true);
-    fetch(`/api/teachers/${t.id}/one-on-one-slots`)
+    setAvailabilityLoading(true);
+    fetch(`/api/teachers/${t.id}/availability`)
       .then((res) => (res.ok ? res.json() : []))
-      .then(setOneOnOneSlots)
-      .catch(() => setOneOnOneSlots([]))
-      .finally(() => setOneOnOneLoading(false));
+      .then(setAvailabilityWindows)
+      .catch(() => setAvailabilityWindows([]))
+      .finally(() => setAvailabilityLoading(false));
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -138,12 +132,9 @@ export default function TeachersPage() {
     );
   });
 
-  const oneOnOneColumns: Column<OneOnOneSlotRow>[] = [
-    { header: '日期', render: (r) => formatDateWithWeekday(r.slotDate) },
-    { header: '時段', render: (r) => `${r.slotStartTime}-${r.slotEndTime}` },
-    { header: '學生', render: (r) => r.leaveRequest.student.user.name },
-    { header: '原班級', render: (r) => r.leaveRequest.class.name },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
+  const availabilityColumns: Column<AvailabilityWindowRow>[] = [
+    { header: '星期', render: (r) => `週${WEEKDAY_LABELS[r.weekday]}` },
+    { header: '時段', render: (r) => `${r.startTime}-${r.endTime}` },
   ];
 
   const columns: Column<TeacherRow>[] = [
@@ -235,15 +226,15 @@ export default function TeachersPage() {
 
         {editing && (
           <div className="mt-4 border-t border-borderStrong pt-3">
-            <p className="mb-2 text-sm font-medium text-ink">一對一補課時段（{oneOnOneSlots.length}）</p>
-            {oneOnOneLoading ? (
+            <p className="mb-2 text-sm font-medium text-ink">一對一補課可預約時段（{availabilityWindows.length}）</p>
+            {availabilityLoading ? (
               <p className="text-sm text-inkMuted">載入中…</p>
-            ) : oneOnOneSlots.length === 0 ? (
-              <p className="text-sm text-inkMuted">尚無一對一補課時段</p>
+            ) : availabilityWindows.length === 0 ? (
+              <p className="text-sm text-inkMuted">尚未設定可預約時段</p>
             ) : (
               <CollapsibleDataTable
-                columns={oneOnOneColumns}
-                rows={oneOnOneSlots}
+                columns={availabilityColumns}
+                rows={availabilityWindows}
                 keyField={(r) => r.id}
                 maxRows={3}
               />
