@@ -148,6 +148,11 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
             );
           })}
         </div>
+        <div className="mt-4 rounded-lg bg-[#FFF6E6] p-3 text-center">
+          <p className="text-sm font-bold text-brandInk">黑嘉嘉圍棋 - 大雅分校</p>
+          <p className="mt-1 text-xs text-brandInk/80">電話：(04)25673103</p>
+          <p className="text-xs text-brandInk/80">地址：台中市大雅區學府路250巷92-3號</p>
+        </div>
       </div>
     </div>
   );
