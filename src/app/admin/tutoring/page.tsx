@@ -90,7 +90,11 @@ function WindowFieldInputs({
       </label>
       <label className="flex flex-col gap-1 text-xs text-inkMuted">
         老師
-        <Select value={values.teacherId} onChange={(e) => onChange({ teacherId: e.target.value })} className="text-sm">
+        <Select
+          value={values.teacherId}
+          onChange={(e) => onChange({ teacherId: e.target.value })}
+          className={`text-sm ${values.teacherId ? '' : 'text-inkMuted'}`}
+        >
           <option value="">請選擇</option>
           {teachers.map((t) => (
             <option key={t.id} value={t.id}>
