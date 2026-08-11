@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import ClassAttendanceLedgerModal from '@/components/ClassAttendanceLedgerModal';
+import TutoringDeductionLedgerModal from '@/components/TutoringDeductionLedgerModal';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface ClassRow {
@@ -22,11 +22,14 @@ interface TutoringRow {
   monthlyQuota: number;
 }
 
-// 票券管理卡片裡的「課堂」清單：點某個班級可以開它自己的扣堂紀錄
-// （ClassAttendanceLedgerModal）；個別輔導維持連到 /student/tutoring 不變。
-// 抽成獨立 client component 是因為首頁本身是 server component。
+// 票券管理卡片裡的「課堂」清單：點某個班級開它自己的扣堂紀錄
+// （ClassAttendanceLedgerModal），點個別輔導開它自己的扣堂紀錄
+// （TutoringDeductionLedgerModal）；要實際預約個別輔導仍走側邊欄「個別輔導」
+// 連結去 /student/tutoring。抽成獨立 client component 是因為首頁本身是 server
+// component。
 export default function ClassesAndTutoringList({ myClasses, activeTutoring }: { myClasses: ClassRow[]; activeTutoring: TutoringRow[] }) {
   const [openClass, setOpenClass] = useState<ClassRow | null>(null);
+  const [openTutoring, setOpenTutoring] = useState<TutoringRow | null>(null);
 
   if (myClasses.length === 0 && activeTutoring.length === 0) {
     return <p className="py-2 text-sm text-inkMuted">尚未報名任何課堂</p>;
@@ -69,10 +72,11 @@ export default function ClassesAndTutoringList({ myClasses, activeTutoring }: { 
         </button>
       ))}
       {activeTutoring.map((e, i) => (
-        <Link
+        <button
           key={e.id}
-          href="/student/tutoring"
-          className={`flex items-baseline justify-between gap-3 py-2.5 transition-opacity hover:opacity-80 ${
+          type="button"
+          onClick={() => setOpenTutoring(e)}
+          className={`flex w-full items-baseline justify-between gap-3 py-2.5 text-left transition-opacity hover:opacity-80 ${
             myClasses.length + i > 0 ? 'border-t border-borderSubtle' : ''
           }`}
         >
@@ -80,13 +84,19 @@ export default function ClassesAndTutoringList({ myClasses, activeTutoring }: { 
           <span className="whitespace-nowrap text-xs tabular-nums text-inkMuted">
             本月<span className="font-semibold text-ink"> {e.locked}</span>／{e.monthlyQuota} 堂
           </span>
-        </Link>
+        </button>
       ))}
       <ClassAttendanceLedgerModal
         classId={openClass?.id ?? null}
         className={openClass?.name ?? ''}
         open={openClass !== null}
         onClose={() => setOpenClass(null)}
+      />
+      <TutoringDeductionLedgerModal
+        enrollmentId={openTutoring?.id ?? null}
+        programName={openTutoring?.programName ?? ''}
+        open={openTutoring !== null}
+        onClose={() => setOpenTutoring(null)}
       />
     </>
   );

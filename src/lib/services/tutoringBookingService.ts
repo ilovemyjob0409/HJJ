@@ -368,6 +368,80 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
   });
 }
 
+export interface TutoringLedgerRow {
+  id: string;
+  date: Date;
+  startTime: string;
+  endTime: string;
+  kind: 'REGULAR' | 'MAKEUP';
+  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+  checkInTime: string | null;
+  counted: boolean;
+  remainingAfter: number;
+}
+
+// 學生自己看的個別輔導「扣堂紀錄」：月額度按月重置，跟班級／弈廳的終身堂數池
+// 不同，所以「剩餘堂數」要照預約日期所在月份分組，各自從當月額度倒推，不能
+// 跨月累加。只有 REGULAR 且日期已過的預約才會真的扣掉當月名額（不論後來狀態
+// 是 BOOKED 還是被記為 CANCELLED_LATE，判斷邏輯跟 getMonthlyQuotaStatus 一致）；
+// MAKEUP 預約是把錯過的名額補回來，本身不再扣一次。
+export async function getTutoringDeductionLedger(
+  enrollmentId: string
+): Promise<{ monthlyQuota: number; history: TutoringLedgerRow[] }> {
+  const enrollment = await prisma.tutoringEnrollment.findUnique({
+    where: { id: enrollmentId },
+    include: { program: { select: { defaultMonthlyQuota: true } } },
+  });
+  if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
+  const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
+  const todayKey = taipeiDateKey(new Date());
+
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { enrollmentId },
+    select: {
+      id: true,
+      date: true,
+      startTime: true,
+      endTime: true,
+      kind: true,
+      status: true,
+      attendance: { select: { checkInTime: true } },
+    },
+    orderBy: { date: 'desc' },
+  });
+
+  const monthGroups = new Map<string, typeof bookings>();
+  for (const b of bookings) {
+    const monthKey = utcDateKey(b.date).slice(0, 7);
+    if (!monthGroups.has(monthKey)) monthGroups.set(monthKey, []);
+    monthGroups.get(monthKey)!.push(b);
+  }
+
+  const history: TutoringLedgerRow[] = [];
+  for (const rows of Array.from(monthGroups.values())) {
+    const countedInMonth = rows.filter((b) => b.kind === 'REGULAR' && utcDateKey(b.date) <= todayKey).length;
+    let runningAfter = quota - countedInMonth;
+    for (const b of rows) {
+      const counted = b.kind === 'REGULAR' && utcDateKey(b.date) <= todayKey;
+      const remainingAfter = runningAfter;
+      if (counted) runningAfter += 1;
+      history.push({
+        id: b.id,
+        date: b.date,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        kind: b.kind as TutoringLedgerRow['kind'],
+        status: b.status as TutoringLedgerRow['status'],
+        checkInTime: b.attendance?.checkInTime ?? null,
+        counted,
+        remainingAfter,
+      });
+    }
+  }
+
+  return { monthlyQuota: quota, history };
+}
+
 export interface MissedBookingRow {
   id: string;
   date: Date;

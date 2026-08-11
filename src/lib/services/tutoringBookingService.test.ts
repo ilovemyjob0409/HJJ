@@ -16,6 +16,7 @@ import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
+import { getTutoringDeductionLedger } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment } from './tutoringBookingService';
 
 describe('toMinutes / minutesToHHMM', () => {
@@ -400,6 +401,45 @@ describe('listBookingsForStudent', () => {
     expect(futureRow.canCancelFree).toBe(true);
     const missedRow = rows.find((r) => r.status === 'CANCELLED_LATE')!;
     expect(missedRow.canRequestMakeup).toBe(true);
+  });
+});
+
+describe('getTutoringDeductionLedger', () => {
+  it('counts past REGULAR bookings within their own month, resetting the running remainder at each month boundary', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(); // quota 8 (program default)
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21'), startTime: '16:00', endTime: '18:00' });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04'), startTime: '16:00', endTime: '18:00' });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(8);
+    expect(history.map((h) => [utcDateKey(h.date), h.counted, h.remainingAfter])).toEqual([
+      ['2020-09-04', true, 7], // September starts its own fresh quota of 8, not continuing from August
+      ['2020-08-21', true, 5],
+      ['2020-08-14', true, 6],
+      ['2020-08-07', true, 7],
+    ]);
+  });
+
+  it('does not deduct for a MAKEUP booking or a REGULAR booking whose date has not passed yet', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const future = new Date(Date.UTC(2099, 0, 2));
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future, startTime: '16:00', endTime: '18:00' });
+    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07'), startTime: '16:00', endTime: '18:00' });
+    await adminCancelBooking(missed.id, true);
+    await requestMakeup({ originalBookingId: missed.id, windowId: window.id, date: new Date('2020-08-14'), startTime: '16:00', endTime: '18:00' });
+
+    const { history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.counted, h.remainingAfter])).toEqual([
+      ['2099-01-02', 'REGULAR', false, 8], // upcoming, hasn't happened yet — doesn't deduct
+      ['2020-08-14', 'MAKEUP', false, 7], // makes up the missed slot, doesn't deduct again
+      ['2020-08-07', 'REGULAR', true, 7], // the missed original booking still deducted its slot
+    ]);
+  });
+
+  it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
+    await expect(getTutoringDeductionLedger('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
   });
 });
 
