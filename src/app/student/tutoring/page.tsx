@@ -133,7 +133,7 @@ export default function StudentTutoringPage() {
               <p className="text-sm text-inkMuted">
                 {selectedEnrollment.programName}・本月已計次 <b className="text-ink">{selectedEnrollment.locked}</b>／
                 {selectedEnrollment.monthlyQuota} 堂
-                {selectedEnrollment.upcoming > 0 && <>（另有 {selectedEnrollment.upcoming} 堂已預約未到）</>}
+                {selectedEnrollment.upcoming > 0 && <>（已預約 {selectedEnrollment.upcoming} 堂）</>}
               </p>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stripe">
                 <div
