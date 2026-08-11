@@ -38,6 +38,9 @@ export default async function StudentDashboard() {
     registeredCount: r.session._count.registrations,
   }));
 
+  const activeTutoring = tutoringEnrollments.filter((e) => e.active);
+  const hasTutoring = activeTutoring.length > 0;
+
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
@@ -47,38 +50,54 @@ export default async function StudentDashboard() {
         <div className="grid gap-5 sm:grid-cols-[1fr_1px_230px]">
           <div>
             <p className="mb-1 text-xs font-semibold text-inkMuted">課堂</p>
-            {myClasses.length === 0 ? (
+            {myClasses.length === 0 && !hasTutoring ? (
               <p className="py-2 text-sm text-inkMuted">尚未報名任何課堂</p>
             ) : (
-              myClasses.map((c, i) => (
-                <div key={c.id} className={`flex flex-col gap-1.5 py-2.5 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-sm font-semibold text-ink">{c.name}</span>
-                    <span className="whitespace-nowrap text-xs tabular-nums text-inkMuted">
-                      {c.quota.remaining !== null ? (
-                        <>
-                          <span className="font-semibold text-ink">{c.quota.usedSessions}</span>／{c.quota.totalSessions} 堂
-                        </>
-                      ) : (
-                        <>
-                          <span className="font-semibold text-ink">{c.quota.usedSessions}</span> 堂・未設定
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <p className="text-xs text-inkMuted">
-                    每週{WEEKDAY_LABELS[c.weekday]} {c.startTime}-{c.endTime}・{c.teacher.user.name}
-                  </p>
-                  {c.quota.totalSessions !== null && c.quota.totalSessions > 0 && (
-                    <div className="h-1 overflow-hidden rounded-full bg-stripe">
-                      <div
-                        className="h-full rounded-full bg-brand"
-                        style={{ width: `${Math.min(100, (c.quota.usedSessions / c.quota.totalSessions) * 100)}%` }}
-                      />
+              <>
+                {myClasses.map((c, i) => (
+                  <div key={c.id} className={`flex flex-col gap-1.5 py-2.5 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm font-semibold text-ink">{c.name}</span>
+                      <span className="whitespace-nowrap text-xs tabular-nums text-inkMuted">
+                        {c.quota.remaining !== null ? (
+                          <>
+                            <span className="font-semibold text-ink">{c.quota.usedSessions}</span>／{c.quota.totalSessions} 堂
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-semibold text-ink">{c.quota.usedSessions}</span> 堂・未設定
+                          </>
+                        )}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))
+                    <p className="text-xs text-inkMuted">
+                      每週{WEEKDAY_LABELS[c.weekday]} {c.startTime}-{c.endTime}・{c.teacher.user.name}
+                    </p>
+                    {c.quota.totalSessions !== null && c.quota.totalSessions > 0 && (
+                      <div className="h-1 overflow-hidden rounded-full bg-stripe">
+                        <div
+                          className="h-full rounded-full bg-brand"
+                          style={{ width: `${Math.min(100, (c.quota.usedSessions / c.quota.totalSessions) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {activeTutoring.map((e, i) => (
+                  <Link
+                    key={e.id}
+                    href="/student/tutoring"
+                    className={`flex items-baseline justify-between gap-3 py-2.5 transition-opacity hover:opacity-80 ${
+                      myClasses.length + i > 0 ? 'border-t border-borderSubtle' : ''
+                    }`}
+                  >
+                    <span className="text-sm font-semibold text-ink">{e.programName}</span>
+                    <span className="whitespace-nowrap text-xs tabular-nums text-inkMuted">
+                      本月<span className="font-semibold text-ink"> {e.locked}</span>／{e.monthlyQuota} 堂
+                    </span>
+                  </Link>
+                ))}
+              </>
             )}
           </div>
           <div className="hidden bg-borderSubtle sm:block" />
@@ -120,24 +139,6 @@ export default async function StudentDashboard() {
           </div>
         </Card>
       </Link>
-
-      {tutoringEnrollments.filter((e) => e.active).length > 0 && (
-        <Link href="/student/tutoring">
-          <Card className="mb-6 transition-shadow hover:shadow-md">
-            <p className="mb-2 text-sm text-inkMuted">個別輔導</p>
-            {tutoringEnrollments
-              .filter((e) => e.active)
-              .map((e, i) => (
-                <div key={e.id} className={`flex items-center justify-between gap-3 py-1.5 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}>
-                  <span className="text-sm font-semibold text-ink">{e.programName}</span>
-                  <span className="text-xs tabular-nums text-inkMuted">
-                    本月 <span className="font-semibold text-ink">{e.locked}</span>／{e.monthlyQuota} 堂
-                  </span>
-                </div>
-              ))}
-          </Card>
-        </Link>
-      )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/student/leave-request">
