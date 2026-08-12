@@ -183,7 +183,10 @@ export default function EnrollmentManager() {
       <h2 className="mb-2 mt-6 font-bold text-ink">學生報名管理</h2>
       <Card className="mb-4">
         <div className="flex flex-wrap items-end gap-2">
-          <label className="text-xs text-inkMuted">
+          {/* 這裡刻意用 div 不用 label：label 會把點擊轉發給第一個表單控件，
+              Safari 連點在按鈕上也照轉——選完學生後第一個控件變成 chip 的 ✕，
+              等於一點選就立刻被移除（Chromium 沒這行為，只有 Safari 會踩到）。 */}
+          <div className="text-xs text-inkMuted">
             學生
             {selectedStudentIds.length > 0 && (
               <div className="mb-1 flex flex-wrap gap-1">
@@ -220,6 +223,7 @@ export default function EnrollmentManager() {
                 </svg>
                 <input
                   type="text"
+                  aria-label="搜尋學生姓名"
                   placeholder="搜尋學生姓名"
                   value={studentQuery}
                   onChange={(e) => setStudentQuery(e.target.value)}
@@ -253,7 +257,7 @@ export default function EnrollmentManager() {
                 </div>
               )}
             </div>
-          </label>
+          </div>
           <label className="text-xs text-inkMuted">
             課程
             <select
