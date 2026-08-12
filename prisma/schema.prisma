@@ -80,6 +80,7 @@ enum TutoringBookingKind {
 enum TutoringBookingStatus {
   PENDING_ADMIN // 補課申請待行政核准（僅 MAKEUP 用）
   BOOKED        // 已確定（一般預約送出即是；補課核准後轉為此）
+  CANCELLED      // 提前取消，不計次，保留紀錄
   CANCELLED_LATE // 當天取消，計次
   REJECTED      // 補課申請被駁回
 }

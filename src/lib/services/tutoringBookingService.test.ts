@@ -133,12 +133,22 @@ describe('createBooking', () => {
 });
 
 describe('cancelBooking', () => {
-  it('deletes the booking outright when cancelled before the day-before cutoff', async () => {
+  it('keeps the row as CANCELLED (no quota hit, visible in history) when cancelled before the cutoff', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2)); // Friday, far in the future
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
     await cancelBooking(booking.id, enrollment.studentId);
-    expect(await prisma.tutoringBooking.findUnique({ where: { id: booking.id } })).toBeNull();
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(row.status).toBe('CANCELLED');
+  });
+
+  it('frees up the day capacity again after an early cancellation', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(1);
+    const future = new Date(Date.UTC(2099, 0, 2));
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
+    await cancelBooking(booking.id, enrollment.studentId);
+    // capacity 1: rebooking the same day only succeeds if CANCELLED no longer occupies the slot
+    await expect(createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future })).resolves.toBeTruthy();
   });
 
   it('marks the booking CANCELLED_LATE when the date has already arrived', async () => {
@@ -163,11 +173,11 @@ describe('cancelBooking', () => {
 });
 
 describe('adminCancelBooking', () => {
-  it('deletes the booking when countsTowardQuota is false', async () => {
+  it('keeps the row as CANCELLED when countsTowardQuota is false', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await adminCancelBooking(booking.id, false);
-    expect(await prisma.tutoringBooking.findUnique({ where: { id: booking.id } })).toBeNull();
+    expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('CANCELLED');
   });
 
   it('marks CANCELLED_LATE when countsTowardQuota is true', async () => {
@@ -311,6 +321,17 @@ describe('getMonthlyQuotaStatus', () => {
   it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
     await expect(getMonthlyQuotaStatus('nonexistent-enrollment-id', '2026-08')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
   });
+
+  it('never counts an early-cancelled (CANCELLED) booking, even after its date passes', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const past = new Date('2020-08-07');
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
+    await prisma.tutoringBooking.update({ where: { id: booking.id }, data: { status: 'CANCELLED' } });
+
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2020-08');
+    expect(status.locked).toBe(0);
+    expect(status.upcoming).toBe(0);
+  });
 });
 
 describe('listAvailability', () => {
@@ -333,6 +354,42 @@ describe('listAvailability', () => {
   it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
     await expect(listAvailability('nonexistent-enrollment-id', 14)).rejects.toThrow('ENROLLMENT_NOT_FOUND');
   });
+
+  it('marks days already booked by this enrollment, but not days booked by others', async () => {
+    const { window, enrollment, program } = await setupProgramWithEnrollment(8);
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.filter((d) => d.windowId === window.id)[0];
+    expect(target.myBookingId).toBeNull();
+
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(target.date) });
+    const after = await listAvailability(enrollment.id, 14);
+    expect(after.find((d) => d.date === target.date)).toMatchObject({
+      myBookingId: booking.id,
+      myBookingStatus: 'BOOKED',
+    });
+
+    // another student's booking must not mark the day for this enrollment
+    const other = await createStudent({ name: '別人', email: `someone-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: other.id } });
+    const otherView = await listAvailability(otherEnrollment.id, 14);
+    expect(otherView.find((d) => d.date === target.date)).toMatchObject({ myBookingId: null, myBookingStatus: null });
+  });
+
+  it('does not mark a day whose booking was early-cancelled, and restores its remaining count', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(8);
+    const days = await listAvailability(enrollment.id, 14);
+    // 取最後一個窗口日：一定晚於今天，取消才會走「提前取消」而不是當天取消
+    const target = days.filter((d) => d.windowId === window.id).at(-1)!;
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(target.date) });
+    await cancelBooking(booking.id, enrollment.studentId);
+
+    const after = await listAvailability(enrollment.id, 14);
+    expect(after.find((d) => d.date === target.date)).toMatchObject({
+      remaining: 8,
+      myBookingId: null,
+      myBookingStatus: null,
+    });
+  });
 });
 
 describe('listBookingsForStudent', () => {
@@ -350,6 +407,17 @@ describe('listBookingsForStudent', () => {
     expect(futureRow.canCancelFree).toBe(true);
     const missedRow = rows.find((r) => r.status === 'CANCELLED_LATE')!;
     expect(missedRow.canRequestMakeup).toBe(true);
+  });
+
+  it('keeps an early-cancelled booking visible in history, with no cancel/makeup affordances', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const future = new Date(Date.UTC(2099, 0, 2));
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
+    await cancelBooking(booking.id, enrollment.studentId);
+
+    const rows = await listBookingsForStudent(enrollment.studentId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'CANCELLED', canCancelFree: false, canRequestMakeup: false });
   });
 });
 
@@ -393,6 +461,19 @@ describe('getTutoringDeductionLedger', () => {
 
   it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
     await expect(getTutoringDeductionLedger('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
+  it('does not deduct for an early-cancelled (CANCELLED) booking even after its date passes', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
+    await prisma.tutoringBooking.update({ where: { id: cancelled.id }, data: { status: 'CANCELLED' } });
+
+    const { history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.remainingAfter])).toEqual([
+      ['2020-08-07', 'DEDUCT', 7],
+      ['2020-08-01', 'GRANT', 8],
+    ]);
   });
 });
 

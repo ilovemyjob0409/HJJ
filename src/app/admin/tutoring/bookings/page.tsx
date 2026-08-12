@@ -19,7 +19,7 @@ interface OverviewRow {
   windowId: string;
   date: string;
   kind: 'REGULAR' | 'MAKEUP';
-  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
 }
 
 interface SummaryRow {

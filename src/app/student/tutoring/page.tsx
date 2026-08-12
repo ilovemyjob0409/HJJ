@@ -25,7 +25,7 @@ interface BookingRow {
   programName: string;
   date: string;
   kind: 'REGULAR' | 'MAKEUP';
-  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
   canCancelFree: boolean;
   canRequestMakeup: boolean;
 }
@@ -153,6 +153,10 @@ export default function StudentTutoringPage() {
                   loadBookings();
                   if (!makeupFor) loadEnrollments();
                   setMakeupFor(null);
+                }}
+                onCancelledBooking={() => {
+                  loadBookings();
+                  loadEnrollments();
                 }}
               />
             )}

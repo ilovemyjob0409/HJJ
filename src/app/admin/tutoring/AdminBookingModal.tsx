@@ -75,10 +75,12 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
           mode={kind}
           makeupForBookingId={kind === 'makeup' ? makeupOriginalId : undefined}
           successMessage={kind === 'makeup' ? '已建立補課預約' : '已新增預約'}
+          isAdmin
           onBooked={() => {
             onBooked();
             onClose();
           }}
+          onCancelledBooking={onBooked}
         />
       )}
     </Modal>

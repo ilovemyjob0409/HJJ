@@ -3,13 +3,16 @@
 import { useEffect, useState } from 'react';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
-import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
+import { useConfirm } from '@/components/ui/ConfirmModal';
+import { WEEKDAY_LABELS, formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
 
 export interface AvailabilityDay {
   date: string;
   windowId: string;
   capacity: number;
   remaining: number;
+  myBookingId: string | null;
+  myBookingStatus: 'BOOKED' | 'PENDING_ADMIN' | null;
 }
 
 interface MonthCell {
@@ -31,22 +34,28 @@ interface TutoringBookingCalendarProps {
   mode: 'regular' | 'makeup';
   makeupForBookingId?: string;
   successMessage?: string;
+  isAdmin?: boolean;
   onCancel?: () => void;
   onBooked: () => void;
+  onCancelledBooking?: () => void;
 }
 
 // 預約不再選時段，一天就是一格：一般預約可以連點好幾天再一次送出（每天各
 // 自建立一筆預約、各自檢查容量）；補課是在補一筆特定的缺席，維持點一天就
-// 直接送出。格子上顯示當天剩餘名額。
+// 直接送出。格子上顯示當天剩餘名額。本人已約的日期以「已約」標示，一般模
+// 式下點擊可直接取消該天預約（按掉）。
 export default function TutoringBookingCalendar({
   enrollmentId,
   mode,
   makeupForBookingId,
   successMessage,
+  isAdmin,
   onCancel,
   onBooked,
+  onCancelledBooking,
 }: TutoringBookingCalendarProps) {
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [availability, setAvailability] = useState<AvailabilityDay[]>([]);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -79,6 +88,36 @@ export default function TutoringBookingCalendar({
     setSelectedDates((prev) => (prev.includes(day.date) ? prev.filter((d) => d !== day.date) : [...prev, day.date].sort()));
   }
 
+  // 按掉已約日期＝取消該天預約。行政端走免計次取消；學生端由後端套原本的
+  // 取消規則（當天取消記 CANCELLED_LATE 計次），所以文案要先講清楚。
+  async function cancelBookedDay(day: AvailabilityDay) {
+    if (submitting || !day.myBookingId) return;
+    const dateLabel = formatDateWithWeekday(day.date, 'zh-TW');
+    const message = isAdmin
+      ? `確定要取消 ${dateLabel} 的預約嗎？（不計次）`
+      : isTodayTaipei(day.date)
+        ? `今天取消會計入本月次數，之後可申請補課。確定要取消 ${dateLabel} 的預約嗎？`
+        : `確定要取消 ${dateLabel} 的預約嗎？`;
+    if (!(await confirm(message, { danger: !isAdmin && isTodayTaipei(day.date) }))) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/tutoring-bookings/${day.myBookingId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countsTowardQuota: false }),
+      });
+      if (!res.ok) {
+        showToast('取消失敗，請稍後再試');
+        return;
+      }
+      showToast('已取消預約');
+      onCancelledBooking?.();
+      loadAvailability();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function renderMonthGrid(year: number, month: number) {
     const cells = buildMonthCells(year, month);
     const leadingBlanks = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
@@ -98,27 +137,32 @@ export default function TutoringBookingCalendar({
           ))}
           {cells.map((cell) => {
             const day = availabilityByDate.get(cell.dateKey);
-            const bookable = !!day && day.remaining > 0;
-            const selected = selectedDates.includes(cell.dateKey);
+            const mine = !!day?.myBookingId;
+            // 已約日期只有「一般模式＋已確定的預約」才能按掉；待核准的補課申請回列表處理
+            const cancellable = mine && day!.myBookingStatus === 'BOOKED' && mode === 'regular';
+            const bookable = !mine && !!day && day.remaining > 0;
+            const selected = !mine && selectedDates.includes(cell.dateKey);
             return (
               <button
                 key={cell.dateKey}
-                disabled={!bookable}
-                onClick={() => day && toggleDay(day)}
+                disabled={mine ? !cancellable : !bookable}
+                onClick={() => day && (mine ? cancelBookedDay(day) : toggleDay(day))}
                 className={`flex flex-col items-center rounded-lg py-1.5 text-sm ${
-                  selected
-                    ? 'bg-brand font-semibold text-brandInk'
-                    : bookable
-                      ? 'bg-approvedBg font-semibold text-approved'
-                      : day
-                        ? 'bg-stripe text-inkMuted'
-                        : 'text-inkMuted opacity-50'
+                  mine
+                    ? 'bg-pendingBg font-semibold text-pending'
+                    : selected
+                      ? 'bg-brand font-semibold text-brandInk'
+                      : bookable
+                        ? 'bg-approvedBg font-semibold text-approved'
+                        : day
+                          ? 'bg-stripe text-inkMuted'
+                          : 'text-inkMuted opacity-50'
                 }`}
               >
                 <span>{cell.day}</span>
                 {day && (
-                  <span className={`text-[10px] font-normal ${selected ? 'text-brandInk' : 'text-inkMuted'}`}>
-                    {day.remaining > 0 ? `剩${day.remaining}` : '已滿'}
+                  <span className={`text-[10px] font-normal ${mine ? 'text-pending' : selected ? 'text-brandInk' : 'text-inkMuted'}`}>
+                    {mine ? '已約' : day.remaining > 0 ? `剩${day.remaining}` : '已滿'}
                   </span>
                 )}
               </button>
@@ -182,6 +226,10 @@ export default function TutoringBookingCalendar({
       {renderMonthGrid(calendarYear, calendarMonth)}
       {mode === 'makeup' && renderMonthGrid(nextCalendarYear, nextCalendarMonth)}
 
+      {mode === 'regular' && availability.some((d) => d.myBookingId) && (
+        <p className="text-xs text-inkMuted">「已約」為這位學生已預約的日期，點一下即可取消該天預約。</p>
+      )}
+
       {mode === 'makeup' ? (
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-borderSubtle pt-3">
           <p className="text-sm text-inkMuted">{submitting ? '送出中…' : '點選日期即送出補課申請'}</p>
@@ -212,6 +260,7 @@ export default function TutoringBookingCalendar({
           </div>
         )
       )}
+      {ConfirmDialog}
     </>
   );
 }

@@ -11,6 +11,7 @@ export type KnownStatus =
   | 'ABSENT'
   | 'NOT_REGISTERED'
   | 'BOOKED'
+  | 'CANCELLED'
   | 'CANCELLED_LATE';
 
 interface StatusConfig {
@@ -34,6 +35,8 @@ const STATUS_CONFIG: Record<KnownStatus, StatusConfig> = {
   NOT_REGISTERED: { label: '未報名', bg: 'bg-borderSubtle', text: 'text-inkMuted' },
   // 個別輔導預約狀態
   BOOKED: { label: '已預約', bg: 'bg-approvedBg', text: 'text-approved' },
+  // 提前取消 → 不計次；中性灰顯示（跟「當天取消」的紅色區隔）
+  CANCELLED: { label: '已取消', bg: 'bg-borderSubtle', text: 'text-inkMuted' },
   CANCELLED_LATE: { label: '當天取消', bg: 'bg-rejectedBg', text: 'text-rejected' },
 };
 

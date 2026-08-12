@@ -110,7 +110,8 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
 
   const late = isCancellationLate(utcDateKey(booking.date), taipeiDateKey(new Date()));
   if (!late) {
-    await prisma.tutoringBooking.delete({ where: { id: bookingId } });
+    // 提前取消：保留紀錄（狀態 CANCELLED、不計次），學生的預約紀錄才看得到這筆取消
+    await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
     return;
   }
   await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
@@ -120,7 +121,7 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
 export async function adminCancelBooking(bookingId: string, countsTowardQuota: boolean): Promise<void> {
   try {
     if (!countsTowardQuota) {
-      await prisma.tutoringBooking.delete({ where: { id: bookingId } });
+      await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
       return;
     }
     await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
@@ -212,6 +213,7 @@ export async function getMonthlyQuotaStatus(
   let locked = 0;
   let upcoming = 0;
   for (const b of bookings) {
+    if (b.status === 'CANCELLED') continue; // 提前取消不計次，日期過了也一樣
     const key = utcDateKey(b.date);
     if (key <= todayKey) locked++;
     else if (b.status === 'BOOKED') upcoming++;
@@ -224,6 +226,10 @@ export interface AvailabilityDay {
   windowId: string;
   capacity: number;
   remaining: number;
+  // 這筆報名自己在這一天的預約（日曆用不同色標示「已約」、點擊可取消）；
+  // PENDING_ADMIN 是待核准的補課申請，只標示不開放按掉
+  myBookingId: string | null;
+  myBookingStatus: 'BOOKED' | 'PENDING_ADMIN' | null;
 }
 
 export async function listAvailability(enrollmentId: string, days = 14): Promise<AvailabilityDay[]> {
@@ -232,6 +238,24 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
   const windows = await prisma.tutoringWindow.findMany({ where: { programId: enrollment.programId, active: true } });
   const todayKey = taipeiDateKey(new Date());
   const [ty, tm, td] = todayKey.split('-').map(Number);
+
+  const myBookings = await prisma.tutoringBooking.findMany({
+    where: {
+      enrollmentId,
+      status: { in: ['BOOKED', 'PENDING_ADMIN'] },
+      date: { gte: new Date(Date.UTC(ty, tm - 1, td)), lte: new Date(Date.UTC(ty, tm - 1, td + days - 1)) },
+    },
+    select: { id: true, date: true, status: true },
+  });
+  const mineByDate = new Map<string, { id: string; status: 'BOOKED' | 'PENDING_ADMIN' }>();
+  for (const b of myBookings) {
+    const key = utcDateKey(b.date);
+    const existing = mineByDate.get(key);
+    // 同一天有多筆時優先顯示 BOOKED（可按掉的那筆）
+    if (!existing || (existing.status !== 'BOOKED' && b.status === 'BOOKED')) {
+      mineByDate.set(key, { id: b.id, status: b.status as 'BOOKED' | 'PENDING_ADMIN' });
+    }
+  }
 
   const result: AvailabilityDay[] = [];
   for (let i = 0; i < days; i++) {
@@ -247,11 +271,14 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
     const booked = await prisma.tutoringBooking.count({
       where: { windowId: window.id, date: d, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
     });
+    const mine = mineByDate.get(utcDateKey(d));
     result.push({
       date: utcDateKey(d),
       windowId: window.id,
       capacity: window.capacity,
       remaining: Math.max(0, window.capacity - booked),
+      myBookingId: mine?.id ?? null,
+      myBookingStatus: mine?.status ?? null,
     });
   }
   return result;
@@ -262,7 +289,7 @@ export interface StudentBookingRow {
   programName: string;
   date: Date;
   kind: 'REGULAR' | 'MAKEUP';
-  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
   canCancelFree: boolean;
   canRequestMakeup: boolean;
 }
@@ -347,10 +374,11 @@ export async function getTutoringDeductionLedger(
 
   const history: TutoringLedgerRow[] = [];
   for (const [monthKey, rows] of Array.from(monthGroups.entries())) {
-    const countedInMonth = rows.filter((b) => b.kind === 'REGULAR' && utcDateKey(b.date) <= todayKey).length;
+    // 提前取消（CANCELLED）不扣堂，日期過了也一樣——判斷邏輯跟 getMonthlyQuotaStatus 一致
+    const countedInMonth = rows.filter((b) => b.kind === 'REGULAR' && b.status !== 'CANCELLED' && utcDateKey(b.date) <= todayKey).length;
     let runningAfter = quota - countedInMonth;
     for (const b of rows) {
-      const counted = b.kind === 'REGULAR' && utcDateKey(b.date) <= todayKey;
+      const counted = b.kind === 'REGULAR' && b.status !== 'CANCELLED' && utcDateKey(b.date) <= todayKey;
       const remainingAfter = runningAfter;
       if (counted) runningAfter += 1;
       if (!counted) continue;
@@ -409,7 +437,7 @@ export interface OverviewBookingRow {
   windowId: string;
   date: Date;
   kind: 'REGULAR' | 'MAKEUP';
-  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED_LATE' | 'REJECTED';
+  status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
 }
 
 export async function listBookingsOverview(date: Date): Promise<OverviewBookingRow[]> {
