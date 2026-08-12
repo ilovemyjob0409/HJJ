@@ -12,7 +12,7 @@ import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger } from './tutoringBookingService';
-import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment } from './tutoringBookingService';
+import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment, listMonthlyBookingCounts } from './tutoringBookingService';
 
 describe('utcDateKey / taipeiDateKey', () => {
   it('formats as YYYY-MM-DD', () => {
@@ -474,6 +474,38 @@ describe('getTutoringDeductionLedger', () => {
       ['2020-08-07', 'DEDUCT', 7],
       ['2020-08-01', 'GRANT', 8],
     ]);
+  });
+});
+
+describe('listMonthlyBookingCounts', () => {
+  it('counts BOOKED and PENDING_ADMIN per day, excluding cancelled/rejected rows', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const other = await createStudent({ name: '同學', email: `peer-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({
+      data: { programId: (await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: window.id } })).programId, studentId: other.id },
+    });
+
+    // 8/7：兩筆 BOOKED＋一筆提前取消（不該計入）
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringBooking.update({ where: { id: cancelled.id }, data: { status: 'CANCELLED' } });
+
+    // 8/14：一筆當天取消（不該計入）＋一筆補課申請待核准（pending）
+    const late = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
+    await adminCancelBooking(late.id, true);
+    await requestMakeup({ originalBookingId: late.id, windowId: window.id, date: new Date('2020-08-14') });
+
+    const counts = await listMonthlyBookingCounts('2020-08');
+    expect(counts).toEqual([
+      { date: '2020-08-07', booked: 2, pending: 0 },
+      { date: '2020-08-14', booked: 0, pending: 1 },
+    ]);
+  });
+
+  it('returns an empty array for a month with no bookings', async () => {
+    await setupProgramWithEnrollment();
+    expect(await listMonthlyBookingCounts('2019-01')).toEqual([]);
   });
 });
 

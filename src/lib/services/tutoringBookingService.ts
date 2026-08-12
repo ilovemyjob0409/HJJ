@@ -466,6 +466,35 @@ export async function listBookingsOverview(date: Date): Promise<OverviewBookingR
     .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }
 
+export interface DailyBookingCount {
+  date: string; // YYYY-MM-DD
+  booked: number;
+  pending: number;
+}
+
+// 月曆總覽用：整月每天的預約人數，一次 groupBy 撈完（不逐日查詢）。
+// booked＝已確定會來的人數；pending＝待核准的補課申請（也佔容量，分開顯示）。
+export async function listMonthlyBookingCounts(monthKey: string): Promise<DailyBookingCount[]> {
+  const [year, month] = monthKey.split('-').map(Number);
+  const groups = await prisma.tutoringBooking.groupBy({
+    by: ['date', 'status'],
+    where: {
+      date: { gte: new Date(Date.UTC(year, month - 1, 1)), lte: new Date(Date.UTC(year, month, 0)) },
+      status: { in: ['BOOKED', 'PENDING_ADMIN'] },
+    },
+    _count: { _all: true },
+  });
+  const byDate = new Map<string, DailyBookingCount>();
+  for (const g of groups) {
+    const key = utcDateKey(g.date);
+    const row = byDate.get(key) ?? { date: key, booked: 0, pending: 0 };
+    if (g.status === 'BOOKED') row.booked += g._count._all;
+    else row.pending += g._count._all;
+    byDate.set(key, row);
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export interface PendingMakeupRow {
   id: string;
   studentName: string;

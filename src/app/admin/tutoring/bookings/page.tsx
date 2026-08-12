@@ -5,12 +5,14 @@ import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Modal from '@/components/ui/Modal';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { Column } from '@/components/ui/DataTable';
 import DataTable from '@/components/ui/DataTable';
 import ExportCsvButton from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
+import { WEEKDAY_LABELS, formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
 
 interface OverviewRow {
   id: string;
@@ -32,22 +34,43 @@ interface SummaryRow {
   makeup: number;
 }
 
+interface DailyCount {
+  date: string;
+  booked: number;
+  pending: number;
+}
+
 function todayDateInput() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function shiftMonth(monthKey: string, delta: number): string {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function AdminTutoringBookingsPage() {
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [date, setDate] = useState(todayDateInput());
+  // 月曆總覽的月份與逐日人數；點日期後在彈窗載入該日名單
+  const [calMonth, setCalMonth] = useState(todayDateInput().slice(0, 7));
+  const [counts, setCounts] = useState<DailyCount[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [rows, setRows] = useState<OverviewRow[]>([]);
   const [month, setMonth] = useState(todayDateInput().slice(0, 7));
   const [summary, setSummary] = useState<SummaryRow[]>([]);
   const [choosingId, setChoosingId] = useState<string | null>(null);
 
-  async function loadOverview() {
+  async function loadCounts() {
+    const res = await fetch(`/api/tutoring-bookings/overview?month=${calMonth}`);
+    setCounts(await res.json());
+  }
+
+  async function loadDay(date: string) {
     setChoosingId(null);
+    setRows([]);
     const res = await fetch(`/api/tutoring-bookings/overview?date=${date}`);
     setRows(await res.json());
   }
@@ -58,9 +81,14 @@ export default function AdminTutoringBookingsPage() {
   }
 
   useEffect(() => {
-    loadOverview();
+    loadCounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  }, [calMonth]);
+
+  useEffect(() => {
+    if (selectedDate) loadDay(selectedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   useEffect(() => {
     loadSummary();
@@ -76,7 +104,8 @@ export default function AdminTutoringBookingsPage() {
       body: JSON.stringify({ countsTowardQuota }),
     });
     showToast('已取消');
-    loadOverview();
+    if (selectedDate) loadDay(selectedDate);
+    loadCounts();
   }
 
   const columns: Column<OverviewRow>[] = [
@@ -134,13 +163,60 @@ export default function AdminTutoringBookingsPage() {
       </Link>
       <h1 className="mb-4 text-xl font-bold text-ink">個別輔導預約總覽</h1>
 
-      <div className="mb-4 flex items-center gap-2">
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      </div>
-
       <Card className="mb-6">
-        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} emptyText="這天沒有預約" />
+        <div className="mb-3 flex items-center justify-between">
+          <Button variant="secondary" className="px-2 py-1 text-sm" onClick={() => setCalMonth(shiftMonth(calMonth, -1))}>
+            ‹ 上個月
+          </Button>
+          <p className="font-semibold text-ink">
+            {Number(calMonth.slice(0, 4))}年{Number(calMonth.slice(5, 7))}月
+          </p>
+          <Button variant="secondary" className="px-2 py-1 text-sm" onClick={() => setCalMonth(shiftMonth(calMonth, 1))}>
+            下個月 ›
+          </Button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center text-xs text-inkMuted">
+          {WEEKDAY_LABELS.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {(() => {
+            const [y, m] = calMonth.split('-').map(Number);
+            const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+            const leadingBlanks = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+            const countsByDate = new Map(counts.map((c) => [c.date, c]));
+            return [
+              ...Array.from({ length: leadingBlanks }).map((_, i) => <span key={`blank-${i}`} />),
+              ...Array.from({ length: daysInMonth }).map((_, i) => {
+                const dateKey = `${calMonth}-${String(i + 1).padStart(2, '0')}`;
+                const count = countsByDate.get(dateKey);
+                const hasAny = !!count && count.booked + count.pending > 0;
+                const today = isTodayTaipei(dateKey);
+                return (
+                  <button
+                    key={dateKey}
+                    disabled={!hasAny}
+                    onClick={() => setSelectedDate(dateKey)}
+                    className={`flex min-h-16 flex-col items-center justify-start rounded-lg py-1.5 text-sm transition-colors ${
+                      hasAny ? 'bg-approvedBg font-semibold text-approved hover:brightness-95' : 'text-inkMuted opacity-60'
+                    } ${today ? 'ring-2 ring-brand' : ''}`}
+                  >
+                    <span>{i + 1}</span>
+                    {count && count.booked > 0 && <span className="text-[10px] font-normal text-inkMuted">預約{count.booked}人</span>}
+                    {count && count.pending > 0 && <span className="text-[10px] font-normal text-pending">待確認{count.pending}</span>}
+                  </button>
+                );
+              }),
+            ];
+          })()}
+        </div>
+        <p className="mt-2 text-xs text-inkMuted">點有預約的日期查看名單；「待確認」為尚未核准的補課申請。</p>
       </Card>
+
+      <Modal open={selectedDate !== null} onClose={() => setSelectedDate(null)} title={selectedDate ? `${formatDateWithWeekday(selectedDate)} 名單` : ''}>
+        <DataTable columns={columns} rows={rows} keyField={(r) => r.id} emptyText="這天沒有預約" />
+      </Modal>
 
       <div className="mb-2 mt-6 flex items-center justify-between">
         <h2 className="font-bold text-ink">當月出席總表</h2>
