@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import ClassAttendanceLedgerModal from '@/components/ClassAttendanceLedgerModal';
 import TutoringDeductionLedgerModal from '@/components/TutoringDeductionLedgerModal';
+import TutoringQuotaBar from '@/components/tutoring/TutoringQuotaBar';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface ClassRow {
@@ -19,6 +20,7 @@ interface TutoringRow {
   id: string;
   programName: string;
   locked: number;
+  upcoming: number;
   monthlyQuota: number;
 }
 
@@ -76,14 +78,12 @@ export default function ClassesAndTutoringList({ myClasses, activeTutoring }: { 
           key={e.id}
           type="button"
           onClick={() => setOpenTutoring(e)}
-          className={`flex w-full items-baseline justify-between gap-3 py-2.5 text-left transition-opacity hover:opacity-80 ${
+          className={`flex w-full flex-col gap-1.5 py-2.5 text-left transition-opacity hover:opacity-80 ${
             myClasses.length + i > 0 ? 'border-t border-borderSubtle' : ''
           }`}
         >
           <span className="text-sm font-semibold text-ink">{e.programName}</span>
-          <span className="whitespace-nowrap text-xs tabular-nums text-inkMuted">
-            本月<span className="font-semibold text-ink"> {e.locked}</span>／{e.monthlyQuota} 堂
-          </span>
+          <TutoringQuotaBar locked={e.locked} upcoming={e.upcoming} quota={e.monthlyQuota} dense />
         </button>
       ))}
       <ClassAttendanceLedgerModal

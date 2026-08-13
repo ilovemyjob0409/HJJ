@@ -38,6 +38,8 @@ interface TutoringBookingCalendarProps {
   onCancel?: () => void;
   onBooked: () => void;
   onCancelledBooking?: () => void;
+  // 已勾選（尚未送出）的天數變動時通知外層，額度條要即時扣剩餘
+  onSelectionChange?: (count: number) => void;
 }
 
 // 預約不再選時段，一天就是一格：一般預約可以連點好幾天再一次送出（每天各
@@ -53,12 +55,18 @@ export default function TutoringBookingCalendar({
   onCancel,
   onBooked,
   onCancelledBooking,
+  onSelectionChange,
 }: TutoringBookingCalendarProps) {
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [availability, setAvailability] = useState<AvailabilityDay[]>([]);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    onSelectionChange?.(selectedDates.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDates]);
 
   async function loadAvailability() {
     const months = mode === 'makeup' ? 2 : 1;

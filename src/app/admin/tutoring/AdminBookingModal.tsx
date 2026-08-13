@@ -4,10 +4,17 @@ import { useEffect, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
+import TutoringQuotaBar from '@/components/tutoring/TutoringQuotaBar';
 
 interface MissedBookingOption {
   id: string;
   date: string;
+}
+
+interface QuotaStatus {
+  locked: number;
+  upcoming: number;
+  quota: number;
 }
 
 interface AdminBookingModalProps {
@@ -20,6 +27,18 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
   const [kind, setKind] = useState<'regular' | 'makeup'>('regular');
   const [missedBookings, setMissedBookings] = useState<MissedBookingOption[]>([]);
   const [makeupOriginalId, setMakeupOriginalId] = useState('');
+  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null);
+  const [selectedCount, setSelectedCount] = useState(0);
+
+  async function loadQuota() {
+    const res = await fetch(`/api/tutoring-enrollments/${enrollment.id}`);
+    if (res.ok) setQuotaStatus(await res.json());
+  }
+
+  useEffect(() => {
+    loadQuota();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrollment.id]);
 
   useEffect(() => {
     if (kind !== 'makeup') {
@@ -35,6 +54,16 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
 
   return (
     <Modal open onClose={onClose} title={`新增預約：${enrollment.studentName}・${enrollment.programName}`}>
+      {quotaStatus && (
+        <div className="mb-3 rounded-lg bg-stripe px-3 py-2">
+          <TutoringQuotaBar
+            locked={quotaStatus.locked}
+            upcoming={quotaStatus.upcoming}
+            quota={quotaStatus.quota}
+            selectedCount={kind === 'regular' ? selectedCount : 0}
+          />
+        </div>
+      )}
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <label className="text-xs text-inkMuted">
           類型
@@ -80,7 +109,11 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
             onBooked();
             onClose();
           }}
-          onCancelledBooking={onBooked}
+          onCancelledBooking={() => {
+            loadQuota();
+            onBooked();
+          }}
+          onSelectionChange={setSelectedCount}
         />
       )}
     </Modal>

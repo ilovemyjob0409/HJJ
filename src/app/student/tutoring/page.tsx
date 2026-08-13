@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
+import TutoringQuotaBar from '@/components/tutoring/TutoringQuotaBar';
 
 interface Enrollment {
   id: string;
@@ -126,17 +127,12 @@ export default function StudentTutoringPage() {
 
           {selectedEnrollment && (
             <Card className="mb-4">
-              <p className="text-sm text-inkMuted">
-                {selectedEnrollment.programName}・本月已計次 <b className="text-ink">{selectedEnrollment.locked}</b>／
-                {selectedEnrollment.monthlyQuota} 堂
-                {selectedEnrollment.upcoming > 0 && <>（已預約 {selectedEnrollment.upcoming} 堂）</>}
-              </p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stripe">
-                <div
-                  className="h-full rounded-full bg-brand"
-                  style={{ width: `${Math.min(100, (selectedEnrollment.locked / selectedEnrollment.monthlyQuota) * 100)}%` }}
-                />
-              </div>
+              <p className="mb-1 text-sm font-semibold text-ink">{selectedEnrollment.programName}</p>
+              <TutoringQuotaBar
+                locked={selectedEnrollment.locked}
+                upcoming={selectedEnrollment.upcoming}
+                quota={selectedEnrollment.monthlyQuota}
+              />
             </Card>
           )}
 
