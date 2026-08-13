@@ -20,7 +20,15 @@ export function createProgram(input: CreateProgramInput) {
 
 export function listPrograms() {
   return prisma.tutoringProgram.findMany({
-    include: { windows: { include: { teacher: { select: { user: { select: { name: true } } } }, closures: true } } },
+    include: {
+      windows: {
+        include: {
+          teacher: { select: { user: { select: { name: true } } } },
+          teacher2: { select: { user: { select: { name: true } } } },
+          closures: true,
+        },
+      },
+    },
     orderBy: { name: 'asc' },
   });
 }
@@ -61,11 +69,13 @@ export interface CreateWindowInput {
   endTime: string;
   capacity: number;
   teacherId: string;
+  teacherId2?: string | null; // 選填的第二位老師（長時段換班）
 }
 
 export async function createWindow(input: CreateWindowInput) {
+  if (input.teacherId2 && input.teacherId2 === input.teacherId) throw new Error('DUPLICATE_TEACHER');
   try {
-    return await prisma.tutoringWindow.create({ data: input });
+    return await prisma.tutoringWindow.create({ data: { ...input, teacherId2: input.teacherId2 || null } });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
       if (err.message.includes('programId')) throw new Error('PROGRAM_NOT_FOUND');
@@ -81,12 +91,17 @@ export interface UpdateWindowInput {
   endTime?: string;
   capacity?: number;
   teacherId?: string;
+  teacherId2?: string | null;
   active?: boolean;
 }
 
 export async function updateWindow(id: string, input: UpdateWindowInput) {
+  if (input.teacherId2) {
+    const mainTeacherId = input.teacherId ?? (await prisma.tutoringWindow.findUnique({ where: { id }, select: { teacherId: true } }))?.teacherId;
+    if (input.teacherId2 === mainTeacherId) throw new Error('DUPLICATE_TEACHER');
+  }
   try {
-    return await prisma.tutoringWindow.update({ where: { id }, data: input });
+    return await prisma.tutoringWindow.update({ where: { id }, data: { ...input, ...(input.teacherId2 !== undefined ? { teacherId2: input.teacherId2 || null } : {}) } });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       throw new Error('WINDOW_NOT_FOUND');

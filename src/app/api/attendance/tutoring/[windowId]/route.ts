@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: { windowId: st
     const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
     const window = await prisma.tutoringWindow.findUnique({ where: { id: params.windowId } });
     if (!window) return NextResponse.json({ error: 'WINDOW_NOT_FOUND' }, { status: 404 });
-    if (window.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (window.teacherId !== teacher.id && window.teacherId2 !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else if (session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: { windowId: s
     const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
     const window = await prisma.tutoringWindow.findUnique({ where: { id: params.windowId } });
     if (!window) return NextResponse.json({ error: 'WINDOW_NOT_FOUND' }, { status: 404 });
-    if (window.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (window.teacherId !== teacher.id && window.teacherId2 !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else if (session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -51,7 +51,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { windowId:
     const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
     const window = await prisma.tutoringWindow.findUnique({ where: { id: params.windowId } });
     if (!window) return NextResponse.json({ error: 'WINDOW_NOT_FOUND' }, { status: 404 });
-    if (window.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (window.teacherId !== teacher.id && window.teacherId2 !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   } else if (session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

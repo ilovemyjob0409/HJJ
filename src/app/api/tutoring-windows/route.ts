@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       endTime: body.endTime,
       capacity: Number(body.capacity),
       teacherId: body.teacherId,
+      teacherId2: body.teacherId2 || null,
     });
     return NextResponse.json(window, { status: 201 });
   } catch (err) {

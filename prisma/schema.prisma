@@ -115,7 +115,8 @@ model Teacher {
   goHallSessions             GoHallSession[]
   activityTeachers           ActivityTeacher[]
   pointTransactions          PointTransaction[]
-  tutoringWindows            TutoringWindow[]
+  tutoringWindows            TutoringWindow[]      @relation("TutoringWindowTeacher")
+  tutoringWindows2           TutoringWindow[]      @relation("TutoringWindowTeacher2")
 }
 
 model Student {
@@ -439,7 +440,9 @@ model TutoringWindow {
   endTime   String   // "21:00"
   capacity  Int      // 同時在座人數上限
   teacherId String
-  teacher   Teacher  @relation(fields: [teacherId], references: [id])
+  teacher   Teacher  @relation("TutoringWindowTeacher", fields: [teacherId], references: [id])
+  teacherId2 String?  // 選填的第二位老師：時段長、中途換班用，權限與顯示都與主老師並列
+  teacher2   Teacher? @relation("TutoringWindowTeacher2", fields: [teacherId2], references: [id])
   active    Boolean  @default(true)
   closures  TutoringWindowClosure[]
   bookings  TutoringBooking[]

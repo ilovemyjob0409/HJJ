@@ -19,6 +19,7 @@ interface WindowFormValues {
   endTime: string;
   capacity: string;
   teacherId: string;
+  teacherId2: string; // ''＝不設第二老師
 }
 
 interface WindowRow {
@@ -30,6 +31,8 @@ interface WindowRow {
   active: boolean;
   teacherId: string;
   teacher: { user: { name: string } };
+  teacherId2: string | null;
+  teacher2: { user: { name: string } } | null;
   closures: { id: string; date: string }[];
 }
 
@@ -47,7 +50,7 @@ interface TeacherOption {
   user: { name: string };
 }
 
-const DEFAULT_WINDOW_FORM: WindowFormValues = { weekday: '0', startTime: '', endTime: '', capacity: '', teacherId: '' };
+const DEFAULT_WINDOW_FORM: WindowFormValues = { weekday: '0', startTime: '', endTime: '', capacity: '', teacherId: '', teacherId2: '' };
 
 function WindowFieldInputs({
   values,
@@ -92,7 +95,7 @@ function WindowFieldInputs({
         老師
         <Select
           value={values.teacherId}
-          onChange={(e) => onChange({ teacherId: e.target.value })}
+          onChange={(e) => onChange({ teacherId: e.target.value, ...(e.target.value === values.teacherId2 ? { teacherId2: '' } : {}) })}
           className={`text-sm ${values.teacherId ? '' : 'text-inkMuted'}`}
         >
           <option value="">請選擇</option>
@@ -101,6 +104,23 @@ function WindowFieldInputs({
               {t.user.name}
             </option>
           ))}
+        </Select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-inkMuted">
+        第二老師（選填）
+        <Select
+          value={values.teacherId2}
+          onChange={(e) => onChange({ teacherId2: e.target.value })}
+          className={`text-sm ${values.teacherId2 ? '' : 'text-inkMuted'}`}
+        >
+          <option value="">無</option>
+          {teachers
+            .filter((t) => t.id !== values.teacherId)
+            .map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.user.name}
+              </option>
+            ))}
         </Select>
       </label>
     </>
@@ -184,13 +204,14 @@ export default function AdminTutoringPage() {
         endTime: form.endTime,
         capacity: Number(form.capacity),
         teacherId: form.teacherId,
+        teacherId2: form.teacherId2 || null,
       }),
     });
     if (!res.ok) {
       showToast('新增窗口失敗');
       return;
     }
-    setWindowForm((prev) => ({ ...prev, [programId]: { weekday: '0', startTime: '', endTime: '', capacity: '', teacherId: '' } }));
+    setWindowForm((prev) => ({ ...prev, [programId]: { ...DEFAULT_WINDOW_FORM } }));
     showToast('已新增窗口');
     load();
   }
@@ -228,6 +249,7 @@ export default function AdminTutoringPage() {
         endTime: window.endTime,
         capacity: String(window.capacity),
         teacherId: window.teacherId,
+        teacherId2: window.teacherId2 ?? '',
       },
     }));
     setEditingWindowId(window.id);
@@ -252,6 +274,7 @@ export default function AdminTutoringPage() {
         endTime: form.endTime,
         capacity: Number(form.capacity),
         teacherId: form.teacherId,
+        teacherId2: form.teacherId2 || null,
       }),
     });
     if (!res.ok) {
@@ -348,7 +371,8 @@ export default function AdminTutoringPage() {
                   <div key={window.id} className="rounded-lg border border-borderSubtle p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-sm text-ink">
-                        週{WEEKDAY_LABELS[window.weekday]} {window.startTime}-{window.endTime}・容量 {window.capacity}・{window.teacher.user.name}
+                        週{WEEKDAY_LABELS[window.weekday]} {window.startTime}-{window.endTime}・容量 {window.capacity}・
+                        {[window.teacher.user.name, window.teacher2?.user.name].filter(Boolean).join('／')}
                         {!window.active && <span className="ml-2 text-xs text-inkMuted">（已停用）</span>}
                       </span>
                       <div className="flex gap-2">

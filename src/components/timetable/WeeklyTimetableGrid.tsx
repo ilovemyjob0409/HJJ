@@ -22,6 +22,7 @@ interface TutoringSlot {
   startTime: string;
   endTime: string;
   teacher: { user: { name: string } };
+  teacher2?: { user: { name: string } } | null;
 }
 
 type DayCard = { kind: 'class'; data: TimetableClass } | { kind: 'tutoring'; data: TutoringSlot };
@@ -106,7 +107,9 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
                         <p className="mt-0.5 text-[11px] text-brandInk/80">
                           {card.data.startTime}-{card.data.endTime}
                         </p>
-                        <p className="text-[10px] text-brandInk/60">{card.data.teacher.user.name}</p>
+                        <p className="text-[10px] text-brandInk/60">
+                          {[card.data.teacher.user.name, card.data.teacher2?.user.name].filter(Boolean).join('／')}
+                        </p>
                       </div>
                     );
                   }

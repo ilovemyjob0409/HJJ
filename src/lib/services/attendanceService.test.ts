@@ -1131,6 +1131,20 @@ describe('listAttendanceSessionsForDate with tutoring windows', () => {
     const sessions = await listAttendanceSessionsForDate(date, null);
     expect(sessions.find((s) => s.type === 'TUTORING' && s.id === window.id)).toBeUndefined();
   });
+
+  it('shows the window to the second teacher too', async () => {
+    const { window, date } = await setupTutoringBooking();
+    const teacher2 = await createTeacher({ name: '換班老師', email: `shift-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    await prisma.tutoringWindow.update({ where: { id: window.id }, data: { teacherId2: teacher2.id } });
+
+    const sessions = await listAttendanceSessionsForDate(date, teacher2.id);
+    expect(sessions.find((s) => s.type === 'TUTORING' && s.id === window.id)).toBeDefined();
+
+    // 不相干的老師仍然看不到
+    const outsider = await createTeacher({ name: '路人老師', email: `out-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const outsiderSessions = await listAttendanceSessionsForDate(date, outsider.id);
+    expect(outsiderSessions.find((s) => s.type === 'TUTORING' && s.id === window.id)).toBeUndefined();
+  });
 });
 
 describe('listMyAttendance with tutoring bookings', () => {

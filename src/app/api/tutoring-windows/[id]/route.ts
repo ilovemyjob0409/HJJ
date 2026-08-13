@@ -16,6 +16,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (err instanceof Error && err.message === 'WINDOW_NOT_FOUND') {
       return NextResponse.json({ error: err.message }, { status: 404 });
     }
+    if (err instanceof Error && err.message === 'DUPLICATE_TEACHER') {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
     throw err;
   }
 }

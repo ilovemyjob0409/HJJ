@@ -73,6 +73,41 @@ describe('window CRUD', () => {
     expect(await prisma.tutoringWindow.findUnique({ where: { id: window.id } })).toBeNull();
   });
 
+  it('creates a window with an optional second teacher and can swap or clear it', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
+    const teacher2 = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+
+    const window = await createWindow({
+      programId: program.id,
+      weekday: 5,
+      startTime: '16:00',
+      endTime: '21:00',
+      capacity: 8,
+      teacherId: teacher.id,
+      teacherId2: teacher2.id,
+    });
+    expect(window.teacherId2).toBe(teacher2.id);
+
+    const programs = await listPrograms();
+    expect(programs[0].windows[0].teacher2?.user.name).toBe('陳老師');
+
+    const cleared = await updateWindow(window.id, { teacherId2: null });
+    expect(cleared.teacherId2).toBeNull();
+  });
+
+  it('rejects the same teacher as both main and second teacher', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+
+    await expect(
+      createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id, teacherId2: teacher.id })
+    ).rejects.toThrow('DUPLICATE_TEACHER');
+
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    await expect(updateWindow(window.id, { teacherId2: teacher.id })).rejects.toThrow('DUPLICATE_TEACHER');
+  });
+
   it('adds and removes a window closure', async () => {
     const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
     const program = await createProgram({ name: '英文個別輔導' });

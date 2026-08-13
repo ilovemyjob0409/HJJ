@@ -24,6 +24,7 @@ export interface TutoringSlotForTimetable {
   startTime: string;
   endTime: string;
   teacher: { user: { name: string } };
+  teacher2: { user: { name: string } } | null;
 }
 
 export async function listTutoringSlotsForTimetable(): Promise<TutoringSlotForTimetable[]> {
@@ -39,6 +40,7 @@ export async function listTutoringSlotsForTimetable(): Promise<TutoringSlotForTi
           startTime: true,
           endTime: true,
           teacher: { select: { user: { select: { name: true } } } },
+          teacher2: { select: { user: { select: { name: true } } } },
         },
       },
     },

@@ -608,7 +608,8 @@ export async function listAttendanceSessionsForDate(
       select: { id: true, title: true, _count: { select: { registrations: true } } },
     }),
     prisma.tutoringWindow.findMany({
-      where: { weekday, active: true, ...(teacherId ? { teacherId } : {}) },
+      // 第二老師（換班）跟主老師一樣要在自己的點名清單看到這個時段
+      where: { weekday, active: true, ...(teacherId ? { OR: [{ teacherId }, { teacherId2: teacherId }] } : {}) },
       select: { id: true, startTime: true, endTime: true, program: { select: { name: true } } },
     }),
   ]);
@@ -993,7 +994,13 @@ async function getTodayCandidates(
         id: true,
         startTime: true,
         endTime: true,
-        window: { select: { teacher: { select: { user: { select: { name: true } } } }, program: { select: { name: true } } } },
+        window: {
+          select: {
+            teacher: { select: { user: { select: { name: true } } } },
+            teacher2: { select: { user: { select: { name: true } } } },
+            program: { select: { name: true } },
+          },
+        },
       },
     }),
     prisma.goHallRegistration.findMany({
@@ -1066,7 +1073,7 @@ async function getTodayCandidates(
       key: `tutoring:${tb.id}`,
       title: tb.window.program.name,
       timeLabel: `${tb.startTime}-${tb.endTime}`,
-      teacherName: tb.window.teacher.user.name,
+      teacherName: [tb.window.teacher.user.name, tb.window.teacher2?.user.name].filter(Boolean).join('／'),
       startMinutes: toMinutes(tb.startTime),
       checkInTime: existing?.checkInTime ?? null,
       checkOutTime: existing?.checkOutTime ?? null,
