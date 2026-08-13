@@ -69,6 +69,13 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
         });
         if (closure) throw new Error('WINDOW_CLOSED');
 
+        // 一天一格：同一筆報名同一天已有有效預約（不論一般或補課）就不能再疊，
+        // 否則額度條的「已預約」會多於日曆上看得到的「已約」天數
+        const sameDay = await tx.tutoringBooking.count({
+          where: { enrollmentId: input.enrollmentId, date: input.date, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
+        });
+        if (sameDay > 0) throw new Error('ALREADY_BOOKED_SAME_DAY');
+
         const booked = await tx.tutoringBooking.count({
           where: { windowId: input.windowId, date: input.date, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
         });
@@ -165,6 +172,13 @@ export async function requestMakeup(input: {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       throw new Error('ALREADY_REQUESTED');
     }
+    // 同日防呆也會攔到「兩個併發申請選了同一天」的輸家——若該筆缺席其實已
+    // 產生補課，回報 ALREADY_REQUESTED 比 ALREADY_BOOKED_SAME_DAY 準確；
+    // 若是使用者自己選到已有預約的日子，維持原錯誤讓他換一天。
+    if (err instanceof Error && err.message === 'ALREADY_BOOKED_SAME_DAY') {
+      const child = await prisma.tutoringBooking.findFirst({ where: { makeupForId: original.id }, select: { id: true } });
+      if (child) throw new Error('ALREADY_REQUESTED');
+    }
     throw err;
   }
 }
@@ -227,9 +241,11 @@ export interface AvailabilityDay {
   capacity: number;
   remaining: number;
   // 這筆報名自己在這一天的預約（日曆用不同色標示「已約」、點擊可取消）；
-  // PENDING_ADMIN 是待核准的補課申請，只標示不開放按掉
+  // PENDING_ADMIN 是待核准的補課申請，只標示不開放按掉。myBookingCount 是
+  // 同一天的有效預約筆數——防呆上線前的舊資料可能同一天疊多筆，要顯示 ×N
   myBookingId: string | null;
   myBookingStatus: 'BOOKED' | 'PENDING_ADMIN' | null;
+  myBookingCount: number;
 }
 
 export async function listAvailability(enrollmentId: string, days = 14): Promise<AvailabilityDay[]> {
@@ -247,13 +263,19 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
     },
     select: { id: true, date: true, status: true },
   });
-  const mineByDate = new Map<string, { id: string; status: 'BOOKED' | 'PENDING_ADMIN' }>();
+  const mineByDate = new Map<string, { id: string; status: 'BOOKED' | 'PENDING_ADMIN'; count: number }>();
   for (const b of myBookings) {
     const key = utcDateKey(b.date);
     const existing = mineByDate.get(key);
-    // 同一天有多筆時優先顯示 BOOKED（可按掉的那筆）
-    if (!existing || (existing.status !== 'BOOKED' && b.status === 'BOOKED')) {
-      mineByDate.set(key, { id: b.id, status: b.status as 'BOOKED' | 'PENDING_ADMIN' });
+    // 同一天有多筆時優先顯示 BOOKED（可按掉的那筆），並累計筆數
+    if (!existing) {
+      mineByDate.set(key, { id: b.id, status: b.status as 'BOOKED' | 'PENDING_ADMIN', count: 1 });
+    } else {
+      if (existing.status !== 'BOOKED' && b.status === 'BOOKED') {
+        existing.id = b.id;
+        existing.status = 'BOOKED';
+      }
+      existing.count += 1;
     }
   }
 
@@ -279,6 +301,7 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
       remaining: Math.max(0, window.capacity - booked),
       myBookingId: mine?.id ?? null,
       myBookingStatus: mine?.status ?? null,
+      myBookingCount: mine?.count ?? 0,
     });
   }
   return result;

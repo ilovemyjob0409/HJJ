@@ -15,6 +15,7 @@ interface QuotaStatus {
   locked: number;
   upcoming: number;
   quota: number;
+  upcomingBookings: { id: string; date: string; kind: 'REGULAR' | 'MAKEUP'; status: 'BOOKED' | 'PENDING_ADMIN' }[];
 }
 
 interface AdminBookingModalProps {
@@ -62,6 +63,14 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
             quota={quotaStatus.quota}
             selectedCount={kind === 'regular' ? selectedCount : 0}
           />
+          {quotaStatus.upcomingBookings.length > 0 && (
+            <p className="mt-1.5 text-xs text-inkMuted">
+              已約日期：
+              {quotaStatus.upcomingBookings
+                .map((b) => `${formatDateWithWeekday(b.date)}${b.kind === 'MAKEUP' ? '（補課）' : ''}${b.status === 'PENDING_ADMIN' ? '（待核准）' : ''}`)
+                .join('、')}
+            </p>
+          )}
         </div>
       )}
       <div className="mb-3 flex flex-wrap items-end gap-2">

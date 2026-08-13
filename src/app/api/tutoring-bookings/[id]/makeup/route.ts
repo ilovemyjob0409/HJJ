@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     const status =
-      message === 'WINDOW_FULL' || message === 'WINDOW_CLOSED' || message === 'ALREADY_REQUESTED'
+      message === 'WINDOW_FULL' || message === 'WINDOW_CLOSED' || message === 'ALREADY_REQUESTED' || message === 'ALREADY_BOOKED_SAME_DAY'
         ? 409
         : message === 'WINDOW_NOT_FOUND' || message === 'ENROLLMENT_NOT_FOUND'
           ? 404

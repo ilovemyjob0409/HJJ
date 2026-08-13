@@ -91,10 +91,12 @@ describe('createBooking', () => {
   });
 
   it('rejects when the day already has capacity-many people booked', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment(1);
+    const { window, program, enrollment } = await setupProgramWithEnrollment(1);
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    const other = await createStudent({ name: '滿位生', email: `full-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: other.id } });
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
+      createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('WINDOW_FULL');
   });
 
@@ -121,6 +123,21 @@ describe('createBooking', () => {
     await expect(
       createBooking({ enrollmentId: enrollment.id, windowId: otherWindow.id, date: FRIDAY })
     ).rejects.toThrow('PROGRAM_MISMATCH');
+  });
+
+  it('rejects a second active booking on the same day for the same enrollment', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
+    ).rejects.toThrow('ALREADY_BOOKED_SAME_DAY');
+  });
+
+  it('allows rebooking a day whose earlier booking was cancelled', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const first = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await prisma.tutoringBooking.update({ where: { id: first.id }, data: { status: 'CANCELLED' } });
+    await expect(createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })).resolves.toBeTruthy();
   });
 
   it('rejects booking into an inactive enrollment', async () => {
@@ -209,9 +226,13 @@ describe('requestMakeup / decideMakeup', () => {
     expect(row.status).toBe('PENDING_ADMIN');
     expect(row.makeupForId).toBe(original.id);
 
-    // capacity is 1 and already reserved by the PENDING_ADMIN makeup — a second regular booking for the same slot must fail
+    // capacity is 1 and already reserved by the PENDING_ADMIN makeup — another student's regular booking for the same slot must fail
+    const other = await createStudent({ name: '擠不進來', email: `nofit-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({
+      data: { programId: (await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: window.id } })).programId, studentId: other.id },
+    });
     await expect(
-      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
+      createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('WINDOW_FULL');
 
     await decideMakeup(makeup.id, 'APPROVED');
@@ -375,6 +396,28 @@ describe('listAvailability', () => {
     expect(otherView.find((d) => d.date === target.date)).toMatchObject({ myBookingId: null, myBookingStatus: null });
   });
 
+  it('reports myBookingCount for legacy duplicate bookings on the same day', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(8);
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.filter((d) => d.windowId === window.id)[0];
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(target.date) });
+    // 防呆上線前的舊資料可能同一天疊兩筆：直接塞資料模擬
+    await prisma.tutoringBooking.create({
+      data: {
+        enrollmentId: enrollment.id,
+        windowId: window.id,
+        date: new Date(target.date),
+        startTime: '16:00',
+        endTime: '21:00',
+        kind: 'REGULAR',
+        status: 'BOOKED',
+      },
+    });
+
+    const after = await listAvailability(enrollment.id, 14);
+    expect(after.find((d) => d.date === target.date)).toMatchObject({ myBookingId: booking.id, myBookingCount: 2 });
+  });
+
   it('does not mark a day whose booking was early-cancelled, and restores its remaining count', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment(8);
     const days = await listAvailability(enrollment.id, 14);
@@ -485,11 +528,11 @@ describe('listMonthlyBookingCounts', () => {
       data: { programId: (await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: window.id } })).programId, studentId: other.id },
     });
 
-    // 8/7：兩筆 BOOKED＋一筆提前取消（不該計入）
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    // 8/7：兩筆 BOOKED＋一筆提前取消（不該計入）——先建先取消，才不會撞同日防呆
     const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
     await prisma.tutoringBooking.update({ where: { id: cancelled.id }, data: { status: 'CANCELLED' } });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-07') });
 
     // 8/14：一筆當天取消（不該計入）＋一筆補課申請待核准（pending）
     const late = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });

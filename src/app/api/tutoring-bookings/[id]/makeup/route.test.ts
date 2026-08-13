@@ -74,8 +74,13 @@ describe('POST /api/tutoring-bookings/[id]/makeup', () => {
   });
 
   it('ADMIN: WINDOW_FULL surfaces as 409 without auto-approving', async () => {
-    const { window, enrollment, original } = await setupMissedBooking(1);
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    const { window, original } = await setupMissedBooking(1);
+    // 用另一位學生把容量佔滿——同一位學生同日重約現在會先被同日防呆（也是 409）攔下
+    const filler = await createStudent({ name: '佔位生', email: `filler-${Date.now()}@example.com`, password: 'x' });
+    const fillerEnrollment = await prisma.tutoringEnrollment.create({
+      data: { programId: (await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: window.id } })).programId, studentId: filler.id },
+    });
+    await createBooking({ enrollmentId: fillerEnrollment.id, windowId: window.id, date: FRIDAY });
 
     asAdmin();
     const res = await POST(postBody(window.id), { params: { id: original.id } });

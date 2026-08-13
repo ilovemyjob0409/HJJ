@@ -13,6 +13,7 @@ export interface AvailabilityDay {
   remaining: number;
   myBookingId: string | null;
   myBookingStatus: 'BOOKED' | 'PENDING_ADMIN' | null;
+  myBookingCount: number;
 }
 
 interface MonthCell {
@@ -170,7 +171,7 @@ export default function TutoringBookingCalendar({
                 <span>{cell.day}</span>
                 {day && (
                   <span className={`text-[10px] font-normal ${mine ? 'text-pending' : selected ? 'text-brandInk' : 'text-inkMuted'}`}>
-                    {mine ? '已約' : day.remaining > 0 ? `剩${day.remaining}` : '已滿'}
+                    {mine ? (day.myBookingCount > 1 ? `已約×${day.myBookingCount}` : '已約') : day.remaining > 0 ? `剩${day.remaining}` : '已滿'}
                   </span>
                 )}
               </button>
@@ -191,7 +192,13 @@ export default function TutoringBookingCalendar({
       });
       if (!res.ok) {
         const { error } = await res.json();
-        showToast(error === 'WINDOW_FULL' ? '這天名額已滿，請選別天' : '申請失敗，請稍後再試');
+        showToast(
+          error === 'WINDOW_FULL'
+            ? '這天名額已滿，請選別天'
+            : error === 'ALREADY_BOOKED_SAME_DAY'
+              ? '這天已經有預約了，請選別天'
+              : '申請失敗，請稍後再試'
+        );
         return;
       }
       showToast(successMessage ?? '已送出補課申請，待行政核准');
@@ -219,7 +226,7 @@ export default function TutoringBookingCalendar({
       if (failed.length === 0) {
         showToast(successMessage ?? `已預約 ${selectedDates.length} 天`);
       } else {
-        showToast(`${failed.map((d) => formatDateWithWeekday(d, 'zh-TW')).join('、')} 預約失敗（可能已滿），其餘已預約`);
+        showToast(`${failed.map((d) => formatDateWithWeekday(d, 'zh-TW')).join('、')} 預約失敗（可能已滿或當天已有預約），其餘已預約`);
       }
       setSelectedDates([]);
       onBooked();
