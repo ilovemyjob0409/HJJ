@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -12,7 +13,6 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import TimetableModal from './TimetableModal';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
-import { withStopPropagation } from '@/components/ui/stopPropagation';
 
 interface TeacherOption {
   id: string;
@@ -202,17 +202,9 @@ export default function ClassesPage() {
     {
       header: '操作',
       render: (c) => (
-        <div className="flex gap-3">
-          <button className="text-brandDark hover:underline" onClick={() => openEdit(c)}>
-            編輯
-          </button>
-          <button
-            className="text-brandDark hover:underline"
-            onClick={withStopPropagation(() => router.push(`/admin/classes/${c.id}/attendance`))}
-          >
-            出缺勤
-          </button>
-        </div>
+        <button className="text-brandDark hover:underline" onClick={() => openEdit(c)}>
+          編輯
+        </button>
       ),
     },
   ];
@@ -297,6 +289,11 @@ export default function ClassesPage() {
             {showEditFields ? '收合' : '編輯班級資料'}
           </button>
         </div>
+        {editing && (
+          <Link href={`/admin/classes/${editing.id}/attendance`} className="mt-3 block text-sm text-brandDark hover:underline">
+            查看出缺勤 →
+          </Link>
+        )}
         {showEditFields && (
           <form onSubmit={handleEditSubmit} className="mt-3 flex flex-col gap-2">
             <Input placeholder="班名" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
