@@ -33,11 +33,12 @@ const OPEN_WEEKDAYS = [2, 3, 4, 5, 6];
 interface WeeklyTimetableGridProps {
   colors: Record<string, string>;
   onClassClick?: (id: string) => void;
+  onTutoringClick?: (id: string) => void;
   onSubjectsChange?: (subjects: string[]) => void;
   posterRef?: RefObject<HTMLDivElement>;
 }
 
-export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsChange, posterRef }: WeeklyTimetableGridProps) {
+export default function WeeklyTimetableGrid({ colors, onClassClick, onTutoringClick, onSubjectsChange, posterRef }: WeeklyTimetableGridProps) {
   const [classes, setClasses] = useState<TimetableClass[]>([]);
   const [tutoringSlots, setTutoringSlots] = useState<TutoringSlot[]>([]);
 
@@ -97,12 +98,8 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
               ) : (
                 day.map((card) => {
                   if (card.kind === 'tutoring') {
-                    return (
-                      <div
-                        key={card.data.id}
-                        className="overflow-hidden rounded-md py-1.5 pl-2 pr-2 text-left"
-                        style={{ background: colors[card.data.programName] ?? UNSET_SUBJECT_COLOR }}
-                      >
+                    const tutoringContent = (
+                      <>
                         <p className="text-xs font-bold text-brandInk">{card.data.programName}</p>
                         <p className="mt-0.5 text-[11px] text-brandInk/80">
                           {card.data.startTime}-{card.data.endTime}
@@ -110,6 +107,23 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onSubjectsCh
                         <p className="text-[10px] text-brandInk/60">
                           {[card.data.teacher.user.name, card.data.teacher2?.user.name].filter(Boolean).join('／')}
                         </p>
+                      </>
+                    );
+                    const tutoringClassName = 'overflow-hidden rounded-md py-1.5 pl-2 pr-2 text-left';
+                    const tutoringStyle = { background: colors[card.data.programName] ?? UNSET_SUBJECT_COLOR };
+                    return onTutoringClick ? (
+                      <button
+                        key={card.data.id}
+                        type="button"
+                        onClick={() => onTutoringClick(card.data.id)}
+                        className={`${tutoringClassName} transition-opacity hover:opacity-80`}
+                        style={tutoringStyle}
+                      >
+                        {tutoringContent}
+                      </button>
+                    ) : (
+                      <div key={card.data.id} className={tutoringClassName} style={tutoringStyle}>
+                        {tutoringContent}
                       </div>
                     );
                   }

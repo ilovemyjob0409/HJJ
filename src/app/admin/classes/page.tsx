@@ -18,6 +18,17 @@ interface TeacherOption {
   user: { name: string };
 }
 
+interface TutoringWindowInfo {
+  id: string;
+  programName: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  teacherNames: string[];
+  upcomingBookedCount: number;
+}
+
 interface EnrollmentRow {
   id: string;
   studentId: string;
@@ -53,8 +64,11 @@ export default function ClassesPage() {
   const [showEditFields, setShowEditFields] = useState(false);
   const [editError, setEditError] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
-  // 從週課表點進班級彈窗時記下來源，關閉彈窗後自動回到週課表
+  // 從週課表的資訊小卡按「前往編輯」時記下來源，關閉編輯彈窗後自動回到週課表
   const [returnToTimetable, setReturnToTimetable] = useState(false);
+  // 週課表上點課堂卡／個別輔導卡疊出的資訊小卡（週課表保持開啟）
+  const [infoClass, setInfoClass] = useState<ClassRow | null>(null);
+  const [infoWindow, setInfoWindow] = useState<TutoringWindowInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -356,11 +370,72 @@ export default function ClassesPage() {
         onClassClick={(id) => {
           const c = classes.find((cls) => cls.id === id);
           if (!c) return;
-          setShowTimetable(false);
-          setReturnToTimetable(true);
-          openEdit(c);
+          setInfoClass(c);
+        }}
+        onTutoringClick={async (id) => {
+          const res = await fetch(`/api/tutoring-windows/${id}`);
+          if (res.ok) setInfoWindow(await res.json());
         }}
       />
+
+      <Modal open={infoClass !== null} onClose={() => setInfoClass(null)} title={infoClass?.name ?? ''}>
+        {infoClass && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-inkMuted">
+              {infoClass.subject}・{infoClass.level}｜週{WEEKDAY_LABELS[infoClass.weekday]} {infoClass.startTime}-{infoClass.endTime}｜
+              {infoClass.teacher.user.name}
+            </p>
+            <div>
+              <p className="mb-1.5 text-sm font-semibold text-ink">學生名單（{infoClass.enrollments.length} 人）</p>
+              {infoClass.enrollments.length === 0 ? (
+                <p className="text-sm text-inkMuted">目前沒有學生</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {infoClass.enrollments.map((e) => (
+                    <span key={e.id} className="rounded-full border border-borderSubtle bg-stripe px-3 py-1 text-xs text-ink">
+                      {e.student.user.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const c = infoClass;
+                  setInfoClass(null);
+                  setShowTimetable(false);
+                  setReturnToTimetable(true);
+                  openEdit(c);
+                }}
+              >
+                前往編輯
+              </Button>
+              <Button onClick={() => setInfoClass(null)}>關閉</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={infoWindow !== null} onClose={() => setInfoWindow(null)} title={infoWindow?.programName ?? ''}>
+        {infoWindow && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-inkMuted">
+              週{WEEKDAY_LABELS[infoWindow.weekday]} {infoWindow.startTime}-{infoWindow.endTime}｜{infoWindow.teacherNames.join('／')}
+            </p>
+            <p className="text-sm text-ink">
+              每天名額 {infoWindow.capacity} 人・未來已預約 {infoWindow.upcomingBookedCount} 人次
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => router.push('/admin/tutoring/bookings')}>
+                前往預約總覽
+              </Button>
+              <Button onClick={() => setInfoWindow(null)}>關閉</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
       {ConfirmDialog}
     </>
   );

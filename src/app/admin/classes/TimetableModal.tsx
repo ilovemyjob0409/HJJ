@@ -10,9 +10,10 @@ interface TimetableModalProps {
   open: boolean;
   onClose: () => void;
   onClassClick?: (id: string) => void;
+  onTutoringClick?: (id: string) => void;
 }
 
-export default function TimetableModal({ open, onClose, onClassClick }: TimetableModalProps) {
+export default function TimetableModal({ open, onClose, onClassClick, onTutoringClick }: TimetableModalProps) {
   const [colors, setColors] = useState<Record<string, string>>({});
   const [subjects, setSubjects] = useState<string[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -132,6 +133,7 @@ export default function TimetableModal({ open, onClose, onClassClick }: Timetabl
       <WeeklyTimetableGrid
         colors={colors}
         onClassClick={onClassClick}
+        onTutoringClick={onTutoringClick}
         onSubjectsChange={setSubjects}
         posterRef={posterRef}
       />

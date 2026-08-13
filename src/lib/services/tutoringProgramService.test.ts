@@ -13,7 +13,8 @@ import {
   addWindowClosure,
   deleteWindowClosure,
 } from './tutoringProgramService';
-import { createEnrollment, listEnrollments, updateEnrollment, deleteEnrollment } from './tutoringProgramService';
+import { createEnrollment, listEnrollments, updateEnrollment, deleteEnrollment, getWindowInfo } from './tutoringProgramService';
+import { createBooking } from './tutoringBookingService';
 
 describe('program CRUD', () => {
   it('creates a program with defaults and lists it back with an empty windows array', async () => {
@@ -94,6 +95,39 @@ describe('window CRUD', () => {
 
     const cleared = await updateWindow(window.id, { teacherId2: null });
     expect(cleared.teacherId2).toBeNull();
+  });
+
+  it('getWindowInfo returns teachers, capacity and upcoming active booking count', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
+    const teacher2 = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: 'MPM' });
+    const window = await createWindow({
+      programId: program.id,
+      weekday: 5,
+      startTime: '16:00',
+      endTime: '21:00',
+      capacity: 8,
+      teacherId: teacher.id,
+      teacherId2: teacher2.id,
+    });
+
+    const student = await createStudent({ name: '小小', email: `info-${Date.now()}@example.com`, password: 'x' });
+    const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
+    const future = new Date(Date.UTC(2099, 0, 2)); // Friday
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
+    const past = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringBooking.update({ where: { id: past.id }, data: { status: 'CANCELLED_LATE' } });
+
+    const info = await getWindowInfo(window.id);
+    expect(info).toMatchObject({
+      programName: 'MPM',
+      weekday: 5,
+      capacity: 8,
+      teacherNames: ['林老師', '陳老師'],
+      upcomingBookedCount: 1, // 過去的與取消的都不算
+    });
+
+    await expect(getWindowInfo('nonexistent-window-id')).rejects.toThrow('WINDOW_NOT_FOUND');
   });
 
   it('rejects the same teacher as both main and second teacher', async () => {

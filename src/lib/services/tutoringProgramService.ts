@@ -1,6 +1,44 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getMonthlyQuotaStatus } from './tutoringBookingService';
+import { getMonthlyQuotaStatus, taipeiDateKey } from './tutoringBookingService';
+
+// 週課表點個別輔導時段卡的資訊小卡用
+export interface TutoringWindowInfo {
+  id: string;
+  programName: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  teacherNames: string[];
+  upcomingBookedCount: number; // 今天（台北）起的有效預約人次（BOOKED＋待核准）
+}
+
+export async function getWindowInfo(id: string): Promise<TutoringWindowInfo> {
+  const w = await prisma.tutoringWindow.findUnique({
+    where: { id },
+    include: {
+      program: { select: { name: true } },
+      teacher: { select: { user: { select: { name: true } } } },
+      teacher2: { select: { user: { select: { name: true } } } },
+    },
+  });
+  if (!w) throw new Error('WINDOW_NOT_FOUND');
+  const [ty, tm, td] = taipeiDateKey(new Date()).split('-').map(Number);
+  const upcomingBookedCount = await prisma.tutoringBooking.count({
+    where: { windowId: id, status: { in: ['BOOKED', 'PENDING_ADMIN'] }, date: { gte: new Date(Date.UTC(ty, tm - 1, td)) } },
+  });
+  return {
+    id: w.id,
+    programName: w.program.name,
+    weekday: w.weekday,
+    startTime: w.startTime,
+    endTime: w.endTime,
+    capacity: w.capacity,
+    teacherNames: [w.teacher.user.name, w.teacher2?.user.name].filter((n): n is string => !!n),
+    upcomingBookedCount,
+  };
+}
 
 export interface CreateProgramInput {
   name: string;

@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { updateWindow, deleteWindow } from '@/lib/services/tutoringProgramService';
+import { updateWindow, deleteWindow, getWindowInfo } from '@/lib/services/tutoringProgramService';
+
+// 週課表點個別輔導時段卡的資訊小卡
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session || session.user.role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  try {
+    return NextResponse.json(await getWindowInfo(params.id));
+  } catch (err) {
+    if (err instanceof Error && err.message === 'WINDOW_NOT_FOUND') {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    throw err;
+  }
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);

@@ -23,6 +23,7 @@ export interface TutoringSlotForTimetable {
   weekday: number;
   startTime: string;
   endTime: string;
+  capacity: number;
   teacher: { user: { name: string } };
   teacher2: { user: { name: string } } | null;
 }
@@ -39,6 +40,7 @@ export async function listTutoringSlotsForTimetable(): Promise<TutoringSlotForTi
           weekday: true,
           startTime: true,
           endTime: true,
+          capacity: true,
           teacher: { select: { user: { select: { name: true } } } },
           teacher2: { select: { user: { select: { name: true } } } },
         },
