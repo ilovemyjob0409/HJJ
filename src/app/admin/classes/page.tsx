@@ -12,6 +12,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import TimetableModal from './TimetableModal';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
+import { withStopPropagation } from '@/components/ui/stopPropagation';
 
 interface TeacherOption {
   id: string;
@@ -201,9 +202,17 @@ export default function ClassesPage() {
     {
       header: '操作',
       render: (c) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(c)}>
-          編輯
-        </button>
+        <div className="flex gap-3">
+          <button className="text-brandDark hover:underline" onClick={() => openEdit(c)}>
+            編輯
+          </button>
+          <button
+            className="text-brandDark hover:underline"
+            onClick={withStopPropagation(() => router.push(`/admin/classes/${c.id}/attendance`))}
+          >
+            出缺勤
+          </button>
+        </div>
       ),
     },
   ];
