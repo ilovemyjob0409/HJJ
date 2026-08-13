@@ -4,18 +4,13 @@ import { useState } from 'react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 
-export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
-type EditableStatus = AttendanceStatusValue | 'UNMARKED';
+import {
+  AttendanceStatusValue,
+  EditableStatus,
+  visibleStatusOptions,
+} from '@/components/attendanceStatusOptions';
 
-const STATUS_OPTIONS: { value: EditableStatus; label: string }[] = [
-  { value: 'UNMARKED', label: '未點名' },
-  { value: 'PRESENT', label: '出席' },
-  { value: 'LATE', label: '遲到' },
-  { value: 'LEFT_EARLY', label: '早退' },
-  { value: 'ON_LEAVE', label: '請假' },
-  { value: 'NOT_REGISTERED', label: '未報名' },
-  { value: 'ABSENT', label: '缺席未請假' },
-];
+export type { AttendanceStatusValue };
 
 export interface RosterRow {
   key: string;
@@ -45,9 +40,10 @@ export interface ClearedRecord {
 interface Props {
   rows: RosterRow[];
   onSave: (records: SavedRecord[], clears: ClearedRecord[]) => Promise<void>;
+  hiddenStatuses?: AttendanceStatusValue[];
 }
 
-export default function AttendanceRosterEditor({ rows, onSave }: Props) {
+export default function AttendanceRosterEditor({ rows, onSave, hiddenStatuses }: Props) {
   const [edits, setEdits] = useState<Record<string, { status: EditableStatus; checkInTime: string; checkOutTime: string }>>(() =>
     Object.fromEntries(
       rows.map((r) => [
@@ -112,7 +108,7 @@ export default function AttendanceRosterEditor({ rows, onSave }: Props) {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
-              {STATUS_OPTIONS.map((opt) => {
+              {visibleStatusOptions(hiddenStatuses, edits[r.key].status).map((opt) => {
                 const selected = edits[r.key].status === opt.value;
                 const className = selected
                   ? opt.value === 'UNMARKED'

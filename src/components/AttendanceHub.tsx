@@ -7,6 +7,7 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import AttendanceRosterEditor, { RosterRow, SavedRecord, ClearedRecord } from '@/components/AttendanceRosterEditor';
+import { TUTORING_HIDDEN_STATUSES } from '@/components/attendanceStatusOptions';
 
 type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY' | 'TUTORING';
 
@@ -274,7 +275,13 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
         title={opening ? `${TYPE_LABEL[opening.type]}點名 - ${opening.title}` : ''}
         maxWidthClassName="max-w-2xl"
       >
-        {rosterRows && <AttendanceRosterEditor rows={rosterRows} onSave={handleSaveRoster} />}
+        {rosterRows && (
+          <AttendanceRosterEditor
+            rows={rosterRows}
+            onSave={handleSaveRoster}
+            hiddenStatuses={opening?.type === 'TUTORING' ? TUTORING_HIDDEN_STATUSES : undefined}
+          />
+        )}
       </Modal>
     </>
   );
