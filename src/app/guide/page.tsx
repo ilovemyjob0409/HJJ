@@ -136,8 +136,9 @@ export default async function GuidePage() {
         <Chapter no="2" title="學生首頁導覽">
           <Step no="1" title="票券管理" img="m05-dashboard-top.png" imgAlt="首頁上方：票券管理">
             首頁最上方是<b className="text-ink">票券管理</b>：左邊「課堂」列出就讀班級的上課時間、老師與
-            <b className="text-ink">已上堂數／總堂數</b>（附進度條）；右邊「弈廳資格」顯示目前的弈廳票券狀態（詳見第 7
-            章）。
+            <b className="text-ink">已上堂數／總堂數</b>（附進度條）；有報名個別輔導的話也會列在這裡，顯示本月
+            <b className="text-ink">已計次、已預約與剩餘可約</b>堂數。右邊「弈廳資格」顯示目前的弈廳票券狀態（詳見第 7
+            章）。點任一列可以打開它的扣堂紀錄。
           </Step>
           <Step no="2" title="集點卡與常用捷徑" img="m06-dashboard-shortcuts.png" imgAlt="集點卡與功能捷徑">
             <b className="text-ink">我的集點卡</b>顯示目前總點數，點卡片可看明細。下方「請假申請與紀錄」「申請補課」「我的出席紀錄」三張卡片，點了直接前往對應功能，與上方選單相同。
@@ -264,7 +265,9 @@ export default async function GuidePage() {
             <Dialog>確定要報名這場嗎？</Dialog>
           </Step>
           <Step no="3" title="報名完成／取消報名" img="m26-gohall-registered.png" imgAlt="我的報名紀錄">
-            報名成功後，場次會出現在下方「我的報名紀錄」；行程有變按該列的<b className="text-ink">取消</b>即可，名額會釋出。
+            報名成功後，場次會出現在下方「我的報名紀錄」，<b className="text-ink">簽到欄</b>會顯示當天到場的簽到時間；
+            行程有變按該列的<b className="text-ink">取消</b>即可，名額會釋出。想核對票券的每一筆增減，
+            點弈廳資格卡上的<b className="text-ink">查看堂票紀錄</b>就能看到完整明細與簽到時間。
           </Step>
         </Chapter>
 
@@ -284,18 +287,29 @@ export default async function GuidePage() {
         </Chapter>
 
         <Chapter no="9" title="個別輔導預約">
-          <Step no="1" title="從首頁進入" img="m31-tutoring-dashboard-card.png" imgAlt="首頁個別輔導卡片">
-            如果您有報名英文或數學個別輔導，首頁會多一張<b className="text-ink">個別輔導</b>卡片，顯示本月已上堂數；點卡片進入預約頁面。
+          <Step no="1" title="進入預約頁，查看本月額度" img="m31-tutoring-dashboard-card.png" imgAlt="個別輔導頁上方的本月額度資訊">
+            有報名英文或數學個別輔導的話，從上方選單進入<b className="text-ink">個別輔導</b>。頁面最上方顯示本月額度：
+            <b className="text-ink">已計次</b>是已經用掉的堂數、<b className="text-ink">已預約</b>是排好還沒上的、
+            <b className="text-ink">剩餘可約</b>就是這個月還能再約幾天。
           </Step>
-          <Step no="2" title="挑日期與時間" img="m32-tutoring-availability.png" imgAlt="選擇預約日期與時間">
-            預約頁是<b className="text-ink">當月月曆網格</b>，本月有開課的日子會用綠色標示，其他日子反灰不能點選。點一個可預約的日期後，下方會出現開始與結束時間選單，自動帶入第一個還有名額的時段（額滿的時段不能選），選好時間按「確定預約」即可，
-            <b className="text-ink">不需要經過行政審核</b>。
+          <Step no="2" title="在月曆上點日期，一次可以約好幾天" img="m32-tutoring-availability.png" imgAlt="月曆勾選預約日期">
+            <b className="text-ink">綠色</b>的日子可以預約（「剩N」是當天剩餘名額），其他日子反灰不能點。
+            點一下日期會變黃色代表已選，可以連點好幾天，下方會列出已選的日期；按
+            <b className="text-ink">確定預約</b>一次送出，<b className="text-ink">不需要經過行政審核</b>。選錯了再點一下就取消勾選。
           </Step>
-          <Step no="3" title="我的預約紀錄" img="m33-tutoring-booking-list.png" imgAlt="我的預約紀錄表格">
-            這裡列出所有預約紀錄與狀態。<b className="text-ink">前一天 23:59 前</b>都可以直接按「取消」，不計入次數；如果是<b className="text-ink">當天才取消或沒來</b>，會計入本月次數，事後可以按「申請補課」另約時間，待行政核准。
+          <Step no="3" title="「已約」的日期，點一下就能取消" img="m32b-tutoring-booked-cancel.png" imgAlt="點已約日期出現取消確認">
+            <b className="text-ink">橘色「已約」</b>是您已經預約的日期。臨時有事不用找紀錄表——直接點那一天，確認後就取消了。
+            <b className="text-ink">前一天 23:59 前</b>取消不計次，紀錄會留一筆「已取消」；
+            <b className="text-ink">當天才取消</b>會計入本月次數，事後可以申請補課。
+            <Dialog>確定要取消 2026/8/21（五）的預約嗎？</Dialog>
+          </Step>
+          <Step no="4" title="我的預約紀錄" img="m33-tutoring-booking-list.png" imgAlt="我的預約紀錄表格">
+            這裡列出所有預約與狀態：<b className="text-ink">已預約</b>是排定的、<b className="text-ink">已取消</b>
+            是提前取消（不計次）、<b className="text-ink">當天取消</b>會計次——計次的那筆可以按
+            <b className="text-ink">申請補課</b>另約時間，待行政核准。
           </Step>
           <Tip title="本月次數怎麼算？">
-            每月 1 號重新歸零，「已計次」是當天已到、當天取消、或缺席的預約堂數；申請補課核准後不會重複計次。若快到月底還有很多堂沒約，系統會透過
+            每月 1 號重新歸零，「已計次」是當天已到、當天取消、或缺席的預約堂數；提前取消不計次。申請補課核准後不會重複計次。若快到月底還有很多堂沒約，系統會透過
             LINE 提醒您。
           </Tip>
         </Chapter>

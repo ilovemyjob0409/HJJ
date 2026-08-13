@@ -53,6 +53,8 @@ export default function ClassesPage() {
   const [showEditFields, setShowEditFields] = useState(false);
   const [editError, setEditError] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
+  // 從週課表點進班級彈窗時記下來源，關閉彈窗後自動回到週課表
+  const [returnToTimetable, setReturnToTimetable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -87,6 +89,14 @@ export default function ClassesPage() {
     }
   }
 
+  function closeEdit() {
+    setEditing(null);
+    if (returnToTimetable) {
+      setShowTimetable(true);
+      setReturnToTimetable(false);
+    }
+  }
+
   function openEdit(c: ClassRow) {
     setEditing(c);
     setEditForm({
@@ -117,7 +127,7 @@ export default function ClassesPage() {
         setEditError(`錯誤：${data.error}`);
         return;
       }
-      setEditing(null);
+      closeEdit();
       showToast('已儲存');
       load();
     } finally {
@@ -152,7 +162,7 @@ export default function ClassesPage() {
       setEditError(`錯誤：${data.error}`);
       return;
     }
-    setEditing(null);
+    closeEdit();
     showToast('已刪除');
     load();
   }
@@ -245,7 +255,7 @@ export default function ClassesPage() {
         />
       </Card>
 
-      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯班級">
+      <Modal open={editing !== null} onClose={closeEdit} title="編輯班級">
         <div className="flex items-center justify-between gap-2">
           {editing && !showEditFields && (
             <div className="min-w-0">
@@ -347,6 +357,7 @@ export default function ClassesPage() {
           const c = classes.find((cls) => cls.id === id);
           if (!c) return;
           setShowTimetable(false);
+          setReturnToTimetable(true);
           openEdit(c);
         }}
       />
