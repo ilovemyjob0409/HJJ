@@ -27,7 +27,6 @@ interface BookingRow {
   date: string;
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
-  canCancelFree: boolean;
   canRequestMakeup: boolean;
 }
 
@@ -60,10 +59,7 @@ export default function StudentTutoringPage() {
   const selectedEnrollment = enrollments.find((e) => e.id === selectedEnrollmentId);
 
   async function cancelBooking(row: BookingRow) {
-    const message = row.canCancelFree
-      ? '確定要取消這筆預約嗎？'
-      : '今天取消會計入本月次數，之後可申請補課。確定要取消嗎？';
-    if (!(await confirm(message, { danger: !row.canCancelFree }))) return;
+    if (!(await confirm('確定要取消這筆預約嗎？'))) return;
     const res = await fetch(`/api/tutoring-bookings/${row.id}`, { method: 'DELETE' });
     if (!res.ok) {
       showToast('取消失敗，請稍後再試');

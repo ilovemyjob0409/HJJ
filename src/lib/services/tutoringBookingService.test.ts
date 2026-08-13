@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   utcDateKey,
-  isCancellationLate,
   daysRemainingInTaipeiMonth,
   daysRemainingThroughNextTaipeiMonth,
 } from './tutoringBookingService';
@@ -41,20 +40,6 @@ describe('daysRemainingThroughNextTaipeiMonth', () => {
 
   it('handles a December-to-January year rollover', () => {
     expect(daysRemainingThroughNextTaipeiMonth(new Date('2026-12-20T00:00:00.000Z'))).toBe(12 + 31);
-  });
-});
-
-describe('isCancellationLate', () => {
-  it('is not late when today is before the booking date', () => {
-    expect(isCancellationLate('2026-08-15', '2026-08-14')).toBe(false);
-  });
-
-  it('is late on the booking date itself', () => {
-    expect(isCancellationLate('2026-08-15', '2026-08-15')).toBe(true);
-  });
-
-  it('is late after the booking date has passed', () => {
-    expect(isCancellationLate('2026-08-15', '2026-08-20')).toBe(true);
   });
 });
 
@@ -168,13 +153,22 @@ describe('cancelBooking', () => {
     await expect(createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future })).resolves.toBeTruthy();
   });
 
-  it('marks the booking CANCELLED_LATE when the date has already arrived', async () => {
+  it('also keeps the row as CANCELLED (not CANCELLED_LATE) when cancelled on/after the booking date — students never lose a session for self-cancelling', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const past = new Date('2020-08-07'); // a Friday well in the past
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
     await cancelBooking(booking.id, enrollment.studentId);
     const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
-    expect(row.status).toBe('CANCELLED_LATE');
+    expect(row.status).toBe('CANCELLED');
+  });
+
+  it('a same-day self-cancellation does not count toward the monthly quota', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const today = new Date('2020-08-07'); // a Friday
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: today });
+    await cancelBooking(booking.id, enrollment.studentId);
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2020-08');
+    expect(status.locked).toBe(0);
   });
 
   it('rejects cancellation by a student who does not own the booking', async () => {
@@ -436,7 +430,7 @@ describe('listAvailability', () => {
 });
 
 describe('listBookingsForStudent', () => {
-  it('flags canCancelFree for a future booking and canRequestMakeup for a late-cancelled one', async () => {
+  it('flags canRequestMakeup for a late-cancelled (admin, counted) booking', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
@@ -446,13 +440,11 @@ describe('listBookingsForStudent', () => {
 
     const rows = await listBookingsForStudent(enrollment.studentId);
     expect(rows).toHaveLength(2);
-    const futureRow = rows.find((r) => r.status === 'BOOKED')!;
-    expect(futureRow.canCancelFree).toBe(true);
     const missedRow = rows.find((r) => r.status === 'CANCELLED_LATE')!;
     expect(missedRow.canRequestMakeup).toBe(true);
   });
 
-  it('keeps an early-cancelled booking visible in history, with no cancel/makeup affordances', async () => {
+  it('keeps a self-cancelled booking visible in history, with no makeup affordance (nothing was lost)', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
@@ -460,7 +452,7 @@ describe('listBookingsForStudent', () => {
 
     const rows = await listBookingsForStudent(enrollment.studentId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ status: 'CANCELLED', canCancelFree: false, canRequestMakeup: false });
+    expect(rows[0]).toMatchObject({ status: 'CANCELLED', canRequestMakeup: false });
   });
 });
 

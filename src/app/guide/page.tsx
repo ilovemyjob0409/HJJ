@@ -298,18 +298,16 @@ export default async function GuidePage() {
             <b className="text-ink">確定預約</b>一次送出，<b className="text-ink">不需要經過行政審核</b>。選錯了再點一下就取消勾選。
           </Step>
           <Step no="3" title="「已約」的日期，點一下就能取消" img="m32b-tutoring-booked-cancel.png" imgAlt="點已約日期出現取消確認">
-            <b className="text-ink">橘色「已約」</b>是您已經預約的日期。臨時有事不用找紀錄表——直接點那一天，確認後就取消了。
-            <b className="text-ink">前一天 23:59 前</b>取消不計次，紀錄會留一筆「已取消」；
-            <b className="text-ink">當天才取消</b>會計入本月次數，事後可以申請補課。
+            <b className="text-ink">橘色「已約」</b>是您已經預約的日期。臨時有事不用找紀錄表——直接點那一天，確認後就取消了，
+            <b className="text-ink">不論是不是當天才取消都不會計入次數</b>，紀錄會留一筆「已取消」，取消後可以再從月曆挑別天重約。
             <Dialog>確定要取消 2026/8/21（五）的預約嗎？</Dialog>
           </Step>
           <Step no="4" title="我的預約紀錄" img="m33-tutoring-booking-list.png" imgAlt="我的預約紀錄表格">
-            這裡列出所有預約與狀態：<b className="text-ink">已預約</b>是排定的、<b className="text-ink">已取消</b>
-            是提前取消（不計次）、<b className="text-ink">當天取消</b>會計次——計次的那筆可以按
-            <b className="text-ink">申請補課</b>另約時間，待行政核准。
+            這裡列出所有預約與狀態：<b className="text-ink">已預約</b>是排定的、<b className="text-ink">已取消</b>是您自己取消的（不計次）。
+            若當天沒到又沒先取消，老師點名會標記缺席，才會計入次數，事後可以按<b className="text-ink">申請補課</b>另約時間，待行政核准。
           </Step>
           <Tip title="本月次數怎麼算？">
-            每月 1 號重新歸零，「已計次」是當天已到、當天取消、或缺席的預約堂數；提前取消不計次。申請補課核准後不會重複計次。若快到月底還有很多堂沒約，系統會透過
+            每月 1 號重新歸零，「已計次」是已經上課或缺席未到的堂數；自己取消（不論當天與否）一律不計次。申請補課核准後不會重複計次。若快到月底還有很多堂沒約，系統會透過
             LINE 提醒您。
           </Tip>
         </Chapter>

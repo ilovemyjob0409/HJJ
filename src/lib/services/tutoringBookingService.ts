@@ -33,11 +33,6 @@ export function daysRemainingThroughNextTaipeiMonth(now: Date): number {
   return remaining + daysInNextMonth;
 }
 
-// 前一天 23:59（台北）為分界：今天（台北）已到達或超過預約日期＝當天取消或更晚，視為 late。
-export function isCancellationLate(bookingDateUtcKey: string, nowTaipeiKey: string): boolean {
-  return nowTaipeiKey >= bookingDateUtcKey;
-}
-
 export interface CreateBookingInput {
   enrollmentId: string;
   windowId: string;
@@ -115,13 +110,10 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
   }
   if (booking.enrollment.studentId !== studentId) throw new Error('NOT_OWNER');
 
-  const late = isCancellationLate(utcDateKey(booking.date), taipeiDateKey(new Date()));
-  if (!late) {
-    // 提前取消：保留紀錄（狀態 CANCELLED、不計次），學生的預約紀錄才看得到這筆取消
-    await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
-    return;
-  }
-  await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
+  // 學生自行取消一律不計次（含當天取消）：保留紀錄（狀態 CANCELLED），學生的
+  // 預約紀錄才看得到這筆取消。CANCELLED_LATE 只留給行政明確選「計次」取消時用
+  // （adminCancelBooking countsTowardQuota=true），不再由學生自行取消觸發。
+  await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
 }
 
 // 行政取消：可選是否計次，處理特殊個案（例如場地臨時取消，不該算學生的堂數）。
@@ -313,7 +305,6 @@ export interface StudentBookingRow {
   date: Date;
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
-  canCancelFree: boolean;
   canRequestMakeup: boolean;
 }
 
@@ -331,9 +322,7 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
     },
     orderBy: { date: 'desc' },
   });
-  const todayKey = taipeiDateKey(new Date());
   return bookings.map((b) => {
-    const dateKey = utcDateKey(b.date);
     const missed = b.status === 'CANCELLED_LATE' || b.attendance?.status === 'ABSENT';
     return {
       id: b.id,
@@ -341,7 +330,6 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
       date: b.date,
       kind: b.kind as 'REGULAR' | 'MAKEUP',
       status: b.status as StudentBookingRow['status'],
-      canCancelFree: b.status === 'BOOKED' && dateKey > todayKey,
       canRequestMakeup: b.kind === 'REGULAR' && missed && !b.makeupChild,
     };
   });

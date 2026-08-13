@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Button from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import { WEEKDAY_LABELS, formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
+import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
 
 export interface AvailabilityDay {
   date: string;
@@ -97,17 +97,13 @@ export default function TutoringBookingCalendar({
     setSelectedDates((prev) => (prev.includes(day.date) ? prev.filter((d) => d !== day.date) : [...prev, day.date].sort()));
   }
 
-  // 按掉已約日期＝取消該天預約。行政端走免計次取消；學生端由後端套原本的
-  // 取消規則（當天取消記 CANCELLED_LATE 計次），所以文案要先講清楚。
+  // 按掉已約日期＝取消該天預約。學生自行取消一律不計次（含當天），行政端
+  // 走原本免計次取消，兩邊文案一致，不用再依日期分流。
   async function cancelBookedDay(day: AvailabilityDay) {
     if (submitting || !day.myBookingId) return;
     const dateLabel = formatDateWithWeekday(day.date, 'zh-TW');
-    const message = isAdmin
-      ? `確定要取消 ${dateLabel} 的預約嗎？（不計次）`
-      : isTodayTaipei(day.date)
-        ? `今天取消會計入本月次數，之後可申請補課。確定要取消 ${dateLabel} 的預約嗎？`
-        : `確定要取消 ${dateLabel} 的預約嗎？`;
-    if (!(await confirm(message, { danger: !isAdmin && isTodayTaipei(day.date) }))) return;
+    const message = isAdmin ? `確定要取消 ${dateLabel} 的預約嗎？（不計次）` : `確定要取消 ${dateLabel} 的預約嗎？`;
+    if (!(await confirm(message))) return;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/tutoring-bookings/${day.myBookingId}`, {
