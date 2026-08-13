@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -67,6 +68,9 @@ export default function TeacherClassList({ classes }: { classes: TeacherClassSum
                 ))}
               </div>
             )}
+            <Link href={`/teacher/classes/${viewing.id}/attendance`} className="mt-3 inline-block text-sm text-brandDark hover:underline">
+              查看出缺勤 →
+            </Link>
           </>
         )}
       </Modal>
