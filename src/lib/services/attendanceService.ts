@@ -1256,8 +1256,13 @@ function toDateKey(date: Date): string {
 // 與 LeaveRequest（請假，本身不會自動產生點名紀錄，是分開的表）＋其
 // MakeupRequest。只列有紀錄的日期，不枚舉理論上課日。曾經在班但已退班的
 // 學生，只要還有歷史點名/請假紀錄，一樣列出（不因為 ClassEnrollment 被刪
-// 就把歷史藏起來）。
+// 就把歷史藏起來）。未來日期（例如續報時預先標記的 NOT_REGISTERED）不列
+// 入，避免它們排在新到舊排序的最上方、蓋過真正的歷史紀錄。
 export async function getClassAttendanceOverview(classId: string): Promise<ClassAttendanceOverviewStudent[]> {
+  const todayKey = taipeiDateKey(new Date());
+  const [ty, tm, td] = todayKey.split('-').map(Number);
+  const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
+
   const [enrollments, attendances, leaves] = await Promise.all([
     prisma.classEnrollment.findMany({
       where: { classId },
@@ -1265,7 +1270,7 @@ export async function getClassAttendanceOverview(classId: string): Promise<Class
       orderBy: { student: { user: { name: 'asc' } } },
     }),
     prisma.classAttendance.findMany({
-      where: { classId },
+      where: { classId, date: { lte: todayUtc } },
       select: {
         studentId: true,
         student: { select: NAME_SELECT },
@@ -1273,10 +1278,11 @@ export async function getClassAttendanceOverview(classId: string): Promise<Class
         status: true,
         checkInTime: true,
         checkOutTime: true,
+        makeupRequestId: true,
       },
     }),
     prisma.leaveRequest.findMany({
-      where: { classId },
+      where: { classId, date: { lte: todayUtc } },
       select: {
         studentId: true,
         student: { select: NAME_SELECT },
@@ -1324,7 +1330,10 @@ export async function getClassAttendanceOverview(classId: string): Promise<Class
   }
 
   for (const a of attendances) {
-    const bucket = bucketFor(a.studentId, a.student.user.name);
+    // 插班補課的點名紀錄會寫進目標班級的 ClassAttendance（帶 makeupRequestId），
+    // 這些學生不是本班的人，顯示名字加註（插班）區分（同 AttendanceHub 慣例）。
+    const studentName = a.makeupRequestId ? `${a.student.user.name}（插班）` : a.student.user.name;
+    const bucket = bucketFor(a.studentId, studentName);
     const key = toDateKey(a.date);
     const existing = bucket.records.get(key);
     bucket.records.set(key, {

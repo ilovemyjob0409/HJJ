@@ -1352,4 +1352,63 @@ describe('getClassAttendanceOverview', () => {
     const cls = await createClass({ name: '空班', subject: '圍棋', level: '基礎1', teacherId: teacher.id, weekday: 3, startTime: '17:10', endTime: '18:40' });
     expect(await getClassAttendanceOverview(cls.id)).toEqual([]);
   });
+
+  // 未來日期用 2099 年，讓「今天起」的過濾在任何執行時間都穩定（同
+  // classService.test.ts 的續報未來日期測試慣例）。
+  it('excludes future-dated attendance and leave records from the overview', async () => {
+    const { cls, studentA, studentB } = await setup();
+    const past = new Date('2026-07-01');
+    await saveClassAttendance(cls.id, past, 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+    const future = new Date('2099-01-01');
+    await saveClassAttendance(cls.id, future, 'marker-1', [{ studentId: studentA.id, status: 'NOT_REGISTERED' }]);
+    await createLeaveRequest({ studentId: studentB.id, classId: cls.id, date: future, reason: '未來請假' });
+
+    const overview = await getClassAttendanceOverview(cls.id);
+
+    const rowA = overview.find((s) => s.studentId === studentA.id)!;
+    expect(rowA.records).toHaveLength(1);
+    expect(rowA.records[0]).toMatchObject({ date: past, status: 'PRESENT' });
+
+    const rowB = overview.find((s) => s.studentId === studentB.id)!;
+    expect(rowB.records).toEqual([]);
+  });
+
+  it('marks an insertion-makeup visitor\'s studentName with （插班） in the target class overview', async () => {
+    const { teacher, cls: homeClass, studentA } = await setup();
+    const targetClass = await createClass({
+      name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
+    });
+    const date = new Date('2026-07-06');
+    const leave = await createLeaveRequest({ studentId: studentA.id, classId: homeClass.id, date: new Date('2026-07-01'), reason: '事假' });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: date });
+    await decideMakeupRequest(makeup.id, 'APPROVED');
+    await saveClassAttendance(targetClass.id, date, 'marker-1', [
+      { studentId: studentA.id, status: 'PRESENT', makeupRequestId: makeup.id },
+    ]);
+
+    const overview = await getClassAttendanceOverview(targetClass.id);
+    const row = overview.find((s) => s.studentId === studentA.id)!;
+    expect(row.studentName).toBe('小明（插班）');
+    expect(row.records[0]).toMatchObject({ status: 'PRESENT' });
+  });
+
+  it('merges a same-date leave+makeup with an attendance record: attendance status wins, makeup carried over', async () => {
+    const { cls, studentA, teacher } = await setup();
+    const targetClass = await createClass({
+      name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
+    });
+    const date = new Date('2026-07-01');
+    const leave = await createLeaveRequest({ studentId: studentA.id, classId: cls.id, date, reason: '事假' });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: new Date('2026-07-06') });
+    await decideMakeupRequest(makeup.id, 'APPROVED');
+
+    // 學生後來還是在原班出席了同一天。
+    await saveClassAttendance(cls.id, date, 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    const row = overview.find((s) => s.studentId === studentA.id)!;
+    expect(row.records).toHaveLength(1);
+    expect(row.records[0].status).toBe('PRESENT');
+    expect(row.records[0].makeup).toEqual({ status: 'APPROVED', type: 'INSERTION', label: '補到 2026/7/6（一） 週一基礎2A' });
+  });
 });
