@@ -1157,6 +1157,41 @@ describe('listMyAttendance with tutoring bookings', () => {
   });
 });
 
+describe('checkInByStudentNumber with a class AND a tutoring booking on the same day (multi-candidate)', () => {
+  it('returns CHOOSE_SESSION listing both the class and the tutoring booking', async () => {
+    const { student, booking } = await setupTutoringBooking(); // Friday 2026-08-07, weekday 5
+    await prisma.student.update({ where: { id: student.id }, data: { studentNumber: 'S001' } });
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-combo1@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '週五班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 5, startTime: '18:00', endTime: '19:30' });
+    await enrollStudent(cls.id, student.id);
+
+    const result = await checkInByStudentNumber('S001', '2026-08-07', '15:00', 'marker-1');
+
+    expect(result.result).toBe('CHOOSE_SESSION');
+    expect(result.candidates?.map((c) => c.key).sort()).toEqual([`class:${cls.id}`, `tutoring:${booking.id}`].sort());
+  });
+});
+
+describe('checkInByStudentNumber with a class AND a go-hall registration on the same day (multi-candidate)', () => {
+  it('returns CHOOSE_SESSION listing both the class and the go-hall session', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'checkin-combo2@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'checkin-combo2-s@example.com', password: 'x' });
+    await prisma.student.update({ where: { id: student.id }, data: { studentNumber: 'S001' } });
+    const date = new Date('2026-08-04'); // Tuesday, weekday 2
+    await createSessions({ dates: [date], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+    const cls = await createClass({ name: '週二班', subject: '圍棋', level: '基礎1', teacherId: teacher.id, weekday: 2, startTime: '18:00', endTime: '19:30' });
+    await enrollStudent(cls.id, student.id);
+
+    const result = await checkInByStudentNumber('S001', '2026-08-04', '13:00', 'marker-1');
+
+    expect(result.result).toBe('CHOOSE_SESSION');
+    expect(result.candidates?.map((c) => c.key).sort()).toEqual([`class:${cls.id}`, `gohall:${session.id}`].sort());
+  });
+});
+
 describe('checkInByStudentNumber with a tutoring booking', () => {
   it('checks the student into their tutoring booking for today', async () => {
     const { student, window } = await setupTutoringBooking();
