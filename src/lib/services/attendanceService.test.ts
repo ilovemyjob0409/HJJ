@@ -6,7 +6,8 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent, addEnrollmentSessions } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
-import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance } from './attendanceService';
+import { setTeacherAvailability } from './availabilityService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance, getClassAttendanceOverview } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
@@ -1209,5 +1210,111 @@ describe('checkInByStudentNumber with a go-hall registration', () => {
     });
     expect(record.checkOutTime).toBe('16:05');
     expect(await goHallBalance(student.id)).toBe(9);
+  });
+});
+
+describe('getClassAttendanceOverview', () => {
+  async function setup() {
+    const teacher = await createTeacher({ name: '陳老師', email: `overview-chen-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
+    const cls = await createClass({ name: '週三基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 3, startTime: '17:10', endTime: '18:40' });
+    const studentA = await createStudent({ name: '小明', email: `overview-ming-${Date.now()}@example.com`, password: 'x' });
+    const studentB = await createStudent({ name: '呂昕曄', email: `overview-lu-${Date.now()}@example.com`, password: 'x' });
+    await enrollStudent(cls.id, studentA.id);
+    await enrollStudent(cls.id, studentB.id);
+    return { teacher, cls, studentA, studentB };
+  }
+
+  it('lists a plain attendance record with no makeup info', async () => {
+    const { cls, studentA } = await setup();
+    const date = new Date('2026-07-01');
+    await saveClassAttendance(cls.id, date, 'marker-1', [
+      { studentId: studentA.id, status: 'PRESENT', checkInTime: '17:10', checkOutTime: '18:40' },
+    ]);
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    const row = overview.find((s) => s.studentId === studentA.id)!;
+    expect(row.records).toEqual([{ date, status: 'PRESENT', checkInTime: '17:10', checkOutTime: '18:40', makeup: null }]);
+  });
+
+  it('shows a leave with no makeup request yet as ON_LEAVE with makeup: null', async () => {
+    const { cls, studentA } = await setup();
+    await createLeaveRequest({ studentId: studentA.id, classId: cls.id, date: new Date('2026-07-01'), reason: '事假' });
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    const row = overview.find((s) => s.studentId === studentA.id)!;
+    expect(row.records).toEqual([
+      { date: new Date('2026-07-01'), status: 'ON_LEAVE', checkInTime: null, checkOutTime: null, makeup: null },
+    ]);
+  });
+
+  it('shows an approved insertion makeup with a descriptive label', async () => {
+    const { cls, studentA, teacher } = await setup();
+    const targetClass = await createClass({
+      name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
+    });
+    const leave = await createLeaveRequest({ studentId: studentA.id, classId: cls.id, date: new Date('2026-07-01'), reason: '事假' });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: new Date('2026-07-06') });
+    await decideMakeupRequest(makeup.id, 'APPROVED');
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    const row = overview.find((s) => s.studentId === studentA.id)!;
+    expect(row.records).toHaveLength(1);
+    expect(row.records[0].status).toBe('ON_LEAVE');
+    expect(row.records[0].makeup).toEqual({ status: 'APPROVED', type: 'INSERTION', label: '補到 2026/7/6（一） 週一基礎2A' });
+  });
+
+  it('shows a pending one-on-one makeup with teacher and time', async () => {
+    const { cls, studentA, teacher } = await setup();
+    await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
+    const leave = await createLeaveRequest({ studentId: studentA.id, classId: cls.id, date: new Date('2026-07-01'), reason: '事假' });
+    await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id, studentId: studentA.id, teacherId: teacher.id, slotDate: new Date('2026-07-08'), slotStartTime: '16:00',
+    });
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    const row = overview.find((s) => s.studentId === studentA.id)!;
+    expect(row.records[0].makeup).toEqual({ status: 'PENDING_ADMIN', type: 'ONE_ON_ONE', label: '陳老師 一對一 2026/7/8（三） 16:00-16:40' });
+  });
+
+  it('shows an absence without leave as ABSENT with no makeup', async () => {
+    const { cls, studentA } = await setup();
+    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: studentA.id, status: 'ABSENT' }]);
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    const row = overview.find((s) => s.studentId === studentA.id)!;
+    expect(row.records[0]).toMatchObject({ status: 'ABSENT', makeup: null });
+  });
+
+  it('groups records by student and sorts each student\'s records newest first', async () => {
+    const { cls, studentA, studentB } = await setup();
+    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-07-15'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+    await saveClassAttendance(cls.id, new Date('2026-07-08'), 'marker-1', [{ studentId: studentB.id, status: 'PRESENT' }]);
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    expect(overview.map((s) => s.studentId).sort()).toEqual([studentA.id, studentB.id].sort());
+
+    const rowA = overview.find((s) => s.studentId === studentA.id)!;
+    expect(rowA.records.map((r) => r.date)).toEqual([new Date('2026-07-15'), new Date('2026-07-01')]);
+
+    const rowB = overview.find((s) => s.studentId === studentB.id)!;
+    expect(rowB.records).toHaveLength(1);
+  });
+
+  it('includes historical records for a student no longer enrolled in the class', async () => {
+    const { cls, studentA } = await setup();
+    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+    await prisma.classEnrollment.delete({ where: { studentId_classId: { studentId: studentA.id, classId: cls.id } } });
+
+    const overview = await getClassAttendanceOverview(cls.id);
+    const row = overview.find((s) => s.studentId === studentA.id);
+    expect(row?.studentName).toBe('小明');
+    expect(row?.records).toHaveLength(1);
+  });
+
+  it('returns an empty array for a class with no students', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: `overview-empty-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
+    const cls = await createClass({ name: '空班', subject: '圍棋', level: '基礎1', teacherId: teacher.id, weekday: 3, startTime: '17:10', endTime: '18:40' });
+    expect(await getClassAttendanceOverview(cls.id)).toEqual([]);
   });
 });

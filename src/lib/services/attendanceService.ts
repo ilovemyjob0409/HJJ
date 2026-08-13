@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { pushLineMessage } from './lineService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
@@ -1225,4 +1226,119 @@ export async function resolveCheckIn(
   const action = await match.apply();
   await notifyAttendanceResult(student, match, action, timeStr);
   return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
+}
+
+export interface ClassAttendanceOverviewMakeup {
+  status: 'PENDING_ADMIN' | 'APPROVED' | 'REJECTED';
+  type: 'INSERTION' | 'ONE_ON_ONE';
+  label: string;
+}
+
+export interface ClassAttendanceOverviewRecord {
+  date: Date;
+  status: AttendanceStatusValue;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  makeup: ClassAttendanceOverviewMakeup | null;
+}
+
+export interface ClassAttendanceOverviewStudent {
+  studentId: string;
+  studentName: string;
+  records: ClassAttendanceOverviewRecord[];
+}
+
+function toDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+// 整班出缺勤總表（依學生分組，含補課狀態）：合併 ClassAttendance（點名紀錄）
+// 與 LeaveRequest（請假，本身不會自動產生點名紀錄，是分開的表）＋其
+// MakeupRequest。只列有紀錄的日期，不枚舉理論上課日。曾經在班但已退班的
+// 學生，只要還有歷史點名/請假紀錄，一樣列出（不因為 ClassEnrollment 被刪
+// 就把歷史藏起來）。
+export async function getClassAttendanceOverview(classId: string): Promise<ClassAttendanceOverviewStudent[]> {
+  const [enrollments, attendances, leaves] = await Promise.all([
+    prisma.classEnrollment.findMany({
+      where: { classId },
+      select: { studentId: true, student: { select: NAME_SELECT } },
+      orderBy: { student: { user: { name: 'asc' } } },
+    }),
+    prisma.classAttendance.findMany({
+      where: { classId },
+      select: {
+        studentId: true,
+        student: { select: NAME_SELECT },
+        date: true,
+        status: true,
+        checkInTime: true,
+        checkOutTime: true,
+      },
+    }),
+    prisma.leaveRequest.findMany({
+      where: { classId },
+      select: {
+        studentId: true,
+        student: { select: NAME_SELECT },
+        date: true,
+        makeupRequest: {
+          select: {
+            status: true,
+            type: true,
+            targetDate: true,
+            targetClass: { select: { name: true } },
+            teacher: { select: { user: { select: { name: true } } } },
+            slotDate: true,
+            slotStartTime: true,
+            slotEndTime: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const byStudent = new Map<string, { studentName: string; records: Map<string, ClassAttendanceOverviewRecord> }>();
+  function bucketFor(studentId: string, studentName: string) {
+    let bucket = byStudent.get(studentId);
+    if (!bucket) {
+      bucket = { studentName, records: new Map() };
+      byStudent.set(studentId, bucket);
+    }
+    return bucket;
+  }
+
+  for (const e of enrollments) bucketFor(e.studentId, e.student.user.name);
+
+  for (const l of leaves) {
+    const bucket = bucketFor(l.studentId, l.student.user.name);
+    let makeup: ClassAttendanceOverviewMakeup | null = null;
+    if (l.makeupRequest) {
+      const m = l.makeupRequest;
+      const label =
+        m.type === 'INSERTION'
+          ? `補到 ${formatDateWithWeekday(m.targetDate!)} ${m.targetClass?.name ?? ''}`
+          : `${m.teacher?.user.name ?? ''} 一對一 ${formatDateWithWeekday(m.slotDate!)} ${m.slotStartTime}-${m.slotEndTime}`;
+      makeup = { status: m.status, type: m.type, label };
+    }
+    bucket.records.set(toDateKey(l.date), { date: l.date, status: 'ON_LEAVE', checkInTime: null, checkOutTime: null, makeup });
+  }
+
+  for (const a of attendances) {
+    const bucket = bucketFor(a.studentId, a.student.user.name);
+    const key = toDateKey(a.date);
+    const existing = bucket.records.get(key);
+    bucket.records.set(key, {
+      date: a.date,
+      status: a.status as AttendanceStatusValue,
+      checkInTime: a.checkInTime,
+      checkOutTime: a.checkOutTime,
+      makeup: existing?.makeup ?? null,
+    });
+  }
+
+  return Array.from(byStudent.entries()).map(([studentId, v]) => ({
+    studentId,
+    studentName: v.studentName,
+    records: Array.from(v.records.values()).sort((a, b) => b.date.getTime() - a.date.getTime()),
+  }));
 }
