@@ -376,6 +376,12 @@ export default function AdminTutoringPage() {
                         {!window.active && <span className="ml-2 text-xs text-inkMuted">（已停用）</span>}
                       </span>
                       <div className="flex gap-2">
+                        <Link
+                          href={`/admin/tutoring/windows/${window.id}/attendance`}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-borderStrong bg-card px-2 py-1 text-xs font-semibold text-ink transition-colors hover:bg-stripe"
+                        >
+                          查看出缺勤
+                        </Link>
                         <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => startEditWindow(window)}>
                           編輯
                         </Button>
