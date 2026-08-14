@@ -242,8 +242,8 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
   }
 
   const columns: Column<SessionSummary>[] = [
-    { header: '類型', render: (s) => TYPE_LABEL[s.type] },
-    { header: '名稱', render: (s) => s.title },
+    { header: '類型', render: (s) => TYPE_LABEL[s.type], sortValue: (s) => s.type },
+    { header: '名稱', render: (s) => s.title, sortValue: (s) => s.title },
     { header: '時間', render: (s) => s.timeLabel || '-' },
     { header: '點名進度', render: (s) => `${s.markedCount}/${s.totalCount}` },
   ];

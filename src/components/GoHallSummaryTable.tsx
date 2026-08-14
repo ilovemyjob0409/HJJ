@@ -32,7 +32,7 @@ export default function GoHallSummaryTable({
   const filteredRows = searchable ? rows.filter((r) => matchesGoHallSummarySearch(r, search)) : rows;
 
   const columns: Column<GoHallSummaryRow>[] = [
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW'), sortValue: (r) => r.date },
     { header: '人數', render: (r) => `${r.registeredCount}/${r.capacity}` },
     {
       header: '狀態',
@@ -42,6 +42,7 @@ export default function GoHallSummaryTable({
         ) : (
           <span className="inline-block rounded-full bg-approvedBg px-3 py-1 text-xs font-semibold text-approved">尚有名額</span>
         ),
+      sortValue: (r) => (r.registeredCount >= r.capacity ? 1 : 0),
     },
   ];
 
