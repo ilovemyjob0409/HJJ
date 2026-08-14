@@ -112,6 +112,7 @@ export default function AdminFaqPage() {
           {item.question}
         </span>
       ),
+      sortValue: (item) => item.question,
     },
     {
       header: '排序',

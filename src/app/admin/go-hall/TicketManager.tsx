@@ -168,8 +168,8 @@ export default function TicketManager() {
   }, [summaries, search]);
 
   const columns: Column<SummaryRow>[] = [
-    { header: '姓名', render: (s) => s.name },
-    { header: '學號', render: (s) => s.studentNumber ?? '-' },
+    { header: '姓名', render: (s) => s.name, sortValue: (s) => s.name },
+    { header: '學號', render: (s) => s.studentNumber ?? '-', sortValue: (s) => s.studentNumber ?? null },
     {
       header: '堂票剩餘',
       render: (s) => (
@@ -177,6 +177,7 @@ export default function TicketManager() {
           <span className="font-semibold text-ink">{s.balance}</span> 堂
         </span>
       ),
+      sortValue: (s) => s.balance,
     },
     {
       header: '季票',
@@ -189,6 +190,7 @@ export default function TicketManager() {
         ) : (
           '-'
         ),
+      sortValue: (s) => s.activePassEndDate ?? null,
     },
     {
       header: '操作',
@@ -201,9 +203,13 @@ export default function TicketManager() {
   ];
 
   const historyColumns: Column<HistoryRow>[] = [
-    { header: '日期', render: (h) => formatDateWithWeekday(h.createdAt, 'zh-TW') },
-    { header: '類型', render: (h) => KIND_LABELS[h.kind] ?? h.kind },
-    { header: '堂數', render: (h) => (h.amount > 0 ? `+${h.amount}` : `${h.amount}`) },
+    { header: '日期', render: (h) => formatDateWithWeekday(h.createdAt, 'zh-TW'), sortValue: (h) => h.createdAt },
+    { header: '類型', render: (h) => KIND_LABELS[h.kind] ?? h.kind, sortValue: (h) => h.kind },
+    {
+      header: '堂數',
+      render: (h) => (h.amount > 0 ? `+${h.amount}` : `${h.amount}`),
+      sortValue: (h) => h.amount,
+    },
     {
       header: '備註',
       render: (h) => h.reason ?? (h.sessionDate ? `場次 ${formatDateWithWeekday(h.sessionDate, 'zh-TW')}` : '-'),
