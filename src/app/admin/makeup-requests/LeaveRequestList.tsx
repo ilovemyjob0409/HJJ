@@ -217,7 +217,6 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
         ) : (
           <span className="text-inkMuted">—</span>
         ),
-      sortValue: (r) => (r.makeupRequest && !r.makeupRequest.cancelRequestedAt ? r.makeupRequest.status : null),
     },
     {
       header: '操作',
