@@ -99,15 +99,17 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onTutoringCl
                 day.map((card) => {
                   if (card.kind === 'tutoring') {
                     const tutoringContent = (
-                      <>
-                        <p className="text-xs font-bold text-brandInk">{card.data.programName}</p>
-                        <p className="mt-0.5 text-[11px] text-brandInk/80">
-                          {card.data.startTime}-{card.data.endTime}
-                        </p>
-                        <p className="text-[10px] text-brandInk/60">
-                          {[card.data.teacher.user.name, card.data.teacher2?.user.name].filter(Boolean).join('／')}
-                        </p>
-                      </>
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="min-w-0 flex-1 text-sm font-bold leading-tight text-brandInk">{card.data.programName}</p>
+                        <div className="min-w-0 text-right">
+                          <p className="whitespace-nowrap text-[10px] font-bold leading-snug text-brandInk/80">
+                            {card.data.startTime}-{card.data.endTime}
+                          </p>
+                          {[card.data.teacher.user.name, card.data.teacher2?.user.name].filter(Boolean).map((name) => (
+                            <p key={name} className="text-[10px] leading-snug text-brandInk/60">{name}</p>
+                          ))}
+                        </div>
+                      </div>
                     );
                     const tutoringClassName = 'overflow-hidden rounded-md py-1.5 pl-2 pr-2 text-left';
                     const tutoringStyle = { background: colors[card.data.programName] ?? UNSET_SUBJECT_COLOR };
@@ -133,13 +135,16 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onTutoringCl
                         className="absolute bottom-0 right-0 top-0 w-2.5"
                         style={{ background: levelColor(card.data.level) }}
                       />
-                      <p className="text-xs font-bold text-brandInk">{stripWeekday(card.data.name)}</p>
-                      <p className="mt-0.5 text-[11px] text-brandInk/80">
-                        {card.data.startTime}-{card.data.endTime}
-                      </p>
-                      <p className="text-[10px] text-brandInk/60">
-                        {card.data.teacher.user.name}・{card.data.level}
-                      </p>
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="min-w-0 flex-1 text-sm font-bold leading-tight text-brandInk">{stripWeekday(card.data.name)}</p>
+                        <div className="min-w-0 text-right">
+                          <p className="whitespace-nowrap text-[10px] font-bold leading-snug text-brandInk/80">
+                            {card.data.startTime}-{card.data.endTime}
+                          </p>
+                          <p className="text-[10px] leading-snug text-brandInk/60">{card.data.teacher.user.name}</p>
+                          <p className="text-[10px] leading-snug text-brandInk/60">{card.data.level}</p>
+                        </div>
+                      </div>
                     </>
                   );
                   const cardClassName = 'relative overflow-hidden rounded-md py-1.5 pl-2 pr-4 text-left';
