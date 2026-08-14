@@ -7,10 +7,12 @@ import { listLeaveRequestsForTeacherClasses } from '@/lib/services/leaveRequestS
 import { listInsertionsForTeacherClasses, listAssignedOneOnOneForTeacher } from '@/lib/services/makeupRequestService';
 import { listSessionsForTeacher } from '@/lib/services/goHallService';
 import { listClassesForTeacher } from '@/lib/services/classService';
+import { listWindowsForTeacher } from '@/lib/services/tutoringProgramService';
 import Card from '@/components/ui/Card';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import AttendanceHub from '@/components/AttendanceHub';
 import TeacherClassList from '@/components/TeacherClassList';
+import TeacherTutoringWindowList from '@/components/TeacherTutoringWindowList';
 import AssignmentsTable, { AssignmentRow } from '@/components/AssignmentsTable';
 import TeacherLeaveTable from './TeacherLeaveTable';
 
@@ -41,7 +43,7 @@ export default async function TeacherDashboard() {
   const session = await getServerSession(authOptions);
   const teacher = session ? await prisma.teacher.findUnique({ where: { userId: session.user.id } }) : null;
 
-  const [substitutes, oneOnOnes, leaves, insertions, goHallSessions, teacherClasses] = teacher
+  const [substitutes, oneOnOnes, leaves, insertions, goHallSessions, teacherClasses, tutoringWindows] = teacher
     ? await Promise.all([
         listAssignedSubstituteRequestsForTeacher(teacher.id),
         listAssignedOneOnOneForTeacher(teacher.id),
@@ -49,8 +51,9 @@ export default async function TeacherDashboard() {
         listInsertionsForTeacherClasses(teacher.id),
         listSessionsForTeacher(teacher.id),
         listClassesForTeacher(teacher.id),
+        listWindowsForTeacher(teacher.id),
       ])
-    : [[], [], [], [], [], []];
+    : [[], [], [], [], [], [], []];
 
   const assignments: AssignmentRow[] = [
     ...substitutes.map((s) => ({
@@ -139,6 +142,9 @@ export default async function TeacherDashboard() {
 
       <h2 className="mb-2 font-bold text-ink">我的帶班班級</h2>
       <TeacherClassList classes={teacherClasses} />
+
+      <h2 className="mb-2 font-bold text-ink">我的個別輔導時段</h2>
+      <TeacherTutoringWindowList windows={tutoringWindows} />
 
       <h2 className="mb-2 font-bold text-ink">被指派代課／一對一補課</h2>
       <AssignmentsTable rows={assignments} />
