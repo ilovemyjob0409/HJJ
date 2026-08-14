@@ -1507,7 +1507,9 @@ describe('getTutoringWindowAttendanceOverview', () => {
 
   it("groups records by student and sorts each student's records newest first, including future dates at the top", async () => {
     const { window, program, studentA, enrollmentA } = await setup();
-    const studentB = await createStudent({ name: '呂昕曄', email: `tw-overview-lu-${Date.now()}@example.com`, password: 'x' });
+    // 名字刻意選「丁一」而非其他字，讓 zh-TW 筆畫排序結果跟建立順序（studentA
+    // 先建立）相反——這樣這個斷言才會在拿掉排序時真的失敗，而不是巧合通過。
+    const studentB = await createStudent({ name: '丁一', email: `tw-overview-ding-${Date.now()}@example.com`, password: 'x' });
     const enrollmentB = await createEnrollment({ studentId: studentB.id, programId: program.id });
 
     await createBooking({ enrollmentId: enrollmentA.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
@@ -1517,7 +1519,7 @@ describe('getTutoringWindowAttendanceOverview', () => {
 
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     expect(overview).toHaveLength(2);
-    expect(overview.map((s) => s.studentName)).toEqual(['小明', '呂昕曄'].sort((a, b) => a.localeCompare(b, 'zh-TW')));
+    expect(overview.map((s) => s.studentName)).toEqual(['丁一', '小明']);
     const rowA = overview.find((s) => s.studentId === studentA.id)!;
     expect(rowA.records.map((r) => r.date)).toEqual([
       new Date(Date.UTC(2099, 0, 2)),

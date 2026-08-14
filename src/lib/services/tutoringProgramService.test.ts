@@ -243,6 +243,7 @@ describe('listWindowsForTeacher', () => {
     const inactiveWindow = await createWindow({ programId: program.id, weekday: 4, startTime: '17:00', endTime: '19:00', capacity: 5, teacherId: teacher.id });
     await updateWindow(inactiveWindow.id, { active: false });
     const listAfterDeactivation = await listWindowsForTeacher(teacher.id);
+    expect(listAfterDeactivation).toHaveLength(2);
     expect(listAfterDeactivation.map((w) => w.id)).not.toContain(inactiveWindow.id);
   });
 
