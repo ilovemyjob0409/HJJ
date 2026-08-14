@@ -134,7 +134,7 @@ function AdminMakeupRequestsContent() {
   }
 
   const columns: Column<MergedRow>[] = [
-    { header: '學生', render: (r) => r.studentName },
+    { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     { header: '來源／原班級', render: (r) => <span className="whitespace-nowrap">{r.origin}</span> },
     { header: '類型', render: (r) => r.typeBadge },
     { header: '補課日期', render: (r) => <span className="whitespace-nowrap">{r.dateLabel}</span> },

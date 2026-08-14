@@ -163,10 +163,14 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
   }
 
   const columns: Column<LeaveRow>[] = [
-    { header: '學生', render: (r) => r.student.user.name },
-    { header: '班級', render: (r) => <span className="whitespace-nowrap">{r.class.name}</span> },
-    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
-    { header: '原因', render: (r) => r.reason },
+    { header: '學生', render: (r) => r.student.user.name, sortValue: (r) => r.student.user.name },
+    {
+      header: '班級',
+      render: (r) => <span className="whitespace-nowrap">{r.class.name}</span>,
+      sortValue: (r) => r.class.name,
+    },
+    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
+    { header: '原因', render: (r) => r.reason, sortValue: (r) => r.reason },
     {
       header: '補課日期',
       render: (r) => {
@@ -174,6 +178,11 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
         if (!m) return <span className="text-inkMuted">—</span>;
         const d = m.type === 'INSERTION' ? m.targetDate : m.slotDate;
         return <span className="whitespace-nowrap">{d ? formatDateWithWeekday(d) : '-'}</span>;
+      },
+      sortValue: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return null;
+        return m.type === 'INSERTION' ? m.targetDate : m.slotDate;
       },
     },
     {
@@ -208,6 +217,7 @@ const LeaveRequestList = forwardRef<LeaveRequestListHandle>(function LeaveReques
         ) : (
           <span className="text-inkMuted">—</span>
         ),
+      sortValue: (r) => (r.makeupRequest && !r.makeupRequest.cancelRequestedAt ? r.makeupRequest.status : null),
     },
     {
       header: '操作',
