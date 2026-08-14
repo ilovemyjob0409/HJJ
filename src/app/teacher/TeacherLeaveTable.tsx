@@ -27,7 +27,7 @@ interface TeacherLeaveRow {
 
 export default function TeacherLeaveTable({ rows }: { rows: TeacherLeaveRow[] }) {
   const columns: Column<TeacherLeaveRow>[] = [
-    { header: '學生', render: (r) => r.studentName },
+    { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     {
       header: '方向',
       render: (r) =>
@@ -36,10 +36,19 @@ export default function TeacherLeaveTable({ rows }: { rows: TeacherLeaveRow[] })
         ) : (
           <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班進我班</span>
         ),
+      sortValue: (r) => r.direction,
     },
-    { header: '原班級', render: (r) => <span className="whitespace-nowrap">{r.originClassName}</span> },
-    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
-    { header: '補課日期', render: (r) => (r.makeupDate ? formatDateWithWeekday(r.makeupDate) : <span className="text-inkMuted">—</span>) },
+    {
+      header: '原班級',
+      render: (r) => <span className="whitespace-nowrap">{r.originClassName}</span>,
+      sortValue: (r) => r.originClassName,
+    },
+    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
+    {
+      header: '補課日期',
+      render: (r) => (r.makeupDate ? formatDateWithWeekday(r.makeupDate) : <span className="text-inkMuted">—</span>),
+      sortValue: (r) => r.makeupDate,
+    },
     {
       header: '補課去向',
       render: (r) => {
@@ -64,6 +73,7 @@ export default function TeacherLeaveTable({ rows }: { rows: TeacherLeaveRow[] })
     {
       header: '狀態',
       render: (r) => (r.status ? <StatusBadge status={r.status} /> : <span className="text-inkMuted">尚未申請</span>),
+      sortValue: (r) => r.status,
     },
     {
       header: '操作',
