@@ -20,6 +20,13 @@
       "runtimeArgs": ["run", "dev", "--", "-p", "3010"],
       "port": 3010,
       "cwd": "/Users/s.w.kung/Downloads/Wade Claude/HJJ/.claude/worktrees/tutoring-module"
+    },
+    {
+      "name": "table-column-sorting worktree",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3011"],
+      "port": 3011,
+      "cwd": "/Users/s.w.kung/Downloads/Wade Claude/HJJ/.claude/worktrees/table-column-sorting"
     }
   ]
 }
