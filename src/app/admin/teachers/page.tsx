@@ -133,15 +133,15 @@ export default function TeachersPage() {
   });
 
   const availabilityColumns: Column<AvailabilityWindowRow>[] = [
-    { header: '星期', render: (r) => `週${WEEKDAY_LABELS[r.weekday]}` },
+    { header: '星期', render: (r) => `週${WEEKDAY_LABELS[r.weekday]}`, sortValue: (r) => r.weekday },
     { header: '時段', render: (r) => `${r.startTime}-${r.endTime}` },
   ];
 
   const columns: Column<TeacherRow>[] = [
-    { header: '姓名', render: (t) => t.user.name },
-    { header: '帳號', render: (t) => t.user.email },
-    { header: '科目', render: (t) => t.subjects },
-    { header: '電話', render: (t) => t.phone ?? '-' },
+    { header: '姓名', render: (t) => t.user.name, sortValue: (t) => t.user.name },
+    { header: '帳號', render: (t) => t.user.email, sortValue: (t) => t.user.email },
+    { header: '科目', render: (t) => t.subjects, sortValue: (t) => t.subjects },
+    { header: '電話', render: (t) => t.phone ?? '-', sortValue: (t) => t.phone ?? null },
     {
       header: '操作',
       render: (t) => (

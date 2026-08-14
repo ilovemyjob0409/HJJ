@@ -75,10 +75,10 @@ export default function AdminSubstituteRequestsPage() {
   }
 
   const columns: Column<PendingRow>[] = [
-    { header: '班級', render: (r) => r.class.name },
-    { header: '原老師', render: (r) => r.originalTeacher.user.name },
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
-    { header: '原因', render: (r) => r.reason },
+    { header: '班級', render: (r) => r.class.name, sortValue: (r) => r.class.name },
+    { header: '原老師', render: (r) => r.originalTeacher.user.name, sortValue: (r) => r.originalTeacher.user.name },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
+    { header: '原因', render: (r) => r.reason, sortValue: (r) => r.reason },
     { header: '狀態', render: () => <StatusBadge status="PENDING_ASSIGNMENT" /> },
     {
       header: '指派代課',
