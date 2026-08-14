@@ -72,10 +72,10 @@ export default function StudentTutoringPage() {
   }
 
   const bookingColumns: Column<BookingRow>[] = [
-    { header: '課程', render: (r) => r.programName },
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date) },
-    { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般') },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
+    { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
+    { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般'), sortValue: (r) => r.kind },
+    { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
     {
       header: '操作',
       render: (r) => (

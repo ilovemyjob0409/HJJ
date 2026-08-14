@@ -27,9 +27,9 @@ export default function PointsHistoryTable({ rows }: { rows: HistoryRow[] }) {
   }
 
   const columns: Column<HistoryRow>[] = [
-    { header: '日期', render: (r) => formatDateWithWeekday(r.createdAt) },
-    { header: '類型', render: (r) => KIND_LABELS[r.kind] ?? r.kind },
-    { header: '說明', render: (r) => r.reason },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.createdAt), sortValue: (r) => r.createdAt },
+    { header: '類型', render: (r) => KIND_LABELS[r.kind] ?? r.kind, sortValue: (r) => r.kind },
+    { header: '說明', render: (r) => r.reason, sortValue: (r) => r.reason },
     {
       header: '點數',
       render: (r) => (
@@ -37,8 +37,9 @@ export default function PointsHistoryTable({ rows }: { rows: HistoryRow[] }) {
           {r.amount > 0 ? `+${r.amount}` : r.amount}
         </span>
       ),
+      sortValue: (r) => r.amount,
     },
-    { header: '加分老師', render: (r) => r.teacher?.user.name ?? '-' },
+    { header: '加分老師', render: (r) => r.teacher?.user.name ?? '-', sortValue: (r) => r.teacher?.user.name ?? null },
   ];
 
   return <CollapsibleDataTable columns={columns} rows={rows} keyField={(r) => r.id} maxRows={3} />;

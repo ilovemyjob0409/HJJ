@@ -144,10 +144,10 @@ export default function StudentActivitiesPage() {
           <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
         ),
     },
-    { header: '標題', render: (a) => a.title },
-    { header: '分類', render: (a) => a.category.name },
+    { header: '標題', render: (a) => a.title, sortValue: (a) => a.title },
+    { header: '分類', render: (a) => a.category.name, sortValue: (a) => a.category.name },
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
-    { header: '地點', render: (a) => a.location ?? '-' },
+    { header: '地點', render: (a) => a.location ?? '-', sortValue: (a) => a.location ?? null },
     { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
     { header: '剩餘名額', render: (a) => Math.max(a.capacity - a._count.registrations, 0) },
   ];
@@ -164,8 +164,8 @@ export default function StudentActivitiesPage() {
           <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
         ),
     },
-    { header: '標題', render: (r) => r.activity.title },
-    { header: '分類', render: (r) => r.activity.category.name },
+    { header: '標題', render: (r) => r.activity.title, sortValue: (r) => r.activity.title },
+    { header: '分類', render: (r) => r.activity.category.name, sortValue: (r) => r.activity.category.name },
     { header: '日期區間', render: (r) => formatActivityDateRange(r.activity.startDate, r.activity.endDate, 'zh-TW') },
   ];
 

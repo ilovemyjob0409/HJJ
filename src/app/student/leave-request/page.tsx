@@ -85,10 +85,10 @@ export default function StudentLeaveRequestPage() {
   }
 
   const columns: Column<LeaveRow>[] = [
-    { header: '班級', render: (l) => l.class.name },
-    { header: '日期', render: (l) => formatDateWithWeekday(l.date) },
-    { header: '原因', render: (l) => l.reason },
-    { header: '狀態', render: (l) => <StatusBadge status={l.status} /> },
+    { header: '班級', render: (l) => l.class.name, sortValue: (l) => l.class.name },
+    { header: '日期', render: (l) => formatDateWithWeekday(l.date), sortValue: (l) => l.date },
+    { header: '原因', render: (l) => l.reason, sortValue: (l) => l.reason },
+    { header: '狀態', render: (l) => <StatusBadge status={l.status} />, sortValue: (l) => l.status },
     {
       header: '補課日期',
       render: (l) => {
@@ -96,6 +96,11 @@ export default function StudentLeaveRequestPage() {
         if (!m) return <span className="text-inkMuted">—</span>;
         const d = m.type === 'INSERTION' ? m.targetDate : m.slotDate;
         return <span className="whitespace-nowrap">{d ? formatDateWithWeekday(d) : '-'}</span>;
+      },
+      sortValue: (l) => {
+        const m = l.makeupRequest;
+        if (!m) return null;
+        return m.type === 'INSERTION' ? m.targetDate : m.slotDate;
       },
     },
     {
@@ -128,6 +133,7 @@ export default function StudentLeaveRequestPage() {
         ) : (
           <span className="text-inkMuted">尚未申請</span>
         ),
+      sortValue: (l) => l.makeupRequest?.status ?? null,
     },
     {
       header: '操作',

@@ -38,12 +38,12 @@ export default function StudentAttendancePage() {
   }, []);
 
   const columns: Column<MyAttendanceRow>[] = [
-    { header: '類型', render: (r) => TYPE_LABEL[r.type] },
-    { header: '名稱', render: (r) => r.title },
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
-    { header: '簽到', render: (r) => r.checkInTime ?? '-' },
-    { header: '簽退', render: (r) => r.checkOutTime ?? '-' },
+    { header: '類型', render: (r) => TYPE_LABEL[r.type], sortValue: (r) => r.type },
+    { header: '名稱', render: (r) => r.title, sortValue: (r) => r.title },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW'), sortValue: (r) => r.date },
+    { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
+    { header: '簽到', render: (r) => r.checkInTime ?? '-', sortValue: (r) => r.checkInTime ?? null },
+    { header: '簽退', render: (r) => r.checkOutTime ?? '-', sortValue: (r) => r.checkOutTime ?? null },
   ];
 
   return (
