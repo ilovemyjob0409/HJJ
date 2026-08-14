@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import DataTable, { Column } from './DataTable';
 import { getVisibleRows } from './dataTableRows';
+import { SortState, sortRows } from './dataTableSort';
 
 interface CollapsibleDataTableProps<T> {
   columns: Column<T>[];
@@ -28,7 +29,9 @@ export default function CollapsibleDataTable<T>({
   emptyText,
 }: CollapsibleDataTableProps<T>) {
   const [expanded, setExpanded] = useState(false);
-  const visibleRows = getVisibleRows(rows, maxRows, expanded);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const sortedRows = sortRows(rows, columns, sort);
+  const visibleRows = getVisibleRows(sortedRows, maxRows, expanded);
   const showFooter = maxRows != null && rows.length > maxRows;
 
   return (
@@ -41,6 +44,8 @@ export default function CollapsibleDataTable<T>({
       onRowMouseLeave={onRowMouseLeave}
       loading={loading}
       emptyText={emptyText}
+      sort={sort}
+      onSortChange={setSort}
       footer={
         showFooter ? (
           <button
