@@ -239,6 +239,11 @@ describe('listWindowsForTeacher', () => {
     const list = await listWindowsForTeacher(teacher.id);
     expect(list.map((w) => w.id).sort()).toEqual([mainWindow.id, secondWindow.id].sort());
     expect(list.find((w) => w.id === mainWindow.id)).toMatchObject({ programName: '英文個別輔導', weekday: 1, startTime: '17:00', endTime: '19:00' });
+
+    const inactiveWindow = await createWindow({ programId: program.id, weekday: 4, startTime: '17:00', endTime: '19:00', capacity: 5, teacherId: teacher.id });
+    await updateWindow(inactiveWindow.id, { active: false });
+    const listAfterDeactivation = await listWindowsForTeacher(teacher.id);
+    expect(listAfterDeactivation.map((w) => w.id)).not.toContain(inactiveWindow.id);
   });
 
   it('returns an empty array for a teacher with no windows', async () => {

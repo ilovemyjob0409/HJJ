@@ -286,7 +286,7 @@ export interface TeacherTutoringWindowSummary {
 
 export async function listWindowsForTeacher(teacherId: string): Promise<TeacherTutoringWindowSummary[]> {
   const windows = await prisma.tutoringWindow.findMany({
-    where: { OR: [{ teacherId }, { teacherId2: teacherId }] },
+    where: { active: true, OR: [{ teacherId }, { teacherId2: teacherId }] },
     select: { id: true, weekday: true, startTime: true, endTime: true, program: { select: { name: true } } },
     orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
   });

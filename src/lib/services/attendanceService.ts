@@ -1402,9 +1402,11 @@ export async function getTutoringWindowAttendanceOverview(windowId: string): Pro
     });
   }
 
-  return Array.from(byStudent.entries()).map(([studentId, v]) => ({
-    studentId,
-    studentName: v.studentName,
-    records: v.records.sort((a, b) => b.date.getTime() - a.date.getTime()),
-  }));
+  return Array.from(byStudent.entries())
+    .map(([studentId, v]) => ({
+      studentId,
+      studentName: v.studentName,
+      records: v.records.sort((a, b) => b.date.getTime() - a.date.getTime()),
+    }))
+    .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }

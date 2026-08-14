@@ -9,6 +9,8 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from '@/lib/services/teacherService';
 import { createStudent } from '@/lib/services/studentService';
 import { createProgram, createWindow, createEnrollment } from '@/lib/services/tutoringProgramService';
+import { createBooking } from '@/lib/services/tutoringBookingService';
+import { saveTutoringAttendance } from '@/lib/services/attendanceService';
 
 beforeEach(() => {
   sessionMock.mockReset();
@@ -60,9 +62,13 @@ describe('GET /api/tutoring-windows/[id]/attendance-overview', () => {
   });
 
   it("200 with window info and students for the window's main TEACHER", async () => {
-    const { teacher, window } = await setup();
+    const { teacher, program, window, student } = await setup();
     const { userId } = await prisma.teacher.findUniqueOrThrow({ where: { id: teacher.id }, select: { userId: true } });
     sessionMock.mockResolvedValue({ user: { id: userId, role: 'TEACHER' } });
+
+    const enrollment = await prisma.tutoringEnrollment.findFirstOrThrow({ where: { studentId: student.id, programId: program.id } });
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
+    await saveTutoringAttendance(userId, [{ bookingId: booking.id, status: 'PRESENT' }]);
 
     const res = await GET({} as never, { params: { id: window.id } });
     expect(res.status).toBe(200);
@@ -71,7 +77,12 @@ describe('GET /api/tutoring-windows/[id]/attendance-overview', () => {
       id: window.id, weekday: 5, startTime: '17:00', endTime: '19:00', programName: '英文個別輔導', teacherName: '米奇老師', teacherName2: '甜甜圈老師',
     });
     expect(typeof body.todayKey).toBe('string');
-    expect(body.students).toEqual([]);
+    expect(body.students).toHaveLength(1);
+    expect(body.students[0].studentName).toBe('小明');
+    expect(body.students[0].records).toHaveLength(1);
+    expect(typeof body.students[0].records[0].date).toBe('string');
+    expect(body.students[0].records[0].date.slice(0, 10)).toBe('2020-01-03');
+    expect(body.students[0].records[0].attendanceStatus).toBe('PRESENT');
   });
 
   it("200 for the window's second TEACHER", async () => {

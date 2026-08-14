@@ -1517,6 +1517,7 @@ describe('getTutoringWindowAttendanceOverview', () => {
 
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     expect(overview).toHaveLength(2);
+    expect(overview.map((s) => s.studentName)).toEqual(['小明', '呂昕曄'].sort((a, b) => a.localeCompare(b, 'zh-TW')));
     const rowA = overview.find((s) => s.studentId === studentA.id)!;
     expect(rowA.records.map((r) => r.date)).toEqual([
       new Date(Date.UTC(2099, 0, 2)),
