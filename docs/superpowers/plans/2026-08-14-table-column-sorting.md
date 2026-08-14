@@ -17,7 +17,7 @@
 - 排序在前端對已經拿到的 `rows` 做（不做伺服器端／分頁感知排序）。
 - 排序值為 `null`/`undefined` 一律排在最後，不分排序方向。
 - 中文字串比較一律用 `new Intl.Collator('zh-Hant')`，不用預設 `<`/`>` 或 `localeCompare()`（沒指定 locale 會用瀏覽器預設 locale，不保證是中文排序）。
-- 排序圖示與互動樣式全站統一：未排序時 opacity 0.35；hover 或該欄已排序時圖示與文字顏色變 `#4A2E1D`（深咖啡）、按鈕背景疊 `bg-[#4A2E1D]/10`。這是使用者在 brainstorming 階段用互動 demo 確認過的配色，不要另外調整。
+- 排序圖示與互動樣式全站統一，比照使用者在 brainstorming 階段用互動 demo 確認過的配色（不要另外調整）：**只有圖示**變色，欄位標題文字顏色永遠不變。圖示未排序時 opacity 0.35；hover 該按鈕時圖示變 opacity 1、顏色變 `#4A2E1D`（深咖啡）；該欄已排序時圖示同樣是 opacity 1、`#4A2E1D`（不論有沒有 hover，這個狀態要持續顯示，不能只在 hover 時才看得到）。按鈕背景疊色 `bg-[#4A2E1D]/10` **只在滑鼠實際 hover 時**出現，已排序但沒有 hover 時不疊背景色——這點刻意跟「已排序時圖示常駐變色」不同，照 demo 原樣（`.sd-th-btn:hover { background }` 是 hover-only，`.sd-sort-icon.active` 才是常駐）。
 - 圖示手刻 inline SVG（沿用 `CollapsibleDataTable.tsx` 既有展開箭頭的做法），不安裝圖示套件（專案目前沒有任何圖示套件依賴）。
 - 這個專案的測試慣例是：純邏輯／utils 用 Vitest 單元測試（例如 `dataTableRows.test.ts`），React 元件本身沒有元件測試（沒有 React Testing Library 之類的依賴），一律用瀏覽器手動驗證。這次不要新增元件測試慣例，維持現狀。
 - 沒有給 `sortValue` 的欄位＝不可排序，`header` 原樣渲染，不能有任何視覺或行為改變（向下相容）。
