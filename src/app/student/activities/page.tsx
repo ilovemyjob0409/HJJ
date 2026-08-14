@@ -149,7 +149,11 @@ export default function StudentActivitiesPage() {
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
     { header: '地點', render: (a) => a.location ?? '-', sortValue: (a) => a.location ?? null },
     { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
-    { header: '剩餘名額', render: (a) => Math.max(a.capacity - a._count.registrations, 0) },
+    {
+      header: '剩餘名額',
+      render: (a) => Math.max(a.capacity - a._count.registrations, 0),
+      sortValue: (a) => Math.max(a.capacity - a._count.registrations, 0),
+    },
   ];
 
   const myColumns: Column<RegistrationRow>[] = [

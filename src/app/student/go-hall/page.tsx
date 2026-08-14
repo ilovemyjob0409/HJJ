@@ -129,7 +129,11 @@ function StudentGoHallContent() {
     { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW'), sortValue: (s) => s.date },
     { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
     { header: '老師', render: (s) => s.teacher.user.name, sortValue: (s) => s.teacher.user.name },
-    { header: '剩餘名額', render: (s) => Math.max(s.capacity - s._count.registrations, 0) },
+    {
+      header: '剩餘名額',
+      render: (s) => Math.max(s.capacity - s._count.registrations, 0),
+      sortValue: (s) => Math.max(s.capacity - s._count.registrations, 0),
+    },
     {
       header: '操作',
       render: (s) => (
