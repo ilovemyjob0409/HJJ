@@ -1351,3 +1351,60 @@ export async function getClassAttendanceOverview(classId: string): Promise<Class
     records: Array.from(v.records.values()).sort((a, b) => b.date.getTime() - a.date.getTime()),
   }));
 }
+
+export interface TutoringWindowOverviewRecord {
+  date: Date;
+  attendanceStatus: AttendanceStatusValue | null;
+  bookingStatus: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  isMakeup: boolean;
+}
+
+export interface TutoringWindowOverviewStudent {
+  studentId: string;
+  studentName: string;
+  records: TutoringWindowOverviewRecord[];
+}
+
+// 個別輔導時段出缺勤總表（依學生分組）：TutoringBooking 與 TutoringAttendance
+// 是 1:1，不用像 getClassAttendanceOverview 那樣合併兩個獨立來源。不排除未來
+// 日期——學生提前預約未來場次是真實、有意義的行為，不是預寫的髒資料。沒有
+// 任何 booking 的學生不會出現在總表裡（這裡是從 booking 查起，不是從
+// TutoringEnrollment 查起）。
+export async function getTutoringWindowAttendanceOverview(windowId: string): Promise<TutoringWindowOverviewStudent[]> {
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { windowId },
+    select: {
+      date: true,
+      status: true,
+      kind: true,
+      attendance: { select: { status: true, checkInTime: true, checkOutTime: true } },
+      enrollment: { select: { studentId: true, student: { select: NAME_SELECT } } },
+    },
+  });
+
+  const byStudent = new Map<string, { studentName: string; records: TutoringWindowOverviewRecord[] }>();
+  for (const b of bookings) {
+    const studentId = b.enrollment.studentId;
+    let bucket = byStudent.get(studentId);
+    if (!bucket) {
+      bucket = { studentName: b.enrollment.student.user.name, records: [] };
+      byStudent.set(studentId, bucket);
+    }
+    bucket.records.push({
+      date: b.date,
+      attendanceStatus: (b.attendance?.status as AttendanceStatusValue) ?? null,
+      bookingStatus: b.status as TutoringWindowOverviewRecord['bookingStatus'],
+      checkInTime: b.attendance?.checkInTime ?? null,
+      checkOutTime: b.attendance?.checkOutTime ?? null,
+      isMakeup: b.kind === 'MAKEUP',
+    });
+  }
+
+  return Array.from(byStudent.entries()).map(([studentId, v]) => ({
+    studentId,
+    studentName: v.studentName,
+    records: v.records.sort((a, b) => b.date.getTime() - a.date.getTime()),
+  }));
+}
