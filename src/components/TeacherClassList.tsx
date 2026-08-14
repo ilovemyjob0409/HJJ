@@ -17,13 +17,13 @@ export default function TeacherClassList({ classes }: { classes: TeacherClassSum
   const [viewing, setViewing] = useState<TeacherClassSummary | null>(null);
 
   const columns: Column<TeacherClassSummary>[] = [
-    { header: '班級', render: (r) => r.name },
+    { header: '班級', render: (r) => r.name, sortValue: (r) => r.name },
     { header: '時段', render: (r) => timeLabel(r) },
-    { header: '人數', render: (r) => `${r.students.length} 人` },
+    { header: '人數', render: (r) => `${r.students.length} 人`, sortValue: (r) => r.students.length },
   ];
 
   const studentColumns: Column<TeacherClassStudent>[] = [
-    { header: '學生', render: (s) => s.name },
+    { header: '學生', render: (s) => s.name, sortValue: (s) => s.name },
     {
       header: '堂數進度',
       render: (s) => (s.totalSessions === null ? `${s.usedSessions} 堂` : `${s.usedSessions}／${s.totalSessions} 堂`),

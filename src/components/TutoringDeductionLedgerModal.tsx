@@ -45,9 +45,9 @@ export default function TutoringDeductionLedgerModal({
   }, [open, enrollmentId]);
 
   const columns: Column<LedgerRow>[] = [
-    { header: '日期', render: (h) => formatDateWithWeekday(h.date, 'zh-TW') },
+    { header: '日期', render: (h) => formatDateWithWeekday(h.date, 'zh-TW'), sortValue: (h) => h.date },
     { header: '項目', render: (h) => (h.kind === 'GRANT' ? '本月核發' : <StatusBadge status={h.status ?? ''} />) },
-    { header: '簽到', render: (h) => h.checkInTime ?? <span className="text-inkMuted">-</span> },
+    { header: '簽到', render: (h) => h.checkInTime ?? <span className="text-inkMuted">-</span>, sortValue: (h) => h.checkInTime },
     {
       header: '堂數',
       render: (h) => (
@@ -55,8 +55,9 @@ export default function TutoringDeductionLedgerModal({
           {h.amount > 0 ? `+${h.amount}` : h.amount}
         </span>
       ),
+      sortValue: (h) => h.amount,
     },
-    { header: '當月剩餘', render: (h) => <span className="font-semibold">{h.remainingAfter}</span> },
+    { header: '當月剩餘', render: (h) => <span className="font-semibold">{h.remainingAfter}</span>, sortValue: (h) => h.remainingAfter },
   ];
 
   return (

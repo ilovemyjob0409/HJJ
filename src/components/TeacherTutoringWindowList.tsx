@@ -10,7 +10,7 @@ export default function TeacherTutoringWindowList({ windows }: { windows: Teache
   const router = useRouter();
 
   const columns: Column<TeacherTutoringWindowSummary>[] = [
-    { header: '課程', render: (w) => w.programName },
+    { header: '課程', render: (w) => w.programName, sortValue: (w) => w.programName },
     { header: '時段', render: (w) => `週${WEEKDAY_LABELS[w.weekday]} ${w.startTime}-${w.endTime}` },
   ];
 

@@ -41,8 +41,8 @@ export default function GoHallTicketHistoryModal({ open, onClose }: { open: bool
   }, [open]);
 
   const columns: Column<TicketHistoryRow>[] = [
-    { header: '日期', render: (h) => formatDateWithWeekday(h.createdAt, 'zh-TW') },
-    { header: '類型', render: (h) => TICKET_KIND_LABELS[h.kind] ?? h.kind },
+    { header: '日期', render: (h) => formatDateWithWeekday(h.createdAt, 'zh-TW'), sortValue: (h) => h.createdAt },
+    { header: '類型', render: (h) => TICKET_KIND_LABELS[h.kind] ?? h.kind, sortValue: (h) => h.kind },
     {
       header: '堂數',
       render: (h) => {
@@ -54,6 +54,7 @@ export default function GoHallTicketHistoryModal({ open, onClose }: { open: bool
           </span>
         );
       },
+      sortValue: (h) => h.amount,
     },
     {
       header: '說明',
@@ -70,7 +71,7 @@ export default function GoHallTicketHistoryModal({ open, onClose }: { open: bool
         return '-';
       },
     },
-    { header: '剩餘堂數', render: (h) => <span className="font-semibold">{h.balanceAfter}</span> },
+    { header: '剩餘堂數', render: (h) => <span className="font-semibold">{h.balanceAfter}</span>, sortValue: (h) => h.balanceAfter },
   ];
 
   return (
