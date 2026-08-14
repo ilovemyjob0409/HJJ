@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import AdminBookingModal from './AdminBookingModal';
@@ -41,6 +42,7 @@ export default function EnrollmentManager() {
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentQuery, setStudentQuery] = useState('');
+  const [listSearch, setListSearch] = useState('');
   const [programId, setProgramId] = useState('');
   const [newMonthlyQuota, setNewMonthlyQuota] = useState('');
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
@@ -149,6 +151,11 @@ export default function EnrollmentManager() {
     return true;
   }
 
+  const q = listSearch.trim().toLowerCase();
+  const filteredEnrollments = q
+    ? enrollments.filter((r) => r.studentName.toLowerCase().includes(q) || r.programName.toLowerCase().includes(q))
+    : enrollments;
+
   const columns: Column<EnrollmentRow>[] = [
     { header: '學生', render: (r) => r.studentName },
     { header: '課程', render: (r) => r.programName },
@@ -180,7 +187,10 @@ export default function EnrollmentManager() {
 
   return (
     <>
-      <h2 className="mb-2 mt-6 font-bold text-ink">學生報名管理</h2>
+      <div className="mb-2 mt-6 flex items-center gap-3">
+        <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">學生報名管理</h2>
+        <CollapsibleSearchInput placeholder="搜尋學生或課程" value={listSearch} onChange={setListSearch} />
+      </div>
       <Card className="mb-4">
         <div className="flex flex-wrap items-end gap-2">
           {/* 這裡刻意用 div 不用 label：label 會把點擊轉發給第一個表單控件，
@@ -288,7 +298,12 @@ export default function EnrollmentManager() {
         </div>
       </Card>
       <Card>
-        <DataTable columns={columns} rows={enrollments} keyField={(r) => r.id} emptyText="目前沒有學生報名個別輔導" />
+        <DataTable
+          columns={columns}
+          rows={filteredEnrollments}
+          keyField={(r) => r.id}
+          emptyText={listSearch.trim() ? '沒有符合搜尋的學生' : '目前沒有學生報名個別輔導'}
+        />
       </Card>
       <Modal
         open={editingEnrollment !== null}
