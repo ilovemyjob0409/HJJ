@@ -11,8 +11,10 @@ export interface CreateLeaveRequestInput {
 export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   const enrolled = await prisma.classEnrollment.findUnique({
     where: { studentId_classId: { studentId: input.studentId, classId: input.classId } },
+    include: { class: { select: { weekday: true } } },
   });
   if (!enrolled) throw new Error('NOT_ENROLLED');
+  if (input.date.getUTCDay() !== enrolled.class.weekday) throw new Error('INVALID_WEEKDAY');
 
   return prisma.leaveRequest.create({
     data: { ...input, status: 'APPROVED', origin: 'STUDENT' },

@@ -354,7 +354,7 @@ describe('deleteClass', () => {
     const student = await createStudent({ name: '小明', email: 'class-delete-block-ming@example.com', password: 'x' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
     await enrollStudent(cls.id, student.id);
-    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
 
     await deleteClass(cls.id);
 

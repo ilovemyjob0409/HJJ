@@ -1359,7 +1359,7 @@ describe('getClassAttendanceOverview', () => {
     const { cls, studentA, studentB } = await setup();
     const past = new Date('2026-07-01');
     await saveClassAttendance(cls.id, past, 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
-    const future = new Date('2099-01-01');
+    const future = new Date('2099-01-07'); // 週三，跟 cls.weekday 對上，才不會被 createLeaveRequest 的星期檢查擋下
     await saveClassAttendance(cls.id, future, 'marker-1', [{ studentId: studentA.id, status: 'NOT_REGISTERED' }]);
     await createLeaveRequest({ studentId: studentB.id, classId: cls.id, date: future, reason: '未來請假' });
 

@@ -17,19 +17,26 @@ async function setupClassAndStudent() {
 describe('createLeaveRequest', () => {
   it('creates a leave request with status APPROVED', async () => {
     const { student, cls } = await setupClassAndStudent();
-    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
     expect(leave.status).toBe('APPROVED');
     expect(leave.reason).toBe('感冒');
+  });
+
+  it('throws INVALID_WEEKDAY when the date does not fall on the class weekday', async () => {
+    const { student, cls } = await setupClassAndStudent(); // cls.weekday === 1 (Monday)
+    await expect(
+      createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 21)), reason: '事假' }) // a Tuesday
+    ).rejects.toThrow('INVALID_WEEKDAY');
   });
 });
 
 describe('listLeaveRequestsForStudent', () => {
   it('returns only the given student\'s leave requests', async () => {
     const { student, cls } = await setupClassAndStudent();
-    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
     await enrollStudent(cls.id, otherStudent.id);
-    await createLeaveRequest({ studentId: otherStudent.id, classId: cls.id, date: new Date(2026, 6, 21), reason: '事假' });
+    await createLeaveRequest({ studentId: otherStudent.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
 
     const results = await listLeaveRequestsForStudent(student.id);
     expect(results).toHaveLength(1);
@@ -44,7 +51,7 @@ describe('createLeaveRequest enrollment check', () => {
     const cls = await createClass({ name: '數學D班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 4, startTime: '19:00', endTime: '21:00' });
 
     await expect(
-      createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '事假' })
+      createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '事假' })
     ).rejects.toThrow('NOT_ENROLLED');
   });
 });
@@ -52,12 +59,12 @@ describe('createLeaveRequest enrollment check', () => {
 describe('listLeaveRequestsForTeacherClasses', () => {
   it('returns only leave requests for classes taught by the given teacher', async () => {
     const { student, cls } = await setupClassAndStudent();
-    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
 
     const otherTeacher = await createTeacher({ name: '林老師', email: 'other-teacher@example.com', password: 'x', subjects: '英文' });
     const otherClass = await createClass({ name: '英文班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
     await enrollStudent(otherClass.id, student.id);
-    await createLeaveRequest({ studentId: student.id, classId: otherClass.id, date: new Date(2026, 6, 21), reason: '事假' });
+    await createLeaveRequest({ studentId: student.id, classId: otherClass.id, date: new Date(Date.UTC(2026, 6, 21)), reason: '事假' });
 
     const teacherOfCls = await prisma.class.findUniqueOrThrow({ where: { id: cls.id } });
     const results = await listLeaveRequestsForTeacherClasses(teacherOfCls.teacherId);
@@ -71,7 +78,7 @@ describe('listLeaveRequestsForTeacherClasses', () => {
 describe('listAllLeaveRequests', () => {
   it('returns leave requests across all students, including insertion makeup details', async () => {
     const { student, cls } = await setupClassAndStudent();
-    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
 
     const teacher = await prisma.teacher.findFirstOrThrow();
     const targetClass = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
@@ -90,7 +97,7 @@ describe('listAllLeaveRequests', () => {
 describe('origin 標記', () => {
   it('學生自行申請的請假標記為 STUDENT', async () => {
     const { student, cls } = await setupClassAndStudent();
-    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
     expect(leave.origin).toBe('STUDENT');
   });
 });
@@ -98,7 +105,7 @@ describe('origin 標記', () => {
 describe('revokeLeaveRequest', () => {
   it('沒有補課的請假直接刪除', async () => {
     const { student, cls } = await setupClassAndStudent();
-    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
 
     await revokeLeaveRequest(leave.id);
 
@@ -109,7 +116,7 @@ describe('revokeLeaveRequest', () => {
     const { student, cls } = await setupClassAndStudent();
     const teacher2 = await createTeacher({ name: '林老師', email: 'lin2@example.com', password: 'x', subjects: '數學' });
     const clsB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher2.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
-    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
     const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(2026, 6, 22) });
 
     await revokeLeaveRequest(leave.id);
@@ -122,7 +129,7 @@ describe('revokeLeaveRequest', () => {
     const { student, cls } = await setupClassAndStudent();
     const teacher2 = await createTeacher({ name: '吳老師', email: 'wu@example.com', password: 'x', subjects: '數學' });
     const clsB = await createClass({ name: '數學C班', subject: '數學', level: '國一', teacherId: teacher2.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
-    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(2026, 6, 20), reason: '感冒' });
+    const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
     const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(2026, 6, 22) });
     const marker = await prisma.user.findFirstOrThrow();
     await prisma.classAttendance.create({

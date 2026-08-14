@@ -9,12 +9,13 @@ import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
 import RevokeLeaveButton from '@/components/RevokeLeaveButton';
 
 interface ClassOption {
   id: string;
   name: string;
+  weekday: number;
 }
 
 interface LeaveRow {
@@ -58,15 +59,21 @@ export default function StudentLeaveRequestPage() {
     load();
   }, []);
 
+  const selectedClass = classes.find((c) => c.id === form.classId) ?? null;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setFormError('');
+    if (selectedClass && form.date && new Date(form.date).getUTCDay() !== selectedClass.weekday) {
+      setFormError(`日期跟班級對不上：${selectedClass.name}是週${WEEKDAY_LABELS[selectedClass.weekday]}上課，請重新選擇日期`);
+      return;
+    }
     setSubmitting(true);
     try {
-      setFormError('');
       const res = await fetch('/api/leave-requests', { method: 'POST', body: JSON.stringify(form) });
       if (!res.ok) {
         const data = await res.json();
-        setFormError(`錯誤：${data.error}`);
+        setFormError(data.error === 'INVALID_WEEKDAY' ? '日期跟班級上課的星期對不上，請重新選擇' : `錯誤：${data.error}`);
         return;
       }
       setForm({ classId: '', date: '', reason: '' });
@@ -142,6 +149,7 @@ export default function StudentLeaveRequestPage() {
             ))}
           </Select>
           <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+          {selectedClass && <p className="text-xs text-inkMuted">只能選週{WEEKDAY_LABELS[selectedClass.weekday]}的日期（{selectedClass.name}上課日）</p>}
           <Input placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
           {formError && <p className="text-sm text-rejected">{formError}</p>}
           <Button type="submit" loading={submitting}>送出請假</Button>

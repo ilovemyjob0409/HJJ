@@ -32,7 +32,7 @@ async function setup() {
   const classA = await createClass({ name: '圍棋A班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
   const classB = await createClass({ name: '圍棋B班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
   await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: 12 }]);
-  const leave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '感冒' });
+  const leave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
   return { teacher, student, classA, classB, leave };
 }
 
@@ -89,9 +89,9 @@ describe('createInsertionMakeupRequest', () => {
   it('allows a third insertion in the same period (insertions are unlimited)', async () => {
     const { student, classA, classB, leave } = await setup();
     await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
-    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
     await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
-    const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 30), reason: '事假' });
+    const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 7, 3)), reason: '事假' });
 
     const third = await createInsertionMakeupRequest({ leaveRequestId: thirdLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 1) });
 
@@ -136,7 +136,7 @@ describe('createOneOnOneMakeupRequest', () => {
     const { teacher, student } = await setup();
     const mathClass = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
     await enrollStudent(mathClass.id, student.id);
-    const mathLeave = await createLeaveRequest({ studentId: student.id, classId: mathClass.id, date: new Date(2026, 6, 21), reason: '事假' });
+    const mathLeave = await createLeaveRequest({ studentId: student.id, classId: mathClass.id, date: new Date(Date.UTC(2026, 6, 21)), reason: '事假' });
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
     await expect(
@@ -179,7 +179,7 @@ describe('createOneOnOneMakeupRequest', () => {
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
     const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
     await enrollStudent(classA.id, otherStudent.id);
-    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '事假' });
+    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '事假' });
 
     await expect(
       createOneOnOneMakeupRequest({
@@ -204,7 +204,7 @@ describe('createOneOnOneMakeupRequest', () => {
     });
 
     const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
-    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
 
     await expect(
       createOneOnOneMakeupRequest({
@@ -220,11 +220,11 @@ describe('createOneOnOneMakeupRequest', () => {
   it('still allows a one-on-one after two insertions (insertions do not consume the quota)', async () => {
     const { teacher, student, classA, classB, leave } = await setup();
     await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
-    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
     await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
-    const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 30), reason: '事假' });
+    const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 7, 3)), reason: '事假' });
     const makeup = await createOneOnOneMakeupRequest({
       leaveRequestId: thirdLeave.id,
       studentId: student.id,
@@ -249,7 +249,7 @@ describe('createOneOnOneMakeupRequest', () => {
 
     await addEnrollmentSessions(classA.id, student.id, 10); // 新的一期
 
-    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
     const makeup = await createOneOnOneMakeupRequest({
       leaveRequestId: secondLeave.id,
       studentId: student.id,
@@ -268,7 +268,7 @@ describe('createOneOnOneMakeupRequest', () => {
     const otherStudent = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
     const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
     await enrollStudent(classA.id, otherStudent.id);
-    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(2026, 6, 20), reason: '事假' });
+    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '事假' });
 
     const slotInput = {
       teacherId: teacher.id,
@@ -298,7 +298,7 @@ describe('createOneOnOneMakeupRequest', () => {
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
     const classA = await prisma.class.findFirstOrThrow({ where: { name: '圍棋A班' } });
-    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 6, 27), reason: '事假' });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
 
     const results = await Promise.allSettled([
       createOneOnOneMakeupRequest({
@@ -407,7 +407,7 @@ describe('getMakeupQuotaStatus', () => {
   it('counts all history when the enrollment has no period on record', async () => {
     const { teacher, student, classB } = await setup();
     await enrollStudent(classB.id, student.id); // 無堂數 → 無期紀錄
-    const leaveB = await createLeaveRequest({ studentId: student.id, classId: classB.id, date: new Date(2026, 6, 28), reason: '事假' });
+    const leaveB = await createLeaveRequest({ studentId: student.id, classId: classB.id, date: new Date(Date.UTC(2026, 6, 29)), reason: '事假' });
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
     await createOneOnOneMakeupRequest({
       leaveRequestId: leaveB.id,
@@ -485,7 +485,7 @@ describe('listInsertionsForTeacherClasses', () => {
     const otherClass = await createClass({ name: '英文班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 4, startTime: '19:00', endTime: '21:00' });
     const otherStudent = await createStudent({ name: '小華', email: 'other-student@example.com', password: 'x' });
     await enrollStudent(otherClass.id, otherStudent.id);
-    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: otherClass.id, date: new Date(2026, 6, 20), reason: '事假' });
+    const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: otherClass.id, date: new Date(Date.UTC(2026, 6, 23)), reason: '事假' });
     const unrelatedTargetClass = await createClass({ name: '英文B班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 5, startTime: '19:00', endTime: '21:00' });
     await createInsertionMakeupRequest({ leaveRequestId: otherLeave.id, targetClassId: unrelatedTargetClass.id, targetDate: new Date(2026, 6, 23) });
 
@@ -544,7 +544,7 @@ describe('arrangeInsertionMakeup', () => {
     const makeup = await arrangeInsertionMakeup({
       studentId: student.id,
       classId: classA.id,
-      date: new Date(2026, 6, 20), // setup() 已建立的請假日
+      date: new Date(Date.UTC(2026, 6, 20)), // setup() 已建立的請假日
       reason: '行政代辦',
       targetClassId: classB.id,
       targetDate: new Date(2026, 6, 22),
@@ -552,7 +552,7 @@ describe('arrangeInsertionMakeup', () => {
 
     expect(makeup.leaveRequestId).toBe(leave.id);
     expect(
-      await prisma.leaveRequest.count({ where: { studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20) } })
+      await prisma.leaveRequest.count({ where: { studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 20)) } })
     ).toBe(1);
   });
 
@@ -564,7 +564,7 @@ describe('arrangeInsertionMakeup', () => {
       arrangeInsertionMakeup({
         studentId: student.id,
         classId: classA.id,
-        date: new Date(2026, 6, 20),
+        date: new Date(Date.UTC(2026, 6, 20)),
         reason: '行政代辦',
         targetClassId: classB.id,
         targetDate: new Date(2026, 6, 29),
@@ -581,7 +581,7 @@ describe('arrangeLeaveOnly', () => {
       arrangeLeaveOnly({
         studentId: student.id,
         classId: classA.id,
-        date: new Date(2026, 6, 20), // setup() 已建立的請假日
+        date: new Date(Date.UTC(2026, 6, 20)), // setup() 已建立的請假日
         reason: '行政代辦',
       })
     ).rejects.toThrow('ALREADY_ON_LEAVE');
@@ -647,7 +647,7 @@ describe('arrangeOneOnOneMakeup', () => {
     const makeup = await arrangeOneOnOneMakeup({
       studentId: student.id,
       classId: classA.id,
-      date: new Date(2026, 6, 20), // setup() 已建立的請假日
+      date: new Date(Date.UTC(2026, 6, 20)), // setup() 已建立的請假日
       reason: '行政代辦',
       teacherId: teacher.id,
       slotDate: new Date('2026-08-05'), // a Wednesday
@@ -656,7 +656,7 @@ describe('arrangeOneOnOneMakeup', () => {
 
     expect(makeup.leaveRequestId).toBe(leave.id);
     expect(
-      await prisma.leaveRequest.count({ where: { studentId: student.id, classId: classA.id, date: new Date(2026, 6, 20) } })
+      await prisma.leaveRequest.count({ where: { studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 20)) } })
     ).toBe(1);
   });
 
@@ -752,7 +752,7 @@ describe('makeup cancellation', () => {
     const other = await createStudent({ name: '小華', email: 'cancel-hua@example.com', password: 'x' });
     await expect(requestMakeupCancellation(makeup.id, other.id)).rejects.toThrow('NOT_FOUND');
 
-    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(2026, 7, 10), reason: '事假' });
+    const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 7, 10)), reason: '事假' });
     const pending = await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 12) });
     await expect(requestMakeupCancellation(pending.id, student.id)).rejects.toThrow('NOT_APPROVED');
   });
@@ -826,26 +826,26 @@ describe('listAssignedOneOnOneForTeacher', () => {
     async function makeStudentWithLeave(name: string, email: string, leaveDay: number) {
       const s = await createStudent({ name, email, password: 'x' });
       await setStudentEnrollments(s.id, [{ classId: classA.id, totalSessions: 12 }]);
-      const l = await createLeaveRequest({ studentId: s.id, classId: classA.id, date: new Date(2026, 7, leaveDay), reason: '事假' });
+      const l = await createLeaveRequest({ studentId: s.id, classId: classA.id, date: new Date(Date.UTC(2026, 7, leaveDay)), reason: '事假' });
       return { student: s, leave: l };
     }
 
     // 同一天兩筆：17:00（先建）與 16:00（後建）——驗證同日依開始時間排序
-    const a = await makeStudentWithLeave('學生甲', 'a@example.com', 10);
+    const a = await makeStudentWithLeave('學生甲', 'a@example.com', 3);
     const rLater = await createOneOnOneMakeupRequest({
       leaveRequestId: a.leave.id, studentId: a.student.id, teacherId: teacher.id,
       slotDate: new Date('2030-01-02'), slotStartTime: '17:00',
     });
     await decideMakeupRequest(rLater.id, 'APPROVED');
 
-    const b = await makeStudentWithLeave('學生乙', 'b@example.com', 11);
+    const b = await makeStudentWithLeave('學生乙', 'b@example.com', 10);
     const rEarlier = await createOneOnOneMakeupRequest({
       leaveRequestId: b.leave.id, studentId: b.student.id, teacherId: teacher.id,
       slotDate: new Date('2030-01-02'), slotStartTime: '16:00',
     });
 
     // 過去的已核准：不出現
-    const c = await makeStudentWithLeave('學生丙', 'c@example.com', 12);
+    const c = await makeStudentWithLeave('學生丙', 'c@example.com', 17);
     const rPast = await createOneOnOneMakeupRequest({
       leaveRequestId: c.leave.id, studentId: c.student.id, teacherId: teacher.id,
       slotDate: new Date('2020-01-01'), slotStartTime: '16:00',
@@ -853,7 +853,7 @@ describe('listAssignedOneOnOneForTeacher', () => {
     await decideMakeupRequest(rPast.id, 'APPROVED');
 
     // 被拒絕的：不出現
-    const d = await makeStudentWithLeave('學生丁', 'd@example.com', 13);
+    const d = await makeStudentWithLeave('學生丁', 'd@example.com', 24);
     const rRejected = await createOneOnOneMakeupRequest({
       leaveRequestId: d.leave.id, studentId: d.student.id, teacherId: teacher.id,
       slotDate: new Date('2030-01-09'), slotStartTime: '16:00',
@@ -863,7 +863,7 @@ describe('listAssignedOneOnOneForTeacher', () => {
     // 指派給別的老師的：不出現
     const teacher2 = await createTeacher({ name: '別師', email: 't2@example.com', password: 'x', subjects: '圍棋' });
     await setTeacherAvailability(teacher2.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
-    const e = await makeStudentWithLeave('學生戊', 'e@example.com', 14);
+    const e = await makeStudentWithLeave('學生戊', 'e@example.com', 31);
     await createOneOnOneMakeupRequest({
       leaveRequestId: e.leave.id, studentId: e.student.id, teacherId: teacher2.id,
       slotDate: new Date('2030-01-02'), slotStartTime: '16:00',
