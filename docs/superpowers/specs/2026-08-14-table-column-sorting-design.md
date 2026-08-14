@@ -58,7 +58,7 @@ onSortChange?: (next: SortState | null) => void;
 - 有傳 `onSortChange`＝受控模式：不自己排序 `rows`（信任外層已經排好），表頭圖示狀態看 `sort` prop，點擊時把算好的 `nextSortState` 丟給 `onSortChange`，不自己改資料順序。
 - 沒傳 `onSortChange`＝非受控模式：內部 `useState<SortState | null>`，點擊時自己算下一個狀態、自己用 `sortRows` 排序 `rows` 再渲染。單獨用 `DataTable`（沒被 `CollapsibleDataTable` 包住）的呼叫端不用做任何額外接線就能動。
 
-有 `sortValue` 的欄位，表頭渲染成 `<button>`（同一個 `<th>` 內），未排序時圖示淡（opacity .35），hover 或已排序時變深咖啡色 `#4A2E1D`、hover 背景疊 `rgba(74,46,29,.1)`（跟已核准的 demo 一致）。圖示是手刻 inline SVG 上下箭頭（比照 `CollapsibleDataTable` 現有展開按鈕的箭頭做法，不另外裝圖示套件）。`<th>` 加 `aria-sort`（`ascending`/`descending`/未排序時不加這個屬性）。
+有 `sortValue` 的欄位，表頭渲染成 `<button>`（同一個 `<th>` 內），未排序時圖示淡（opacity .35），hover 或已排序時變深咖啡色 `#4A2E1D`、hover 背景疊 `rgba(74,46,29,.1)`（跟已核准的 demo 一致）。圖示是手刻 inline SVG 上下箭頭（比照 `CollapsibleDataTable` 現有展開按鈕的箭頭做法，不另外裝圖示套件）。`<th>` 加 `aria-sort`（`ascending`/`descending`/未排序時 `none`——用 `none` 而不是省略屬性，讓螢幕閱讀器也能唸出「這欄可以排序」）。
 
 ### `CollapsibleDataTable` 改動：排序在切片之前
 

@@ -252,7 +252,7 @@ export default function AdminActivitiesPage() {
     {
       header: '狀態',
       render: (a) => (new Date(a.endDate) < startOfToday() ? '已結束' : '進行中'),
-      sortValue: (a) => (new Date(a.endDate) < startOfToday() ? '已結束' : '進行中'),
+      sortValue: (a) => (new Date(a.endDate) < startOfToday() ? 1 : 0),
     },
     {
       header: '操作',
