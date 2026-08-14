@@ -36,9 +36,17 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
   const filteredRows = rows.filter((r) => matchesLeaveSearch(r, search));
 
   const columns: Column<LeaveRow>[] = [
-    { header: '學生', render: (r) => r.student.user.name },
-    { header: '請假班級', render: (r) => <span className="whitespace-nowrap">{r.class.name}</span> },
-    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
+    { header: '學生', render: (r) => r.student.user.name, sortValue: (r) => r.student.user.name },
+    {
+      header: '請假班級',
+      render: (r) => <span className="whitespace-nowrap">{r.class.name}</span>,
+      sortValue: (r) => r.class.name,
+    },
+    {
+      header: '請假日期',
+      render: (r) => formatDateWithWeekday(r.date, 'zh-TW'),
+      sortValue: (r) => r.date,
+    },
     {
       header: '補課日期',
       render: (r) => {
@@ -46,6 +54,11 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
         if (!m) return <span className="text-inkMuted">—</span>;
         const d = m.type === 'INSERTION' ? m.targetDate : m.slotDate;
         return <span className="whitespace-nowrap">{d ? formatDateWithWeekday(d, 'zh-TW') : '-'}</span>;
+      },
+      sortValue: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return null;
+        return m.type === 'INSERTION' ? m.targetDate : m.slotDate;
       },
     },
     {
@@ -73,6 +86,7 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
     {
       header: '補課狀態',
       render: (r) => (r.makeupRequest ? <StatusBadge status={r.makeupRequest.status} /> : <span className="text-inkMuted">尚未申請</span>),
+      sortValue: (r) => r.makeupRequest?.status ?? null,
     },
   ];
 
