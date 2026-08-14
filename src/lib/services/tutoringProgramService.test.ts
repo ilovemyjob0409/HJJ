@@ -13,7 +13,7 @@ import {
   addWindowClosure,
   deleteWindowClosure,
 } from './tutoringProgramService';
-import { createEnrollment, listEnrollments, updateEnrollment, deleteEnrollment, getWindowInfo } from './tutoringProgramService';
+import { createEnrollment, listEnrollments, updateEnrollment, deleteEnrollment, getWindowInfo, listWindowsForTeacher } from './tutoringProgramService';
 import { createBooking } from './tutoringBookingService';
 
 describe('program CRUD', () => {
@@ -222,5 +222,28 @@ describe('enrollment CRUD', () => {
     await createEnrollment({ studentId: student.id, programId: program.id });
 
     await expect(createEnrollment({ studentId: student.id, programId: program.id })).rejects.toThrow('ALREADY_ENROLLED');
+  });
+});
+
+describe('listWindowsForTeacher', () => {
+  it('returns only the windows where the teacher is the main or second teacher, with program name', async () => {
+    const teacher = await createTeacher({ name: '米奇老師', email: `list-windows-mickey-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const other = await createTeacher({ name: '林老師', email: `list-windows-lin-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const mainWindow = await createWindow({ programId: program.id, weekday: 1, startTime: '17:00', endTime: '19:00', capacity: 5, teacherId: teacher.id });
+    const secondWindow = await createWindow({
+      programId: program.id, weekday: 2, startTime: '17:00', endTime: '19:00', capacity: 5, teacherId: other.id, teacherId2: teacher.id,
+    });
+    await createWindow({ programId: program.id, weekday: 3, startTime: '17:00', endTime: '19:00', capacity: 5, teacherId: other.id });
+
+    const list = await listWindowsForTeacher(teacher.id);
+    expect(list.map((w) => w.id).sort()).toEqual([mainWindow.id, secondWindow.id].sort());
+    expect(list.find((w) => w.id === mainWindow.id)).toMatchObject({ programName: '英文個別輔導', weekday: 1, startTime: '17:00', endTime: '19:00' });
+  });
+
+  it('returns an empty array for a teacher with no windows', async () => {
+    const teacher = await createTeacher({ name: '甜甜圈老師', email: `list-windows-donut-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const list = await listWindowsForTeacher(teacher.id);
+    expect(list).toEqual([]);
   });
 });

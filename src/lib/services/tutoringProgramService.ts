@@ -275,3 +275,20 @@ export async function deleteEnrollment(id: string) {
     throw err;
   }
 }
+
+export interface TeacherTutoringWindowSummary {
+  id: string;
+  programName: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+}
+
+export async function listWindowsForTeacher(teacherId: string): Promise<TeacherTutoringWindowSummary[]> {
+  const windows = await prisma.tutoringWindow.findMany({
+    where: { OR: [{ teacherId }, { teacherId2: teacherId }] },
+    select: { id: true, weekday: true, startTime: true, endTime: true, program: { select: { name: true } } },
+    orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
+  });
+  return windows.map((w) => ({ id: w.id, programName: w.program.name, weekday: w.weekday, startTime: w.startTime, endTime: w.endTime }));
+}
