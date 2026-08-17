@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import { normalizeTimeInput } from '@/lib/timeFormat';
 
 import {
   AttendanceStatusValue,
@@ -77,8 +78,8 @@ export default function AttendanceRosterEditor({ rows, onSave, hiddenStatuses }:
         studentId: r.studentId,
         key: r.key,
         status: edits[r.key].status as AttendanceStatusValue,
-        checkInTime: edits[r.key].checkInTime || null,
-        checkOutTime: edits[r.key].checkOutTime || null,
+        checkInTime: normalizeTimeInput(edits[r.key].checkInTime) || null,
+        checkOutTime: normalizeTimeInput(edits[r.key].checkOutTime) || null,
       }));
     const clears = rows
       .filter((r) => edits[r.key].status === 'UNMARKED' && r.status !== null)
@@ -128,18 +129,24 @@ export default function AttendanceRosterEditor({ rows, onSave, hiddenStatuses }:
               })}
             </div>
             <div className="flex gap-2">
-              <Input
-                placeholder="簽到時間"
-                value={edits[r.key].checkInTime}
-                onChange={(e) => updateTime(r.key, 'checkInTime', e.target.value)}
-                className="w-28"
-              />
-              <Input
-                placeholder="簽退時間"
-                value={edits[r.key].checkOutTime}
-                onChange={(e) => updateTime(r.key, 'checkOutTime', e.target.value)}
-                className="w-28"
-              />
+              <label className="flex flex-col gap-1 text-xs text-inkMuted">
+                簽到
+                <Input
+                  type="time"
+                  value={edits[r.key].checkInTime}
+                  onChange={(e) => updateTime(r.key, 'checkInTime', e.target.value)}
+                  className="w-28"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-inkMuted">
+                簽退
+                <Input
+                  type="time"
+                  value={edits[r.key].checkOutTime}
+                  onChange={(e) => updateTime(r.key, 'checkOutTime', e.target.value)}
+                  className="w-28"
+                />
+              </label>
             </div>
           </div>
         ))
