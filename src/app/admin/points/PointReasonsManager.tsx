@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -27,7 +27,7 @@ export default function PointReasonsManager() {
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState<ReasonRow | null>(null);
   const [editLabel, setEditLabel] = useState('');
-  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [sectionOpen, setSectionOpen] = useState(false);
 
   async function load() {
     try {
@@ -156,21 +156,17 @@ export default function PointReasonsManager() {
 
   return (
     <>
-      <details ref={detailsRef} className="group mb-6">
+      <details
+        className="group mb-6"
+        onToggle={(e) => setSectionOpen((e.target as HTMLDetailsElement).open)}
+      >
         <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
           <div className="flex items-center gap-2">
             <span className="text-inkMuted transition-transform group-open:rotate-180">▾</span>
             <h2 className="font-bold text-ink">加分理由維護</h2>
           </div>
-          {!showAddForm && (
-            <Button
-              className="px-3 py-1 text-sm"
-              onClick={withStopPropagation(() => {
-                // 收合狀態下按「新增理由」要先展開區塊，表單才看得到
-                if (detailsRef.current) detailsRef.current.open = true;
-                setShowAddForm(true);
-              })}
-            >
+          {sectionOpen && !showAddForm && (
+            <Button className="px-3 py-1 text-sm" onClick={withStopPropagation(() => setShowAddForm(true))}>
               ＋ 新增理由
             </Button>
           )}
@@ -181,6 +177,16 @@ export default function PointReasonsManager() {
             <form onSubmit={handleSubmit} className="flex gap-2">
               <Input placeholder="理由（例如：課堂表現優良）" value={label} onChange={(e) => setLabel(e.target.value)} required className="flex-1" />
               <Button type="submit" loading={submitting}>新增</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowAddForm(false);
+                  setLabel('');
+                }}
+              >
+                取消
+              </Button>
             </form>
           </Card>
         )}
