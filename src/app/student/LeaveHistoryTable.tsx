@@ -16,6 +16,7 @@ interface LeaveRow {
     type: string;
     status: string;
     targetDate: Date | null;
+    slotDate: Date | null;
     cancelRequestedAt: Date | null;
   } | null;
 }
@@ -25,12 +26,31 @@ export default function LeaveHistoryTable({ rows }: { rows: LeaveRow[] }) {
     { header: '請假班級', render: (r) => r.class.name, sortValue: (r) => r.class.name },
     { header: '請假日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
     {
-      header: '插班日期',
-      render: (r) =>
-        r.makeupRequest?.type === 'INSERTION' && r.makeupRequest.targetDate
-          ? formatDateWithWeekday(r.makeupRequest.targetDate)
-          : '-',
-      sortValue: (r) => (r.makeupRequest?.type === 'INSERTION' ? r.makeupRequest.targetDate : null),
+      header: '類別',
+      render: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return <span className="text-inkMuted">—</span>;
+        return m.type === 'INSERTION' ? (
+          <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班</span>
+        ) : (
+          <span className="whitespace-nowrap rounded-full bg-assignedBg px-2.5 py-0.5 text-xs font-bold text-assigned">一對一</span>
+        );
+      },
+      sortValue: (r) => r.makeupRequest?.type ?? null,
+    },
+    {
+      header: '補課日期',
+      render: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return '-';
+        const d = m.type === 'INSERTION' ? m.targetDate : m.slotDate;
+        return d ? formatDateWithWeekday(d) : '-';
+      },
+      sortValue: (r) => {
+        const m = r.makeupRequest;
+        if (!m) return null;
+        return m.type === 'INSERTION' ? m.targetDate : m.slotDate;
+      },
     },
     {
       header: '補課狀態',
