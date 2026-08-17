@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import DataTable, { Column } from './DataTable';
 import { getVisibleRows } from './dataTableRows';
 import { SortState, sortRows } from './dataTableSort';
@@ -15,6 +15,8 @@ interface CollapsibleDataTableProps<T> {
   maxRows?: number;
   loading?: boolean;
   emptyText?: string;
+  expandedKey?: string | null;
+  renderExpanded?: (row: T) => ReactNode;
 }
 
 export default function CollapsibleDataTable<T>({
@@ -27,6 +29,8 @@ export default function CollapsibleDataTable<T>({
   maxRows,
   loading,
   emptyText,
+  expandedKey,
+  renderExpanded,
 }: CollapsibleDataTableProps<T>) {
   const [expanded, setExpanded] = useState(false);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -44,6 +48,8 @@ export default function CollapsibleDataTable<T>({
       onRowMouseLeave={onRowMouseLeave}
       loading={loading}
       emptyText={emptyText}
+      expandedKey={expandedKey}
+      renderExpanded={renderExpanded}
       sort={sort}
       onSortChange={setSort}
       footer={

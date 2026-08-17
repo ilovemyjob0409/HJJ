@@ -5,7 +5,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
@@ -361,6 +361,8 @@ export default function AdminPointsPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">集點管理</h1>
 
+      <PointReasonsManager />
+
       <Card className="mb-6">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="w-48">
@@ -392,10 +394,11 @@ export default function AdminPointsPage() {
           </div>
         </div>
 
-        <DataTable
+        <CollapsibleDataTable
           columns={summaryColumns}
           rows={filtered}
           keyField={(s) => s.id}
+          maxRows={3}
           loading={summariesLoading}
           emptyText="找不到符合的學生"
           onRowClick={(s) => setSelectedId((prev) => (prev === s.id ? '' : s.id))}
@@ -438,7 +441,6 @@ export default function AdminPointsPage() {
         )}
       </Modal>
 
-      <PointReasonsManager />
       {ConfirmDialog}
     </>
   );

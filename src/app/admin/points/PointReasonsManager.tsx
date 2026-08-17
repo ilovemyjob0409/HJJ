@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
+import { withStopPropagation } from '@/components/ui/stopPropagation';
 
 interface ReasonRow {
   id: string;
@@ -25,6 +27,7 @@ export default function PointReasonsManager() {
   const [submitting, setSubmitting] = useState(false);
   const [editing, setEditing] = useState<ReasonRow | null>(null);
   const [editLabel, setEditLabel] = useState('');
+  const detailsRef = useRef<HTMLDetailsElement>(null);
 
   async function load() {
     try {
@@ -153,29 +156,48 @@ export default function PointReasonsManager() {
 
   return (
     <>
-      <h2 className="mb-2 font-bold text-ink">加分理由維護</h2>
-      <div className="mb-4">{!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增理由</Button>}</div>
+      <details ref={detailsRef} className="group mb-6">
+        <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <div className="flex items-center gap-2">
+            <span className="text-inkMuted transition-transform group-open:rotate-180">▾</span>
+            <h2 className="font-bold text-ink">加分理由維護</h2>
+          </div>
+          {!showAddForm && (
+            <Button
+              className="px-3 py-1 text-sm"
+              onClick={withStopPropagation(() => {
+                // 收合狀態下按「新增理由」要先展開區塊，表單才看得到
+                if (detailsRef.current) detailsRef.current.open = true;
+                setShowAddForm(true);
+              })}
+            >
+              ＋ 新增理由
+            </Button>
+          )}
+        </summary>
 
-      {showAddForm && (
-        <Card className="mb-4 max-w-xl">
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            <Input placeholder="理由（例如：課堂表現優良）" value={label} onChange={(e) => setLabel(e.target.value)} required className="flex-1" />
-            <Button type="submit" loading={submitting}>新增</Button>
-          </form>
+        {showAddForm && (
+          <Card className="mb-4 max-w-xl">
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <Input placeholder="理由（例如：課堂表現優良）" value={label} onChange={(e) => setLabel(e.target.value)} required className="flex-1" />
+              <Button type="submit" loading={submitting}>新增</Button>
+            </form>
+          </Card>
+        )}
+
+        <Card>
+          <CollapsibleDataTable
+            columns={columns}
+            rows={items}
+            keyField={(item) => item.id}
+            maxRows={3}
+            loading={loading}
+            emptyText="目前沒有加分理由"
+            onRowClick={openEdit}
+            rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+          />
         </Card>
-      )}
-
-      <Card className="mb-6">
-        <DataTable
-          columns={columns}
-          rows={items}
-          keyField={(item) => item.id}
-          loading={loading}
-          emptyText="目前沒有加分理由"
-          onRowClick={openEdit}
-          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
-        />
-      </Card>
+      </details>
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯理由">
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
