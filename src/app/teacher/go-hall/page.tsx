@@ -63,7 +63,7 @@ function TeacherGoHallContent() {
   }
 
   const columns: Column<SessionRow>[] = [
-    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW') },
+    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW'), sortValue: (s) => s.date },
     { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
     { header: '人數', render: (s) => `${s._count.registrations}/${s.capacity}` },
   ];

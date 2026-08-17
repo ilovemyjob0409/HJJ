@@ -194,11 +194,11 @@ export default function ClassesPage() {
   });
 
   const columns: Column<ClassRow>[] = [
-    { header: '班名', render: (c) => c.name },
+    { header: '班名', render: (c) => c.name, sortValue: (c) => c.name },
     { header: '科目/等級', render: (c) => `${c.subject} / ${c.level}` },
-    { header: '老師', render: (c) => c.teacher.user.name },
+    { header: '老師', render: (c) => c.teacher.user.name, sortValue: (c) => c.teacher.user.name },
     { header: '時間', render: (c) => `週${WEEKDAY_LABELS[c.weekday]} ${c.startTime}-${c.endTime}` },
-    { header: '人數', render: (c) => c.enrollments.length },
+    { header: '人數', render: (c) => c.enrollments.length, sortValue: (c) => c.enrollments.length },
     {
       header: '操作',
       render: (c) => (
@@ -332,7 +332,11 @@ export default function ClassesPage() {
             ) : (
               <DataTable
                 columns={[
-                  { header: '學生', render: (en: EnrollmentRow) => en.student.user.name },
+                  {
+                    header: '學生',
+                    render: (en: EnrollmentRow) => en.student.user.name,
+                    sortValue: (en: EnrollmentRow) => en.student.user.name,
+                  },
                   {
                     header: '堂數',
                     render: (en: EnrollmentRow) =>

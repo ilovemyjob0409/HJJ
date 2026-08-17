@@ -105,7 +105,7 @@ export default function AwardRowsForm({ students, onAwarded }: { students: Award
   }
 
   const columns: Column<AwardStudent>[] = [
-    { header: '學生', render: (s) => <span className="block text-left align-top">{s.name}</span> },
+    { header: '學生', render: (s) => <span className="block text-left align-top">{s.name}</span>, sortValue: (s) => s.name },
     {
       header: '理由＋點數',
       render: (s) => (

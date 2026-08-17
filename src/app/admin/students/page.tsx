@@ -474,11 +474,11 @@ function StudentsContent() {
   });
 
   const columns: Column<StudentRow>[] = [
-    { header: '姓名', render: (s) => s.user.name },
-    { header: '學號', render: (s) => s.studentNumber ?? '-' },
-    { header: '帳號', render: (s) => s.user.email },
-    { header: '家長電話', render: (s) => s.parentPhone ?? '-' },
-    { header: '班級數', render: (s) => s.enrollments.length },
+    { header: '姓名', render: (s) => s.user.name, sortValue: (s) => s.user.name },
+    { header: '學號', render: (s) => s.studentNumber ?? '-', sortValue: (s) => s.studentNumber ?? null },
+    { header: '帳號', render: (s) => s.user.email, sortValue: (s) => s.user.email },
+    { header: '家長電話', render: (s) => s.parentPhone ?? '-', sortValue: (s) => s.parentPhone ?? null },
+    { header: '班級數', render: (s) => s.enrollments.length, sortValue: (s) => s.enrollments.length },
     {
       header: '操作',
       render: (s) => (

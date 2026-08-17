@@ -82,7 +82,7 @@ export default function FamilySiblingModal({
               header: '',
               render: (s) => <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} />,
             },
-            { header: '姓名', render: (s) => s.user.name },
+            { header: '姓名', render: (s) => s.user.name, sortValue: (s) => s.user.name },
           ]}
           rows={options}
           keyField={(s) => s.id}

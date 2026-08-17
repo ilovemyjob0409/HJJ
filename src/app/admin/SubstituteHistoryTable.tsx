@@ -25,12 +25,16 @@ export default function SubstituteHistoryTable({ title, rows }: { title: string;
   const filteredRows = rows.filter((r) => matchesSubstituteSearch(r, search));
 
   const columns: Column<SubstituteRow>[] = [
-    { header: '班級', render: (r) => r.class.name },
-    { header: '原老師', render: (r) => r.originalTeacher.user.name },
-    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW') },
-    { header: '原因', render: (r) => r.reason },
-    { header: '代課老師', render: (r) => r.substituteTeacher?.user.name ?? '-' },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
+    { header: '班級', render: (r) => r.class.name, sortValue: (r) => r.class.name },
+    { header: '原老師', render: (r) => r.originalTeacher.user.name, sortValue: (r) => r.originalTeacher.user.name },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date, 'zh-TW'), sortValue: (r) => r.date },
+    { header: '原因', render: (r) => r.reason, sortValue: (r) => r.reason },
+    {
+      header: '代課老師',
+      render: (r) => r.substituteTeacher?.user.name ?? '-',
+      sortValue: (r) => r.substituteTeacher?.user.name ?? null,
+    },
+    { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
   ];
 
   const exportColumns = [

@@ -157,8 +157,8 @@ export default function EnrollmentManager() {
     : enrollments;
 
   const columns: Column<EnrollmentRow>[] = [
-    { header: '學生', render: (r) => r.studentName },
-    { header: '課程', render: (r) => r.programName },
+    { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
+    { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
     {
       header: '本月狀態',
       render: (r) => (

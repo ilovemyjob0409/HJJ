@@ -155,9 +155,9 @@ function AdminGoHallContent() {
   const filteredSessions = sessions.filter((s) => matchesSessionSearch(s, search));
 
   const columns: Column<SessionRow>[] = [
-    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW') },
+    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW'), sortValue: (s) => s.date },
     { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
-    { header: '老師', render: (s) => s.teacher.user.name },
+    { header: '老師', render: (s) => s.teacher.user.name, sortValue: (s) => s.teacher.user.name },
     { header: '人數', render: (s) => `${s._count.registrations}/${s.capacity}` },
     {
       header: '操作',

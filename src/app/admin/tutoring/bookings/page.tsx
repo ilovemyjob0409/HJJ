@@ -109,10 +109,10 @@ export default function AdminTutoringBookingsPage() {
   }
 
   const columns: Column<OverviewRow>[] = [
-    { header: '學生', render: (r) => r.studentName },
-    { header: '課程', render: (r) => r.programName },
-    { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般') },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
+    { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
+    { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
+    { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般'), sortValue: (r) => r.kind },
+    { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
     {
       header: '操作',
       render: (r) => {
@@ -142,12 +142,12 @@ export default function AdminTutoringBookingsPage() {
   ];
 
   const summaryColumns: Column<SummaryRow>[] = [
-    { header: '學生', render: (r) => r.studentName },
-    { header: '課程', render: (r) => r.programName },
-    { header: '已上', render: (r) => r.attended },
-    { header: '當天取消', render: (r) => r.cancelledLate },
-    { header: '缺席', render: (r) => r.absent },
-    { header: '補課', render: (r) => r.makeup },
+    { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
+    { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
+    { header: '已上', render: (r) => r.attended, sortValue: (r) => r.attended },
+    { header: '當天取消', render: (r) => r.cancelledLate, sortValue: (r) => r.cancelledLate },
+    { header: '缺席', render: (r) => r.absent, sortValue: (r) => r.absent },
+    { header: '補課', render: (r) => r.makeup, sortValue: (r) => r.makeup },
   ];
 
   return (

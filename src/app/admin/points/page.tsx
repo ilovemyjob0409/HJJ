@@ -213,8 +213,12 @@ export default function AdminPointsPage() {
       ),
     },
     { header: '班級', render: (s) => <span className="text-xs">{s.classes.map((c) => c.name).join('、') || '-'}</span> },
-    { header: '一般點數', render: (s) => <span className="font-semibold">{s.regular}</span> },
-    { header: '兌換專用', render: (s) => <span className="font-semibold">{s.redeemOnly}</span> },
+    { header: '一般點數', render: (s) => <span className="font-semibold">{s.regular}</span>, sortValue: (s) => s.regular },
+    {
+      header: '兌換專用',
+      render: (s) => <span className="font-semibold">{s.redeemOnly}</span>,
+      sortValue: (s) => s.redeemOnly,
+    },
     {
       header: '操作',
       render: (s) => (
@@ -338,9 +342,9 @@ export default function AdminPointsPage() {
   }
 
   const historyColumns: Column<HistoryRow>[] = [
-    { header: '日期', render: (r) => formatDateWithWeekday(r.createdAt) },
-    { header: '類型', render: (r) => KIND_LABELS[r.kind] ?? r.kind },
-    { header: '說明', render: (r) => r.reason },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.createdAt), sortValue: (r) => r.createdAt },
+    { header: '類型', render: (r) => KIND_LABELS[r.kind] ?? r.kind, sortValue: (r) => r.kind },
+    { header: '說明', render: (r) => r.reason, sortValue: (r) => r.reason },
     {
       header: '點數',
       render: (r) => (
@@ -348,8 +352,9 @@ export default function AdminPointsPage() {
           {r.amount > 0 ? `+${r.amount}` : r.amount}
         </span>
       ),
+      sortValue: (r) => r.amount,
     },
-    { header: '加分老師', render: (r) => r.teacher?.user.name ?? '-' },
+    { header: '加分老師', render: (r) => r.teacher?.user.name ?? '-', sortValue: (r) => r.teacher?.user.name ?? null },
   ];
 
   return (

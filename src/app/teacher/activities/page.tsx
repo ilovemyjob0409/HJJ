@@ -52,8 +52,8 @@ export default function TeacherActivitiesPage() {
           <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
         ),
     },
-    { header: '標題', render: (a) => a.title },
-    { header: '分類', render: (a) => a.category.name },
+    { header: '標題', render: (a) => a.title, sortValue: (a) => a.title },
+    { header: '分類', render: (a) => a.category.name, sortValue: (a) => a.category.name },
     { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
     { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
     { header: '人數', render: (a) => `${a._count.registrations}/${a.capacity}` },

@@ -14,7 +14,7 @@
 - `src/components/ui/DataTable.tsx`：吃 `columns`（含 `header: ReactNode`、`render: (row) => ReactNode`）＋ `rows`，渲染表頭／表身／載入骨架／空狀態／展開列。
 - `src/components/ui/CollapsibleDataTable.tsx`：包一層 `DataTable`，超過 `maxRows` 先切片、加「展開全部」footer 按鈕（用 `dataTableRows.ts` 的 `getVisibleRows`）。
 
-兩者合計被 36 個檔案使用（admin/teacher/student 都有），列表詳見附錄。`Column` 目前沒有排序相關欄位，`header` 是任意 ReactNode，沒辦法直接拿來當排序依據。
+兩者合計被 37 個檔案使用（admin/teacher/student 都有），列表詳見附錄。`Column` 目前沒有排序相關欄位，`header` 是任意 ReactNode，沒辦法直接拿來當排序依據。
 
 `WeeklyTimetableGrid`／`TimetableModal` 是另一種格狀排版（不是 `columns`+`rows` 的表格），不在這次範圍內。
 
@@ -58,7 +58,7 @@ onSortChange?: (next: SortState | null) => void;
 - 有傳 `onSortChange`＝受控模式：不自己排序 `rows`（信任外層已經排好），表頭圖示狀態看 `sort` prop，點擊時把算好的 `nextSortState` 丟給 `onSortChange`，不自己改資料順序。
 - 沒傳 `onSortChange`＝非受控模式：內部 `useState<SortState | null>`，點擊時自己算下一個狀態、自己用 `sortRows` 排序 `rows` 再渲染。單獨用 `DataTable`（沒被 `CollapsibleDataTable` 包住）的呼叫端不用做任何額外接線就能動。
 
-有 `sortValue` 的欄位，表頭渲染成 `<button>`（同一個 `<th>` 內），未排序時圖示淡（opacity .35），hover 或已排序時變深咖啡色 `#4A2E1D`、hover 背景疊 `rgba(74,46,29,.1)`（跟已核准的 demo 一致）。圖示是手刻 inline SVG 上下箭頭（比照 `CollapsibleDataTable` 現有展開按鈕的箭頭做法，不另外裝圖示套件）。`<th>` 加 `aria-sort`（`ascending`/`descending`/未排序時不加這個屬性）。
+有 `sortValue` 的欄位，表頭渲染成 `<button>`（同一個 `<th>` 內），未排序時圖示淡（opacity .35），hover 或已排序時變深咖啡色 `#4A2E1D`、hover 背景疊 `rgba(74,46,29,.1)`（跟已核准的 demo 一致）。圖示是手刻 inline SVG 上下箭頭（比照 `CollapsibleDataTable` 現有展開按鈕的箭頭做法，不另外裝圖示套件）。`<th>` 加 `aria-sort`（`ascending`/`descending`/未排序時 `none`——用 `none` 而不是省略屬性，讓螢幕閱讀器也能唸出「這欄可以排序」）。
 
 ### `CollapsibleDataTable` 改動：排序在切片之前
 
@@ -77,7 +77,7 @@ const visibleRows = getVisibleRows(sortedRows, maxRows, expanded);
 
 ### 全站套用範圍
 
-中央邏輯改完後，逐一走過附錄裡的 36 個檔案，幫每張表決定哪些欄位加 `sortValue`。判斷原則：
+中央邏輯改完後，逐一走過附錄裡的 37 個檔案，幫每張表決定哪些欄位加 `sortValue`。判斷原則：
 - 欄位顯示值是單一 row 欄位的純量（文字／狀態標籤／日期／數字）→ 加 `sortValue`。
 - 欄位是按鈕／連結／多值徽章／純裝飾（例如序號、操作、勾選框）→ 不加，維持現狀不可排序。
 
@@ -97,7 +97,7 @@ const visibleRows = getVisibleRows(sortedRows, maxRows, expanded);
 - 不做每張表客製化的排序圖示或樣式，全站統一一套視覺。
 - 不處理 `WeeklyTimetableGrid`／`TimetableModal` 這類非 `columns`+`rows` 的格狀排版。
 
-## 附錄：目前使用 DataTable／CollapsibleDataTable 的檔案（36）
+## 附錄：目前使用 DataTable／CollapsibleDataTable 的檔案（37）
 
 ```
 src/app/admin/LeaveRecordsTable.tsx

@@ -126,10 +126,14 @@ function StudentGoHallContent() {
   }
 
   const openColumns: Column<SessionRow>[] = [
-    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW') },
+    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW'), sortValue: (s) => s.date },
     { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
-    { header: '老師', render: (s) => s.teacher.user.name },
-    { header: '剩餘名額', render: (s) => Math.max(s.capacity - s._count.registrations, 0) },
+    { header: '老師', render: (s) => s.teacher.user.name, sortValue: (s) => s.teacher.user.name },
+    {
+      header: '剩餘名額',
+      render: (s) => Math.max(s.capacity - s._count.registrations, 0),
+      sortValue: (s) => Math.max(s.capacity - s._count.registrations, 0),
+    },
     {
       header: '操作',
       render: (s) => (
@@ -146,9 +150,9 @@ function StudentGoHallContent() {
   ];
 
   const myColumns: Column<RegistrationRow>[] = [
-    { header: '日期', render: (r) => formatDateWithWeekday(r.session.date, 'zh-TW') },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.session.date, 'zh-TW'), sortValue: (r) => r.session.date },
     { header: '時間', render: (r) => `${r.session.startTime}-${r.session.endTime}` },
-    { header: '老師', render: (r) => r.session.teacher.user.name },
+    { header: '老師', render: (r) => r.session.teacher.user.name, sortValue: (r) => r.session.teacher.user.name },
     {
       header: '簽到',
       render: (r) => {
@@ -162,6 +166,7 @@ function StudentGoHallContent() {
           </div>
         );
       },
+      sortValue: (r) => r.attendance?.status ?? null,
     },
     {
       header: '操作',

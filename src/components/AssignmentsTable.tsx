@@ -32,7 +32,7 @@ export interface AssignmentRow {
 }
 
 const studentColumns: Column<AssignmentStudent>[] = [
-  { header: '學生', render: (s) => s.name },
+  { header: '學生', render: (s) => s.name, sortValue: (s) => s.name },
   {
     header: '堂數進度',
     render: (s) => (s.totalSessions === null ? `${s.usedSessions} 堂` : `${s.usedSessions}／${s.totalSessions} 堂`),
@@ -53,6 +53,7 @@ export default function AssignmentsTable({ rows }: { rows: AssignmentRow[] }) {
         ) : (
           <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">一對一補課</span>
         ),
+      sortValue: (r) => r.kind,
     },
     {
       header: '日期',
@@ -66,9 +67,10 @@ export default function AssignmentsTable({ rows }: { rows: AssignmentRow[] }) {
           )}
         </>
       ),
+      sortValue: (r) => r.date,
     },
     { header: '時間', render: (r) => <span className="whitespace-nowrap">{`${r.startTime}-${r.endTime}`}</span> },
-    { header: '班級', render: (r) => <span className="whitespace-nowrap">{r.className}</span> },
+    { header: '班級', render: (r) => <span className="whitespace-nowrap">{r.className}</span>, sortValue: (r) => r.className },
     {
       header: '對象',
       render: (r) =>
@@ -80,8 +82,9 @@ export default function AssignmentsTable({ rows }: { rows: AssignmentRow[] }) {
         ) : (
           r.counterpartName
         ),
+      sortValue: (r) => r.counterpartName,
     },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} /> },
+    { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
   ];
 
   const lowQuota = viewing?.students.filter((s) => s.remaining !== null && s.remaining <= LOW_CLASS_QUOTA_THRESHOLD) ?? [];

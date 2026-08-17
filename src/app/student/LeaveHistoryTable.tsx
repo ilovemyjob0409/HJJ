@@ -22,14 +22,15 @@ interface LeaveRow {
 
 export default function LeaveHistoryTable({ rows }: { rows: LeaveRow[] }) {
   const columns: Column<LeaveRow>[] = [
-    { header: '請假班級', render: (r) => r.class.name },
-    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date) },
+    { header: '請假班級', render: (r) => r.class.name, sortValue: (r) => r.class.name },
+    { header: '請假日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
     {
       header: '插班日期',
       render: (r) =>
         r.makeupRequest?.type === 'INSERTION' && r.makeupRequest.targetDate
           ? formatDateWithWeekday(r.makeupRequest.targetDate)
           : '-',
+      sortValue: (r) => (r.makeupRequest?.type === 'INSERTION' ? r.makeupRequest.targetDate : null),
     },
     {
       header: '補課狀態',
@@ -47,6 +48,7 @@ export default function LeaveHistoryTable({ rows }: { rows: LeaveRow[] }) {
           </div>
         );
       },
+      sortValue: (r) => r.makeupRequest?.status ?? null,
     },
   ];
 
