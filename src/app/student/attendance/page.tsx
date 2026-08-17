@@ -7,7 +7,7 @@ import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
-type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY';
+type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY' | 'TUTORING';
 
 interface MyAttendanceRow {
   id: string;
@@ -24,6 +24,7 @@ const TYPE_LABEL: Record<SessionType, string> = {
   ONE_ON_ONE: '一對一補課',
   GO_HALL: '弈廳',
   ACTIVITY: '活動',
+  TUTORING: '個別輔導',
 };
 
 export default function StudentAttendancePage() {
