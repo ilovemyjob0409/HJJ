@@ -16,11 +16,21 @@ describe('createSubstituteRequest / listPendingSubstituteRequests', () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '數學' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
 
-    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2026, 6, 20), reason: '出差' });
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '出差' });
     expect(req.status).toBe('PENDING_ASSIGNMENT');
 
     const pending = await listPendingSubstituteRequests();
     expect(pending.map((p) => p.id)).toContain(req.id);
+  });
+
+  it('throws INVALID_WEEKDAY when the date does not fall on the class weekday', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    await expect(
+      // 2026-07-21 是週二，班級週一上課
+      createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2026, 6, 21)), reason: '出差' })
+    ).rejects.toThrow('INVALID_WEEKDAY');
   });
 });
 
@@ -29,7 +39,7 @@ describe('assignSubstituteTeacher', () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '數學' });
     const substitute = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '數學' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
-    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2026, 6, 20), reason: '出差' });
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '出差' });
 
     const updated = await assignSubstituteTeacher(req.id, substitute.id);
     expect(updated.status).toBe('ASSIGNED');
@@ -49,17 +59,17 @@ describe('listAssignedSubstituteRequestsForTeacher', () => {
     const student = await createStudent({ name: '小明', email: 'ming-sub@example.com', password: 'x' });
     await enrollStudent(cls.id, student.id);
 
-    const later = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 14), reason: '進修' });
+    const later = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2030, 0, 14)), reason: '進修' });
     await assignSubstituteTeacher(later.id, substitute.id);
-    const sooner = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 7), reason: '出差' });
+    const sooner = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2030, 0, 7)), reason: '出差' });
     await assignSubstituteTeacher(sooner.id, substitute.id);
 
     // 過去的指派不出現（首頁只列今天以後）
-    const past = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2020, 0, 6), reason: '出差' });
+    const past = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2020, 0, 6)), reason: '出差' });
     await assignSubstituteTeacher(past.id, substitute.id);
 
     // 指派給別人的不出現
-    const otherReq = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 21), reason: '請假' });
+    const otherReq = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2030, 0, 21)), reason: '請假' });
     await assignSubstituteTeacher(otherReq.id, otherSubstitute.id);
 
     const results = await listAssignedSubstituteRequestsForTeacher(substitute.id);
@@ -81,18 +91,18 @@ describe('teacherCanAccessClass', () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen2@example.com', password: 'x', subjects: '數學' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
 
-    expect(await teacherCanAccessClass(teacher.id, cls.id, new Date(2030, 0, 7))).toBe(true);
+    expect(await teacherCanAccessClass(teacher.id, cls.id, new Date(Date.UTC(2030, 0, 7)))).toBe(true);
   });
 
   it('allows an ASSIGNED substitute on the assigned date, but not other dates', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen3@example.com', password: 'x', subjects: '數學' });
     const substitute = await createTeacher({ name: '林老師', email: 'lin3@example.com', password: 'x', subjects: '數學' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
-    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 7), reason: '出差' });
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2030, 0, 7)), reason: '出差' });
     await assignSubstituteTeacher(req.id, substitute.id);
 
-    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(2030, 0, 7))).toBe(true);
-    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(2030, 0, 14))).toBe(false);
+    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(Date.UTC(2030, 0, 7)))).toBe(true);
+    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(Date.UTC(2030, 0, 14)))).toBe(false);
   });
 
   it('denies an unrelated teacher', async () => {
@@ -100,7 +110,7 @@ describe('teacherCanAccessClass', () => {
     const other = await createTeacher({ name: '王老師', email: 'wang4@example.com', password: 'x', subjects: '數學' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
 
-    expect(await teacherCanAccessClass(other.id, cls.id, new Date(2030, 0, 7))).toBe(false);
+    expect(await teacherCanAccessClass(other.id, cls.id, new Date(Date.UTC(2030, 0, 7)))).toBe(false);
   });
 
   it('denies a substitute whose request is still PENDING_ASSIGNMENT', async () => {
@@ -108,9 +118,9 @@ describe('teacherCanAccessClass', () => {
     const substitute = await createTeacher({ name: '林老師', email: 'lin5@example.com', password: 'x', subjects: '數學' });
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
     // 建立請求但不指派——substitute 對此請求沒有 substituteTeacherId 關聯
-    await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 7), reason: '出差' });
+    await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2030, 0, 7)), reason: '出差' });
 
-    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(2030, 0, 7))).toBe(false);
+    expect(await teacherCanAccessClass(substitute.id, cls.id, new Date(Date.UTC(2030, 0, 7)))).toBe(false);
   });
 });
 
@@ -123,10 +133,10 @@ describe('listAssignedSubstituteRequestsForTeacher — 學生堂數進度', () =
     await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 10 }]);
     const marker = await prisma.user.findFirstOrThrow();
     await prisma.classAttendance.create({
-      data: { classId: cls.id, studentId: student.id, date: new Date(2030, 0, 7), status: 'PRESENT', markedById: marker.id },
+      data: { classId: cls.id, studentId: student.id, date: new Date(Date.UTC(2030, 0, 7)), status: 'PRESENT', markedById: marker.id },
     });
 
-    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2030, 0, 14), reason: '出差' });
+    const req = await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2030, 0, 14)), reason: '出差' });
     await assignSubstituteTeacher(req.id, substitute.id);
 
     const results = await listAssignedSubstituteRequestsForTeacher(substitute.id);

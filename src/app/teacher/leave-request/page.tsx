@@ -5,10 +5,12 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
+import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface ClassOption {
   id: string;
   name: string;
+  weekday: number;
 }
 
 export default function TeacherLeaveRequestPage() {
@@ -21,12 +23,24 @@ export default function TeacherLeaveRequestPage() {
     fetch('/api/classes').then((r) => r.json()).then(setClasses);
   }, []);
 
+  const selectedClass = classes.find((c) => c.id === form.classId) ?? null;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setMessage('');
+    if (selectedClass && form.date && new Date(form.date).getUTCDay() !== selectedClass.weekday) {
+      setMessage(`日期跟班級對不上：${selectedClass.name}是週${WEEKDAY_LABELS[selectedClass.weekday]}上課，請重新選擇日期`);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch('/api/substitute-requests', { method: 'POST', body: JSON.stringify(form) });
-      setMessage(res.ok ? '已送出，行政將安排代課老師' : '送出失敗');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setMessage(data.error === 'INVALID_WEEKDAY' ? '日期跟班級上課的星期對不上，請重新選擇' : '送出失敗');
+        return;
+      }
+      setMessage('已送出，行政將安排代課老師');
       setForm({ classId: '', date: '', reason: '' });
     } finally {
       setSubmitting(false);
@@ -42,7 +56,7 @@ export default function TeacherLeaveRequestPage() {
             <option value="">選擇班級</option>
             {classes.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.name}（週{WEEKDAY_LABELS[c.weekday]}）
               </option>
             ))}
           </Select>

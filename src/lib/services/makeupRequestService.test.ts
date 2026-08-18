@@ -81,19 +81,27 @@ describe('formatMakeupSlot', () => {
 describe('createInsertionMakeupRequest', () => {
   it('creates a PENDING_ADMIN insertion request', async () => {
     const { classB, leave } = await setup();
-    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
     expect(makeup.type).toBe('INSERTION');
     expect(makeup.status).toBe('PENDING_ADMIN');
   });
 
+  it('throws INVALID_WEEKDAY when the target date does not fall on the target class weekday', async () => {
+    const { classB, leave } = await setup();
+    await expect(
+      // 2026-07-23 是週四，classB 週三上課
+      createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 23)) })
+    ).rejects.toThrow('INVALID_WEEKDAY');
+  });
+
   it('allows a third insertion in the same period (insertions are unlimited)', async () => {
     const { student, classA, classB, leave } = await setup();
-    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
     const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
-    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
+    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 29)) });
     const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 7, 3)), reason: '事假' });
 
-    const third = await createInsertionMakeupRequest({ leaveRequestId: thirdLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 1) });
+    const third = await createInsertionMakeupRequest({ leaveRequestId: thirdLeave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 7, 5)) });
 
     expect(third.status).toBe('PENDING_ADMIN');
   });
@@ -219,9 +227,9 @@ describe('createOneOnOneMakeupRequest', () => {
 
   it('still allows a one-on-one after two insertions (insertions do not consume the quota)', async () => {
     const { teacher, student, classA, classB, leave } = await setup();
-    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
     const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
-    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 29) });
+    await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 29)) });
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
 
     const thirdLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 7, 3)), reason: '事假' });
@@ -364,7 +372,7 @@ describe('getMakeupQuotaStatus', () => {
 
   it('keeps remaining untouched by insertions', async () => {
     const { student, classA, classB, leave } = await setup();
-    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     const quota = await getMakeupQuotaStatus(student.id, classA.id);
     expect(quota).toEqual({ oneOnOneAvailable: true, oneOnOneRemaining: 1 });
@@ -444,7 +452,7 @@ describe('getMakeupQuotaStatus', () => {
 describe('listPendingMakeupRequests / decideMakeupRequest', () => {
   it('lists pending requests and allows admin to approve one', async () => {
     const { classB, leave } = await setup();
-    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     const pending = await listPendingMakeupRequests();
     expect(pending.map((m) => m.id)).toContain(makeup.id);
@@ -458,7 +466,7 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
 
   it('does not throw when the student has no LINE binding', async () => {
     const { classB, leave } = await setup();
-    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     const decided = await decideMakeupRequest(makeup.id, 'APPROVED');
 
@@ -468,7 +476,7 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
   it('does not throw when the student has a LINE binding but no access token is configured', async () => {
     const { student, classB, leave } = await setup();
     await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent123' } });
-    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     const decided = await decideMakeupRequest(makeup.id, 'REJECTED');
 
@@ -479,7 +487,7 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
 describe('listInsertionsForTeacherClasses', () => {
   it('returns only insertion requests targeting classes taught by the given teacher', async () => {
     const { teacher, classB, leave } = await setup();
-    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     const otherTeacher = await createTeacher({ name: '林老師', email: 'other-teacher@example.com', password: 'x', subjects: '英文' });
     const otherClass = await createClass({ name: '英文班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 4, startTime: '19:00', endTime: '21:00' });
@@ -487,7 +495,7 @@ describe('listInsertionsForTeacherClasses', () => {
     await enrollStudent(otherClass.id, otherStudent.id);
     const otherLeave = await createLeaveRequest({ studentId: otherStudent.id, classId: otherClass.id, date: new Date(Date.UTC(2026, 6, 23)), reason: '事假' });
     const unrelatedTargetClass = await createClass({ name: '英文B班', subject: '英文', level: '國一', teacherId: otherTeacher.id, weekday: 5, startTime: '19:00', endTime: '21:00' });
-    await createInsertionMakeupRequest({ leaveRequestId: otherLeave.id, targetClassId: unrelatedTargetClass.id, targetDate: new Date(2026, 6, 23) });
+    await createInsertionMakeupRequest({ leaveRequestId: otherLeave.id, targetClassId: unrelatedTargetClass.id, targetDate: new Date(Date.UTC(2026, 6, 24)) });
 
     const results = await listInsertionsForTeacherClasses(teacher.id);
 
@@ -504,10 +512,10 @@ describe('arrangeInsertionMakeup', () => {
     const makeup = await arrangeInsertionMakeup({
       studentId: student.id,
       classId: classA.id,
-      date: new Date(2026, 7, 3),
+      date: new Date(Date.UTC(2026, 7, 3)),
       reason: '行政代辦',
       targetClassId: classB.id,
-      targetDate: new Date(2026, 7, 5),
+      targetDate: new Date(Date.UTC(2026, 7, 5)),
     });
 
     expect(makeup.status).toBe('APPROVED');
@@ -515,9 +523,42 @@ describe('arrangeInsertionMakeup', () => {
     expect(leave.studentId).toBe(student.id);
     expect(leave.classId).toBe(classA.id);
 
-    const roster = await getClassRoster(classB.id, new Date(2026, 7, 5));
+    const roster = await getClassRoster(classB.id, new Date(Date.UTC(2026, 7, 5)));
     const insertion = roster.find((r) => r.makeupRequestId === makeup.id);
     expect(insertion?.studentName).toBe('小明');
+  });
+
+  it('throws INVALID_WEEKDAY when the target date does not fall on the target class weekday, leaving no rows behind', async () => {
+    const { student, classA, classB } = await setup();
+
+    await expect(
+      arrangeInsertionMakeup({
+        studentId: student.id,
+        classId: classA.id,
+        date: new Date(Date.UTC(2026, 7, 3)), // 週一，對上 classA
+        reason: '行政代辦',
+        targetClassId: classB.id,
+        targetDate: new Date(Date.UTC(2026, 7, 6)), // 週四，classB 週三上課
+      })
+    ).rejects.toThrow('INVALID_WEEKDAY');
+
+    expect(await prisma.makeupRequest.count()).toBe(0);
+    expect(await prisma.leaveRequest.count({ where: { date: new Date(Date.UTC(2026, 7, 3)) } })).toBe(0);
+  });
+
+  it('throws INVALID_WEEKDAY when the arrange leave date does not fall on the original class weekday', async () => {
+    const { student, classA, classB } = await setup();
+
+    await expect(
+      arrangeInsertionMakeup({
+        studentId: student.id,
+        classId: classA.id,
+        date: new Date(Date.UTC(2026, 7, 4)), // 週二，classA 週一上課
+        reason: '行政代辦',
+        targetClassId: classB.id,
+        targetDate: new Date(Date.UTC(2026, 7, 5)), // 週三，對上 classB
+      })
+    ).rejects.toThrow('INVALID_WEEKDAY');
   });
 
   it('throws NOT_ENROLLED for a class the student is not enrolled in, leaving no rows behind', async () => {
@@ -527,14 +568,14 @@ describe('arrangeInsertionMakeup', () => {
       arrangeInsertionMakeup({
         studentId: student.id,
         classId: classB.id, // 未就讀 classB
-        date: new Date(2026, 7, 3),
+        date: new Date(Date.UTC(2026, 7, 3)),
         reason: '行政代辦',
         targetClassId: classB.id,
-        targetDate: new Date(2026, 7, 5),
+        targetDate: new Date(Date.UTC(2026, 7, 5)),
       })
     ).rejects.toThrow('NOT_ENROLLED');
 
-    expect(await prisma.leaveRequest.count({ where: { date: new Date(2026, 7, 3) } })).toBe(0);
+    expect(await prisma.leaveRequest.count({ where: { date: new Date(Date.UTC(2026, 7, 3)) } })).toBe(0);
     expect(await prisma.makeupRequest.count()).toBe(0);
   });
 
@@ -547,7 +588,7 @@ describe('arrangeInsertionMakeup', () => {
       date: new Date(Date.UTC(2026, 6, 20)), // setup() 已建立的請假日
       reason: '行政代辦',
       targetClassId: classB.id,
-      targetDate: new Date(2026, 6, 22),
+      targetDate: new Date(Date.UTC(2026, 6, 22)),
     });
 
     expect(makeup.leaveRequestId).toBe(leave.id);
@@ -558,7 +599,7 @@ describe('arrangeInsertionMakeup', () => {
 
   it('throws ALREADY_HAS_MAKEUP when that leave already has a makeup arranged', async () => {
     const { student, classA, classB, leave } = await setup();
-    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 6, 22) });
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     await expect(
       arrangeInsertionMakeup({
@@ -567,13 +608,26 @@ describe('arrangeInsertionMakeup', () => {
         date: new Date(Date.UTC(2026, 6, 20)),
         reason: '行政代辦',
         targetClassId: classB.id,
-        targetDate: new Date(2026, 6, 29),
+        targetDate: new Date(Date.UTC(2026, 6, 29)),
       })
     ).rejects.toThrow('ALREADY_HAS_MAKEUP');
   });
 });
 
 describe('arrangeLeaveOnly', () => {
+  it('throws INVALID_WEEKDAY when the leave date does not fall on the class weekday', async () => {
+    const { student, classA } = await setup();
+
+    await expect(
+      arrangeLeaveOnly({
+        studentId: student.id,
+        classId: classA.id,
+        date: new Date(Date.UTC(2026, 7, 4)), // 週二，classA 週一上課
+        reason: '行政代辦',
+      })
+    ).rejects.toThrow('INVALID_WEEKDAY');
+  });
+
   it('throws ALREADY_ON_LEAVE when a leave already exists for that date', async () => {
     const { student, classA } = await setup();
 
@@ -595,7 +649,7 @@ describe('arrangeLeaveOnly', () => {
     const leave = await arrangeLeaveOnly({
       studentId: student.id,
       classId: classA.id,
-      date: new Date(2026, 7, 3),
+      date: new Date(Date.UTC(2026, 7, 3)),
       reason: '行政代辦',
     });
 
@@ -612,12 +666,12 @@ describe('arrangeLeaveOnly', () => {
       arrangeLeaveOnly({
         studentId: student.id,
         classId: classB.id, // 未就讀 classB
-        date: new Date(2026, 7, 3),
+        date: new Date(Date.UTC(2026, 7, 3)),
         reason: '行政代辦',
       })
     ).rejects.toThrow('NOT_ENROLLED');
 
-    expect(await prisma.leaveRequest.count({ where: { date: new Date(2026, 7, 3) } })).toBe(0);
+    expect(await prisma.leaveRequest.count({ where: { date: new Date(Date.UTC(2026, 7, 3)) } })).toBe(0);
   });
 });
 
@@ -629,7 +683,7 @@ describe('arrangeOneOnOneMakeup', () => {
     const makeup = await arrangeOneOnOneMakeup({
       studentId: student.id,
       classId: classA.id,
-      date: new Date(2026, 7, 3),
+      date: new Date(Date.UTC(2026, 7, 3)),
       reason: '行政代辦',
       teacherId: teacher.id,
       slotDate: new Date('2026-08-05'), // a Wednesday
@@ -670,7 +724,7 @@ describe('arrangeOneOnOneMakeup', () => {
       arrangeOneOnOneMakeup({
         studentId: student.id,
         classId: mathClass.id,
-        date: new Date(2026, 7, 4),
+        date: new Date(Date.UTC(2026, 7, 4)),
         reason: '行政代辦',
         teacherId: teacher.id,
         slotDate: new Date('2026-08-05'),
@@ -694,7 +748,7 @@ describe('arrangeOneOnOneMakeup', () => {
       arrangeOneOnOneMakeup({
         studentId: student.id,
         classId: classA.id,
-        date: new Date(2026, 7, 10),
+        date: new Date(Date.UTC(2026, 7, 10)),
         reason: '行政代辦',
         teacherId: teacher.id,
         slotDate: new Date('2026-08-12'),
@@ -711,7 +765,7 @@ describe('arrangeOneOnOneMakeup', () => {
       arrangeOneOnOneMakeup({
         studentId: student.id,
         classId: classA.id,
-        date: new Date(2026, 7, 3),
+        date: new Date(Date.UTC(2026, 7, 3)),
         reason: '行政代辦',
         teacherId: teacher.id,
         slotDate: new Date('2026-08-05'),
@@ -727,10 +781,10 @@ describe('makeup cancellation', () => {
     const makeup = await arrangeInsertionMakeup({
       studentId: base.student.id,
       classId: base.classA.id,
-      date: new Date(2026, 7, 3),
+      date: new Date(Date.UTC(2026, 7, 3)),
       reason: '行政代辦',
       targetClassId: base.classB.id,
-      targetDate: new Date(2026, 7, 5),
+      targetDate: new Date(Date.UTC(2026, 7, 5)),
     });
     return { ...base, makeup };
   }
@@ -743,7 +797,7 @@ describe('makeup cancellation', () => {
     const updated = await prisma.makeupRequest.findUniqueOrThrow({ where: { id: makeup.id } });
     expect(updated.cancelRequestedAt).not.toBeNull();
     expect(updated.status).toBe('APPROVED');
-    const roster = await getClassRoster(classB.id, new Date(2026, 7, 5));
+    const roster = await getClassRoster(classB.id, new Date(Date.UTC(2026, 7, 5)));
     expect(roster.some((r) => r.makeupRequestId === makeup.id)).toBe(true);
   });
 
@@ -753,7 +807,7 @@ describe('makeup cancellation', () => {
     await expect(requestMakeupCancellation(makeup.id, other.id)).rejects.toThrow('NOT_FOUND');
 
     const secondLeave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 7, 10)), reason: '事假' });
-    const pending = await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 12) });
+    const pending = await createInsertionMakeupRequest({ leaveRequestId: secondLeave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 7, 12)) });
     await expect(requestMakeupCancellation(pending.id, student.id)).rejects.toThrow('NOT_APPROVED');
   });
 
@@ -773,10 +827,10 @@ describe('makeup cancellation', () => {
     await revokeMakeup(makeup.id);
 
     expect(await prisma.makeupRequest.count({ where: { id: makeup.id } })).toBe(0);
-    const roster = await getClassRoster(classB.id, new Date(2026, 7, 5));
+    const roster = await getClassRoster(classB.id, new Date(Date.UTC(2026, 7, 5)));
     expect(roster.some((r) => r.makeupRequestId === makeup.id)).toBe(false);
-    const leave = await prisma.leaveRequest.findFirstOrThrow({ where: { studentId: student.id, date: new Date(2026, 7, 3) } });
-    const again = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(2026, 7, 19) });
+    const leave = await prisma.leaveRequest.findFirstOrThrow({ where: { studentId: student.id, date: new Date(Date.UTC(2026, 7, 3)) } });
+    const again = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 7, 19)) });
     expect(again.status).toBe('PENDING_ADMIN');
   });
 
@@ -786,7 +840,7 @@ describe('makeup cancellation', () => {
     const makeup = await arrangeOneOnOneMakeup({
       studentId: student.id,
       classId: classA.id,
-      date: new Date(2026, 7, 3),
+      date: new Date(Date.UTC(2026, 7, 3)),
       reason: '行政代辦',
       teacherId: teacher.id,
       slotDate: new Date('2026-08-05'),
@@ -806,7 +860,7 @@ describe('makeup cancellation', () => {
       data: {
         classId: classB.id,
         studentId: student.id,
-        date: new Date(2026, 7, 5),
+        date: new Date(Date.UTC(2026, 7, 5)),
         status: 'PRESENT',
         makeupRequestId: makeup.id,
         markedById: marker.id,

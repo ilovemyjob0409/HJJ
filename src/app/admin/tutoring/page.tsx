@@ -286,19 +286,24 @@ export default function AdminTutoringPage() {
     load();
   }
 
-  async function addClosure(windowId: string) {
-    const date = closureDate[windowId];
+  async function addClosure(window: WindowRow) {
+    const date = closureDate[window.id];
     if (!date) return;
+    if (new Date(date).getUTCDay() !== window.weekday) {
+      showToast(`停開日跟時段對不上：這個時段是週${WEEKDAY_LABELS[window.weekday]}，請重新選擇日期`);
+      return;
+    }
     const res = await fetch('/api/tutoring-window-closures', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ windowId, date }),
+      body: JSON.stringify({ windowId: window.id, date }),
     });
     if (!res.ok) {
-      showToast('新增停開日失敗');
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error === 'INVALID_WEEKDAY' ? '停開日跟時段的星期對不上，請重新選擇' : '新增停開日失敗');
       return;
     }
-    setClosureDate((prev) => ({ ...prev, [windowId]: '' }));
+    setClosureDate((prev) => ({ ...prev, [window.id]: '' }));
     load();
   }
 
@@ -409,7 +414,7 @@ export default function AdminTutoringPage() {
                         onChange={(e) => setClosureDate((prev) => ({ ...prev, [window.id]: e.target.value }))}
                         className="w-36 py-1 text-xs"
                       />
-                      <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => addClosure(window.id)}>
+                      <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => addClosure(window)}>
                         加入停開日
                       </Button>
                     </div>

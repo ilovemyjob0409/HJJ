@@ -127,9 +127,14 @@ export default function MakeupRequestPage() {
 
   async function submitInsertion(e: React.FormEvent) {
     e.preventDefault();
+    setMessage('');
+    const targetClass = eligibleClasses.find((c) => c.id === insertionForm.targetClassId);
+    if (targetClass && insertionForm.targetDate && new Date(insertionForm.targetDate).getUTCDay() !== targetClass.weekday) {
+      setMessage(`日期跟班級對不上：${targetClass.name}是週${WEEKDAY_LABELS[targetClass.weekday]}上課，請重新選擇日期`);
+      return;
+    }
     setSubmitting(true);
     try {
-      setMessage('');
       const res = await fetch('/api/makeup-requests', {
         method: 'POST',
         body: JSON.stringify({ type: 'INSERTION', leaveRequestId: selectedLeaveId, ...insertionForm }),
@@ -138,7 +143,7 @@ export default function MakeupRequestPage() {
       if (res.ok) {
         setMessage('已送出插班申請，待行政確認');
       } else {
-        setMessage(`錯誤：${data.error}`);
+        setMessage(data.error === 'INVALID_WEEKDAY' ? '日期跟班級上課的星期對不上，請重新選擇' : `錯誤：${data.error}`);
       }
     } finally {
       setSubmitting(false);

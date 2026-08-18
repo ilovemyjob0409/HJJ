@@ -19,11 +19,16 @@ export async function POST(req: NextRequest) {
   }
   const teacher = await prisma.teacher.findUniqueOrThrow({ where: { userId: session.user.id } });
   const body = await req.json();
-  const request = await createSubstituteRequest({
-    classId: body.classId,
-    originalTeacherId: teacher.id,
-    date: new Date(body.date),
-    reason: body.reason,
-  });
-  return NextResponse.json(request, { status: 201 });
+  try {
+    const request = await createSubstituteRequest({
+      classId: body.classId,
+      originalTeacherId: teacher.id,
+      date: new Date(body.date),
+      reason: body.reason,
+    });
+    return NextResponse.json(request, { status: 201 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 }

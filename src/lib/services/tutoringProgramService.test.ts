@@ -175,6 +175,15 @@ describe('window CRUD', () => {
     await expect(addWindowClosure('nonexistent-window-id', new Date('2026-10-09'))).rejects.toThrow('WINDOW_NOT_FOUND');
   });
 
+  it('rejects a closure whose date does not fall on the window weekday with INVALID_WEEKDAY', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+
+    // 2026-10-08 是週四，時段是週五
+    await expect(addWindowClosure(window.id, new Date('2026-10-08'))).rejects.toThrow('INVALID_WEEKDAY');
+  });
+
   it('rejects deleting a nonexistent window closure with CLOSURE_NOT_FOUND', async () => {
     await expect(deleteWindowClosure('nonexistent-closure-id')).rejects.toThrow('CLOSURE_NOT_FOUND');
   });

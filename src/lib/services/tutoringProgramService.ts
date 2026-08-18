@@ -160,6 +160,11 @@ export async function deleteWindow(id: string) {
 }
 
 export async function addWindowClosure(windowId: string, date: Date) {
+  const window = await prisma.tutoringWindow.findUnique({ where: { id: windowId }, select: { weekday: true } });
+  if (!window) throw new Error('WINDOW_NOT_FOUND');
+  // 停課日必須落在時段的星期——其他日期本來就沒有這個時段，設了也擋不到任何預約。
+  // 日期是 UTC 午夜（date-only 字串解析而來），星期也用 UTC 讀。
+  if (date.getUTCDay() !== window.weekday) throw new Error('INVALID_WEEKDAY');
   try {
     return await prisma.tutoringWindowClosure.create({ data: { windowId, date } });
   } catch (err) {

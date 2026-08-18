@@ -19,6 +19,9 @@ export async function POST(req: NextRequest) {
     if (err instanceof Error && err.message === 'WINDOW_NOT_FOUND') {
       return NextResponse.json({ error: err.message }, { status: 404 });
     }
+    if (err instanceof Error && err.message === 'INVALID_WEEKDAY') {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
     throw err;
   }
 }

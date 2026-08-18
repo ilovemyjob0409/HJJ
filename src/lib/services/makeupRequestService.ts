@@ -62,7 +62,8 @@ export interface CreateInsertionInput {
 }
 
 // 插班補課不限次數（所有科目），所以不再有額度檢查與交易需求。
-export function createInsertionMakeupRequest(input: CreateInsertionInput) {
+export async function createInsertionMakeupRequest(input: CreateInsertionInput) {
+  await assertTargetClassWeekday(input.targetClassId, input.targetDate);
   return prisma.makeupRequest.create({
     data: {
       leaveRequestId: input.leaveRequestId,
@@ -72,6 +73,13 @@ export function createInsertionMakeupRequest(input: CreateInsertionInput) {
       targetDate: input.targetDate,
     },
   });
+}
+
+// 插班目標日期必須落在目標班級的上課星期，否則排進去的是一個不存在的
+// 課次。日期是 UTC 午夜（date-only 字串解析而來），星期也用 UTC 讀。
+async function assertTargetClassWeekday(targetClassId: string, targetDate: Date) {
+  const target = await prisma.class.findUniqueOrThrow({ where: { id: targetClassId }, select: { weekday: true } });
+  if (targetDate.getUTCDay() !== target.weekday) throw new Error('INVALID_WEEKDAY');
 }
 
 export interface CreateOneOnOneInput {
@@ -249,8 +257,10 @@ export interface ArrangeBaseInput {
 async function createLeaveForArrangeTx(tx: Prisma.TransactionClient, input: ArrangeBaseInput) {
   const enrolled = await tx.classEnrollment.findUnique({
     where: { studentId_classId: { studentId: input.studentId, classId: input.classId } },
+    include: { class: { select: { weekday: true } } },
   });
   if (!enrolled) throw new Error('NOT_ENROLLED');
+  if (input.date.getUTCDay() !== enrolled.class.weekday) throw new Error('INVALID_WEEKDAY');
   return tx.leaveRequest.create({
     data: { studentId: input.studentId, classId: input.classId, date: input.date, reason: input.reason, status: 'APPROVED', origin: 'ADMIN' },
   });
@@ -282,6 +292,7 @@ export async function arrangeLeaveOnly(input: ArrangeBaseInput) {
 }
 
 export async function arrangeInsertionMakeup(input: ArrangeBaseInput & { targetClassId: string; targetDate: Date }) {
+  await assertTargetClassWeekday(input.targetClassId, input.targetDate);
   const makeup = await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {

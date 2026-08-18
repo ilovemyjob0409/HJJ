@@ -123,7 +123,7 @@ describe('deleteTeacher', () => {
     // Reassign the class away so only the substitute-request history blocks deletion.
     const otherTeacher = await createTeacher({ name: '林老師', email: 'teacher-delete-block-sub-lin@example.com', password: 'secret123', subjects: '數學' });
     await prisma.class.update({ where: { id: cls.id }, data: { teacherId: otherTeacher.id } });
-    await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(2026, 6, 20), reason: '請假' });
+    await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '請假' });
 
     await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
     expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();

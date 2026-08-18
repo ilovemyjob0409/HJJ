@@ -18,7 +18,11 @@ export interface CreateSubstituteRequestInput {
   reason: string;
 }
 
-export function createSubstituteRequest(input: CreateSubstituteRequestInput) {
+export async function createSubstituteRequest(input: CreateSubstituteRequestInput) {
+  // 代課日期必須落在班級的上課星期——其他日期沒有課可代。
+  // 日期是 UTC 午夜（date-only 字串解析而來），星期也用 UTC 讀。
+  const cls = await prisma.class.findUniqueOrThrow({ where: { id: input.classId }, select: { weekday: true } });
+  if (input.date.getUTCDay() !== cls.weekday) throw new Error('INVALID_WEEKDAY');
   return prisma.substituteRequest.create({ data: { ...input, status: 'PENDING_ASSIGNMENT' } });
 }
 

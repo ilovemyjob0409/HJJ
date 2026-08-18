@@ -26,6 +26,7 @@ interface AdminClassRow {
   name: string;
   subject: string;
   level: string;
+  weekday: number;
   enrollments: { studentId: string; student: { user: { name: string } } }[];
 }
 
@@ -42,6 +43,7 @@ interface AvailabilityWindow {
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
+  INVALID_WEEKDAY: '日期跟班級上課的星期對不上，請重新選擇',
   NOT_ENROLLED: '該學生未就讀所選班級',
   NOT_AVAILABLE: '該班科目不提供一對一補課',
   QUOTA_EXCEEDED: '本期一對一補課額度已使用完畢',
@@ -178,6 +180,15 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
       showToast('請先選擇一對一補課的開始時間');
       return;
     }
+    if (originalClass && date && new Date(date).getUTCDay() !== originalClass.weekday) {
+      showToast(`請假日期跟班級對不上：${originalClass.name}是週${WEEKDAY_LABELS[originalClass.weekday]}上課`);
+      return;
+    }
+    const targetClass = classes.find((c) => c.id === targetClassId);
+    if (withMakeup && type === 'INSERTION' && targetClass && targetDate && new Date(targetDate).getUTCDay() !== targetClass.weekday) {
+      showToast(`插班日期跟班級對不上：${targetClass.name}是週${WEEKDAY_LABELS[targetClass.weekday]}上課`);
+      return;
+    }
     setSubmitting(true);
     try {
       const body = !withMakeup
@@ -287,7 +298,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
                     <option value="">選擇插班班級</option>
                     {insertionTargets.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}（目前 {c.enrollments.length} 人）
+                        {c.name}（週{WEEKDAY_LABELS[c.weekday]}，目前 {c.enrollments.length} 人）
                       </option>
                     ))}
                   </Select>

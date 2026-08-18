@@ -82,7 +82,7 @@ describe('listAllLeaveRequests', () => {
 
     const teacher = await prisma.teacher.findFirstOrThrow();
     const targetClass = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
-    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: new Date(2026, 6, 22) });
+    await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     const results = await listAllLeaveRequests();
 
@@ -117,7 +117,7 @@ describe('revokeLeaveRequest', () => {
     const teacher2 = await createTeacher({ name: '林老師', email: 'lin2@example.com', password: 'x', subjects: '數學' });
     const clsB = await createClass({ name: '數學B班', subject: '數學', level: '國一', teacherId: teacher2.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
     const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
-    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(2026, 6, 22) });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     await revokeLeaveRequest(leave.id);
 
@@ -130,13 +130,13 @@ describe('revokeLeaveRequest', () => {
     const teacher2 = await createTeacher({ name: '吳老師', email: 'wu@example.com', password: 'x', subjects: '數學' });
     const clsB = await createClass({ name: '數學C班', subject: '數學', level: '國一', teacherId: teacher2.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
     const leave = await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
-    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(2026, 6, 22) });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: clsB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
     const marker = await prisma.user.findFirstOrThrow();
     await prisma.classAttendance.create({
       data: {
         classId: clsB.id,
         studentId: student.id,
-        date: new Date(2026, 6, 22),
+        date: new Date(Date.UTC(2026, 6, 22)),
         status: 'PRESENT',
         makeupRequestId: makeup.id,
         markedById: marker.id,
