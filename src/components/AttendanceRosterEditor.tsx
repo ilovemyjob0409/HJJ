@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { normalizeTimeInput } from '@/lib/timeFormat';
+import AlertModal from '@/components/ui/AlertModal';
+import { isValidTimeValue, normalizeTimeInput } from '@/lib/timeFormat';
 
 import {
   AttendanceStatusValue,
@@ -58,6 +59,7 @@ export default function AttendanceRosterEditor({ rows, onSave, hiddenStatuses }:
     )
   );
   const [saving, setSaving] = useState(false);
+  const [timeFormatAlert, setTimeFormatAlert] = useState(false);
 
   function updateStatus(key: string, status: EditableStatus) {
     setEdits((prev) => ({ ...prev, [key]: { ...prev[key], status } }));
@@ -81,6 +83,14 @@ export default function AttendanceRosterEditor({ rows, onSave, hiddenStatuses }:
         checkInTime: normalizeTimeInput(edits[r.key].checkInTime) || null,
         checkOutTime: normalizeTimeInput(edits[r.key].checkOutTime) || null,
       }));
+    // 自由文字輸入的防呆：正規化後仍不是合法 24 小時制就擋下來。
+    const hasInvalidTime = records.some(
+      (r) => (r.checkInTime !== null && !isValidTimeValue(r.checkInTime)) || (r.checkOutTime !== null && !isValidTimeValue(r.checkOutTime))
+    );
+    if (hasInvalidTime) {
+      setTimeFormatAlert(true);
+      return;
+    }
     const clears = rows
       .filter((r) => edits[r.key].status === 'UNMARKED' && r.status !== null)
       .map((r) => ({ studentId: r.studentId, key: r.key }));
@@ -132,18 +142,24 @@ export default function AttendanceRosterEditor({ rows, onSave, hiddenStatuses }:
               <label className="flex flex-col gap-1 text-xs text-inkMuted">
                 簽到
                 <Input
-                  type="time"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="17:05"
                   value={edits[r.key].checkInTime}
                   onChange={(e) => updateTime(r.key, 'checkInTime', e.target.value)}
+                  onBlur={(e) => updateTime(r.key, 'checkInTime', normalizeTimeInput(e.target.value))}
                   className="w-28"
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs text-inkMuted">
                 簽退
                 <Input
-                  type="time"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="17:05"
                   value={edits[r.key].checkOutTime}
                   onChange={(e) => updateTime(r.key, 'checkOutTime', e.target.value)}
+                  onBlur={(e) => updateTime(r.key, 'checkOutTime', normalizeTimeInput(e.target.value))}
                   className="w-28"
                 />
               </label>
@@ -156,6 +172,11 @@ export default function AttendanceRosterEditor({ rows, onSave, hiddenStatuses }:
           儲存點名
         </Button>
       )}
+      <AlertModal open={timeFormatAlert} onClose={() => setTimeFormatAlert(false)} title="時間格式不正確">
+        簽到／簽退時間請用 <span className="font-semibold text-ink">24 小時制</span>輸入，
+        <br />
+        例如 <span className="font-semibold text-ink">17:05</span>（也可只打 <span className="font-semibold text-ink">1705</span>）。
+      </AlertModal>
     </div>
   );
 }
