@@ -7,7 +7,7 @@ import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge, { getStatusBadgeConfig } from '@/components/ui/StatusBadge';
-import ExportCsvButton from '@/components/ui/ExportCsvButton';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { matchesLeaveSearch } from './leaveSearch';
 
@@ -128,7 +128,7 @@ export default function LeaveRecordsTable({ title, rows }: { title: string; rows
       <div className="mb-2 flex items-center gap-3">
         <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">{title}</h2>
         <CollapsibleSearchInput placeholder="搜尋學生、班級或補課狀態" value={search} onChange={setSearch} />
-        <ExportCsvButton rows={filteredRows} columns={exportColumns} filename="請假補課紀錄" className="ml-auto shrink-0" />
+        <ExportExcelButton rows={filteredRows} columns={exportColumns} filename="請假補課紀錄" className="ml-auto shrink-0" />
       </div>
       <Card>
         <CollapsibleDataTable

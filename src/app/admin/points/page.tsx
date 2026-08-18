@@ -9,7 +9,7 @@ import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import ExportCsvButton from '@/components/ui/ExportCsvButton';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import AwardRowsForm from '@/components/AwardRowsForm';
@@ -379,7 +379,7 @@ export default function AdminPointsPage() {
             onChange={(e) => setNameQuery(e.target.value)}
             className="w-56"
           />
-          <ExportCsvButton rows={filtered} columns={summaryExportColumns} filename="學生點數總表" className="ml-auto" />
+          <ExportExcelButton rows={filtered} columns={summaryExportColumns} filename="學生點數總表" className="ml-auto" />
           <div className="flex gap-3 text-xs">
             <button
               type="button"

@@ -8,7 +8,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import ExportCsvButton from '@/components/ui/ExportCsvButton';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
@@ -310,7 +310,7 @@ export default function TicketManager() {
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-3">
                     <h3 className="text-sm font-bold text-ink">異動紀錄</h3>
-                    <ExportCsvButton
+                    <ExportExcelButton
                       rows={detail.history}
                       columns={historyExportColumns}
                       filename={`${managing.name}_弈廳異動紀錄`}

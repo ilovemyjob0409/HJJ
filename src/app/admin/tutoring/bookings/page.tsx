@@ -9,7 +9,7 @@ import Modal from '@/components/ui/Modal';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { Column } from '@/components/ui/DataTable';
 import DataTable from '@/components/ui/DataTable';
-import ExportCsvButton from '@/components/ui/ExportCsvButton';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { WEEKDAY_LABELS, formatDateWithWeekday, isTodayTaipei } from '@/lib/dateFormat';
@@ -222,7 +222,7 @@ export default function AdminTutoringBookingsPage() {
         <h2 className="font-bold text-ink">當月出席總表</h2>
         <div className="flex items-center gap-2">
           <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-          <ExportCsvButton
+          <ExportExcelButton
             rows={summary}
             filename={`個別輔導出席總表_${month}`}
             columns={[

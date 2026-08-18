@@ -8,7 +8,7 @@ import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import ExportCsvButton from '@/components/ui/ExportCsvButton';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
 import QRCode from 'qrcode';
@@ -523,7 +523,7 @@ function StudentsContent() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
         />
-        <ExportCsvButton rows={filteredStudents} columns={exportColumns} filename="學生名單" />
+        <ExportExcelButton rows={filteredStudents} columns={exportColumns} filename="學生名單" />
         {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增學生</Button>}
       </div>
       {showAddForm && (

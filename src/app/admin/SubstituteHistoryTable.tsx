@@ -6,7 +6,7 @@ import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import StatusBadge, { getStatusBadgeConfig } from '@/components/ui/StatusBadge';
-import ExportCsvButton from '@/components/ui/ExportCsvButton';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { matchesSubstituteSearch } from './substituteSearch';
 
@@ -51,7 +51,7 @@ export default function SubstituteHistoryTable({ title, rows }: { title: string;
       <div className="mb-2 flex items-center gap-3">
         <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">{title}</h2>
         <CollapsibleSearchInput placeholder="搜尋班級、老師或原因" value={search} onChange={setSearch} />
-        <ExportCsvButton rows={filteredRows} columns={exportColumns} filename="代課紀錄" className="ml-auto shrink-0" />
+        <ExportExcelButton rows={filteredRows} columns={exportColumns} filename="代課紀錄" className="ml-auto shrink-0" />
       </div>
       <Card>
         <CollapsibleDataTable
