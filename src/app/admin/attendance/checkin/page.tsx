@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { todayDateInput } from '@/components/AttendanceHub';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
+import { charFromKeyCode, isSubmitKeyCode } from '@/lib/scannerCapture';
 
 type CheckInResultKind = 'NOT_FOUND' | 'NO_SESSION' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CHOOSE_SESSION' | 'ERROR';
 
@@ -73,22 +74,25 @@ function ScanIcon() {
   );
 }
 
+// 兩個掃碼字元間隔超過這個毫秒數就視為新的一次掃描，順便把人為誤按的
+// 殘字清掉（掃碼槍的字元間隔遠小於此，人手打字則遠大於此）。
+const SCAN_GAP_MS = 500;
+
 export default function CheckinKioskPage() {
-  const [code, setCode] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [screen, setScreen] = useState<ScreenState>({ kind: 'idle' });
   const [resolvingKey, setResolvingKey] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const manualFormRef = useRef<HTMLFormElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Bumped whenever a new scan/resolve starts or the picker times out, so a
   // slow request that finishes after being superseded can't clobber the
   // screen with a stale student's result.
   const requestIdRef = useRef(0);
-
-  function focusInput() {
-    inputRef.current?.focus();
-  }
+  // 掃描字元緩衝：不經過任何輸入框，直接從 window keydown 的 e.code
+  // 重建（見 scannerCapture.ts）——中文輸入法開著也掃得進來，也不用
+  // 維持隱形輸入框的焦點。
+  const scanBufferRef = useRef('');
+  const lastKeyAtRef = useRef(0);
 
   function clearTimer() {
     if (timerRef.current) {
@@ -97,10 +101,7 @@ export default function CheckinKioskPage() {
     }
   }
 
-  useEffect(() => {
-    focusInput();
-    return clearTimer;
-  }, []);
+  useEffect(() => clearTimer, []);
 
   function showResult(response: CheckInResponse) {
     clearTimer();
@@ -111,7 +112,6 @@ export default function CheckinKioskPage() {
   async function submitCode(value: string) {
     const trimmed = value.trim();
     if (!trimmed) return;
-    setCode('');
     clearTimer();
     setResolvingKey(null);
     const requestId = ++requestIdRef.current;
@@ -147,8 +147,38 @@ export default function CheckinKioskPage() {
     const value = manualCode;
     setManualCode('');
     await submitCode(value);
-    focusInput();
   }
+
+  // 全頁掃描監聽：手動輸入區有焦點時讓位給正常打字，其餘時間依實體
+  // 按鍵碼累積代碼、Enter 送出。Enter 只在緩衝有內容時攔下預設行為，
+  // 保住鍵盤操作按鈕／連結的可用性。
+  const submitCodeRef = useRef(submitCode);
+  submitCodeRef.current = submitCode;
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (manualFormRef.current?.contains(document.activeElement)) return;
+
+      const now = Date.now();
+      if (now - lastKeyAtRef.current > SCAN_GAP_MS) scanBufferRef.current = '';
+      lastKeyAtRef.current = now;
+
+      if (isSubmitKeyCode(e.code)) {
+        const buffered = scanBufferRef.current;
+        scanBufferRef.current = '';
+        if (buffered) {
+          e.preventDefault();
+          submitCodeRef.current(buffered);
+        }
+        return;
+      }
+      const ch = charFromKeyCode(e.code);
+      if (ch) scanBufferRef.current += ch;
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   async function resolveCandidate(pickerCode: string, key: string) {
     if (resolvingKey) return;
@@ -184,28 +214,6 @@ export default function CheckinKioskPage() {
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center p-4">
-      <input
-        ref={inputRef}
-        aria-label="學生證掃描"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        onBlur={() => {
-          // Don't steal focus back if it deliberately moved to the manual
-          // entry form below — only reclaim it for stray blurs (e.g. the
-          // page itself losing/regaining window focus).
-          setTimeout(() => {
-            if (manualFormRef.current?.contains(document.activeElement)) return;
-            focusInput();
-          }, 0);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            submitCode(code);
-          }
-        }}
-        className="absolute h-px w-px opacity-0"
-      />
 
       <div
         key={screen.kind}
@@ -272,15 +280,6 @@ export default function CheckinKioskPage() {
       <form
         ref={manualFormRef}
         onSubmit={handleManualSubmit}
-        onBlur={() => {
-          // Whenever focus leaves the manual form entirely (not just moving
-          // between its own fields), hand focus back to the hidden scanner
-          // input so a physical barcode scan still works right away.
-          setTimeout(() => {
-            if (manualFormRef.current?.contains(document.activeElement)) return;
-            focusInput();
-          }, 0);
-        }}
         className="mt-6 flex w-full max-w-3xl items-center gap-3 text-inkMuted"
       >
         <label htmlFor="manual-student-number" className="shrink-0 text-base">
