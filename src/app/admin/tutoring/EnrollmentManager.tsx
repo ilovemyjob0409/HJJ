@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -64,6 +64,22 @@ export default function EnrollmentManager() {
   useEffect(() => {
     load();
   }, []);
+
+  // 深連結：/admin/tutoring?student=<id>（學生名單「前往管理」）——
+  // 報名載入後把清單篩到該學生；只有一筆報名就直接開編輯彈窗。
+  // 只在第一次載入時處理，之後的 load()（增刪改後重抓）不再觸發。
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandledRef.current || enrollments.length === 0) return;
+    deepLinkHandledRef.current = true;
+    const studentId = new URLSearchParams(window.location.search).get('student');
+    if (!studentId) return;
+    const rows = enrollments.filter((r) => r.studentId === studentId);
+    if (rows.length === 0) return;
+    setListSearch(rows[0].studentName);
+    if (rows.length === 1) setEditingEnrollment(rows[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrollments]);
 
   async function createEnrollments() {
     if (selectedStudentIds.length === 0 || !programId) {

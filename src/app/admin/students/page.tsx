@@ -769,7 +769,10 @@ function StudentsContent() {
                         header: '',
                         render: (c: EnrolledRow) =>
                           c.rowKind === 'tutoring' ? (
-                            <Link href="/admin/tutoring" className="whitespace-nowrap text-xs text-brandDark hover:underline">
+                            <Link
+                              href={`/admin/tutoring?student=${editing?.id ?? ''}`}
+                              className="whitespace-nowrap text-xs text-brandDark hover:underline"
+                            >
                               前往管理
                             </Link>
                           ) : (
