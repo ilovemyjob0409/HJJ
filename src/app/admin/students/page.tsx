@@ -41,6 +41,10 @@ interface ClassOption {
   weekday: number;
 }
 
+// 編輯彈窗「已加入班級」表格的列：一般班級（可管理）或個別輔導方案（唯讀，
+// 樣式與班級列統一；報名管理維持在個別輔導頁單一入口）。
+type EnrolledRow = (ClassOption & { rowKind: 'class' }) | { rowKind: 'tutoring'; id: string; name: string };
+
 // 該班未來的上課日（含今天起算的下一個上課日，共 count 週），
 // 供續報彈窗勾選「未報名」日期。
 function upcomingClassDates(weekday: number, count = 16): string[] {
@@ -649,7 +653,7 @@ function StudentsContent() {
             <div className="flex flex-col gap-3 rounded-lg bg-background p-3">
               <div>
                 <p className="mb-1 text-xs font-medium text-inkMuted">已加入班級</p>
-                {Object.keys(editEnrollments).length === 0 ? (
+                {Object.keys(editEnrollments).length === 0 && (editing?.tutoringPrograms.length ?? 0) === 0 ? (
                   <p className="rounded-lg border border-dashed border-borderStrong p-3 text-center text-sm text-inkMuted">
                     尚未加入任何班級
                   </p>
@@ -658,16 +662,19 @@ function StudentsContent() {
                     columns={[
                       {
                         header: '班級',
-                        render: (c) => (
+                        render: (c: EnrolledRow) => (
                           <div className="text-left">
                             <div className="font-medium">{c.name}</div>
-                            <div className="text-xs text-inkMuted">{c.subject}</div>
+                            <div className="text-xs text-inkMuted">{c.rowKind === 'class' ? c.subject : '個別輔導'}</div>
                           </div>
                         ),
                       },
                       {
                         header: '總堂數',
-                        render: (c) => (
+                        render: (c: EnrolledRow) =>
+                          c.rowKind === 'tutoring' ? (
+                            <span className="text-xs text-inkMuted">月額度制</span>
+                          ) : (
                           <div className="flex items-center justify-center gap-1">
                             <Input
                               type="number"
@@ -683,11 +690,12 @@ function StudentsContent() {
                               留空表示不追蹤堂數——「已上／剩餘」會顯示「未追蹤」，點名也不會扣堂。填數字才會開始計算已上與剩餘堂數。
                             </HintButton>
                           </div>
-                        ),
+                          ),
                       },
                       {
                         header: '已上／剩餘',
-                        render: (c) => {
+                        render: (c: EnrolledRow) => {
+                          if (c.rowKind === 'tutoring') return <span className="text-xs text-inkMuted">—</span>;
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
                           if (!enrollment || enrollment.totalSessions === null) {
                             return <span className="text-xs text-inkMuted">未追蹤</span>;
@@ -714,7 +722,8 @@ function StudentsContent() {
                             </HintButton>
                           </span>
                         ),
-                        render: (c) => {
+                        render: (c: EnrolledRow) => {
+                          if (c.rowKind === 'tutoring') return <span className="text-xs text-inkMuted">—</span>;
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
                           if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
                           return (
@@ -741,7 +750,8 @@ function StudentsContent() {
                             </HintButton>
                           </span>
                         ),
-                        render: (c) => {
+                        render: (c: EnrolledRow) => {
+                          if (c.rowKind === 'tutoring') return <span className="text-xs text-inkMuted">—</span>;
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
                           if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
                           return (
@@ -757,14 +767,22 @@ function StudentsContent() {
                       },
                       {
                         header: '',
-                        render: (c) => (
-                          <button type="button" className="text-xs text-rejected hover:underline" onClick={() => toggleClass(c.id)}>
-                            移除
-                          </button>
-                        ),
+                        render: (c: EnrolledRow) =>
+                          c.rowKind === 'tutoring' ? (
+                            <Link href="/admin/tutoring" className="whitespace-nowrap text-xs text-brandDark hover:underline">
+                              前往管理
+                            </Link>
+                          ) : (
+                            <button type="button" className="text-xs text-rejected hover:underline" onClick={() => toggleClass(c.id)}>
+                              移除
+                            </button>
+                          ),
                       },
                     ]}
-                    rows={classes.filter((c) => c.id in editEnrollments)}
+                    rows={[
+                      ...classes.filter((c) => c.id in editEnrollments).map((c) => ({ ...c, rowKind: 'class' as const })),
+                      ...(editing?.tutoringPrograms ?? []).map((p) => ({ rowKind: 'tutoring' as const, id: `tutoring-${p.id}`, name: p.name })),
+                    ]}
                     keyField={(c) => c.id}
                   />
                 )}
@@ -808,30 +826,6 @@ function StudentsContent() {
                       </div>
                     );
                   })()}
-              </div>
-
-              <div>
-                <p className="mb-1 text-xs font-medium text-inkMuted">個別輔導（唯讀）</p>
-                {editing && editing.tutoringPrograms.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {editing.tutoringPrograms.map((p) => (
-                      <span key={p.id} className="rounded-full bg-stripe px-3 py-1 text-sm text-ink">
-                        {p.name}
-                      </span>
-                    ))}
-                    <Link href="/admin/tutoring" className="text-sm text-brandDark hover:underline">
-                      前往個別輔導管理 →
-                    </Link>
-                  </div>
-                ) : (
-                  <p className="text-sm text-inkMuted">
-                    未報名個別輔導；報名請到
-                    <Link href="/admin/tutoring" className="text-brandDark hover:underline">
-                      個別輔導管理
-                    </Link>
-                    。
-                  </p>
-                )}
               </div>
             </div>
           </div>
