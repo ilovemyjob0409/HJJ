@@ -11,6 +11,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
 import RevokeLeaveButton from '@/components/RevokeLeaveButton';
+import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 
 interface ClassOption {
   id: string;
@@ -60,12 +61,16 @@ export default function StudentLeaveRequestPage() {
   }, []);
 
   const selectedClass = classes.find((c) => c.id === form.classId) ?? null;
+  const [weekdayAlert, setWeekdayAlert] = useState<WeekdayAlertInfo | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError('');
+    const leaveAlert: WeekdayAlertInfo | null = selectedClass
+      ? { title: '請假日期選錯了', name: selectedClass.name, weekday: selectedClass.weekday, noun: '請假日期' }
+      : null;
     if (selectedClass && form.date && new Date(form.date).getUTCDay() !== selectedClass.weekday) {
-      setFormError(`日期跟班級對不上：${selectedClass.name}是週${WEEKDAY_LABELS[selectedClass.weekday]}上課，請重新選擇日期`);
+      setWeekdayAlert(leaveAlert);
       return;
     }
     setSubmitting(true);
@@ -73,7 +78,8 @@ export default function StudentLeaveRequestPage() {
       const res = await fetch('/api/leave-requests', { method: 'POST', body: JSON.stringify(form) });
       if (!res.ok) {
         const data = await res.json();
-        setFormError(data.error === 'INVALID_WEEKDAY' ? '日期跟班級上課的星期對不上，請重新選擇' : `錯誤：${data.error}`);
+        if (data.error === 'INVALID_WEEKDAY' && leaveAlert) setWeekdayAlert(leaveAlert);
+        else setFormError(`錯誤：${data.error}`);
         return;
       }
       setForm({ classId: '', date: '', reason: '' });
@@ -173,6 +179,7 @@ export default function StudentLeaveRequestPage() {
           emptyText="目前沒有請假紀錄"
         />
       </Card>
+      <WeekdayAlertModal info={weekdayAlert} onClose={() => setWeekdayAlert(null)} />
     </>
   );
 }

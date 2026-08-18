@@ -8,6 +8,7 @@ import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 import { ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
+import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 
 interface SlotOption {
   startTime: string;
@@ -78,6 +79,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
   const [slotOptions, setSlotOptions] = useState<SlotOption[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [weekdayAlert, setWeekdayAlert] = useState<WeekdayAlertInfo | null>(null);
 
   // 老師或日期一變就重抓可預約起點，並清掉已選的時間
   useEffect(() => {
@@ -181,12 +183,12 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
       return;
     }
     if (originalClass && date && new Date(date).getUTCDay() !== originalClass.weekday) {
-      showToast(`請假日期跟班級對不上：${originalClass.name}是週${WEEKDAY_LABELS[originalClass.weekday]}上課`);
+      setWeekdayAlert({ title: '請假日期選錯了', name: originalClass.name, weekday: originalClass.weekday, noun: '請假日期' });
       return;
     }
     const targetClass = classes.find((c) => c.id === targetClassId);
     if (withMakeup && type === 'INSERTION' && targetClass && targetDate && new Date(targetDate).getUTCDay() !== targetClass.weekday) {
-      showToast(`插班日期跟班級對不上：${targetClass.name}是週${WEEKDAY_LABELS[targetClass.weekday]}上課`);
+      setWeekdayAlert({ title: '插班日期選錯了', name: targetClass.name, weekday: targetClass.weekday, noun: '插班日期' });
       return;
     }
     setSubmitting(true);
@@ -383,6 +385,7 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
           )}
         </form>
       )}
+      <WeekdayAlertModal info={weekdayAlert} onClose={() => setWeekdayAlert(null)} />
     </Card>
   );
 }

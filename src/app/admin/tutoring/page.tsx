@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
+import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
 import EnrollmentManager from './EnrollmentManager';
 
@@ -135,6 +136,7 @@ export default function AdminTutoringPage() {
   const [newProgramName, setNewProgramName] = useState('');
   const [windowForm, setWindowForm] = useState<Record<string, WindowFormValues>>({});
   const [closureDate, setClosureDate] = useState<Record<string, string>>({});
+  const [weekdayAlert, setWeekdayAlert] = useState<WeekdayAlertInfo | null>(null);
   const [editingWindowId, setEditingWindowId] = useState<string | null>(null);
   const [windowEditForm, setWindowEditForm] = useState<Record<string, WindowFormValues>>({});
 
@@ -289,8 +291,9 @@ export default function AdminTutoringPage() {
   async function addClosure(window: WindowRow) {
     const date = closureDate[window.id];
     if (!date) return;
+    const closureAlert: WeekdayAlertInfo = { title: '停開日選錯了', name: '這個時段', weekday: window.weekday, noun: '停開日', verb: '開課' };
     if (new Date(date).getUTCDay() !== window.weekday) {
-      showToast(`停開日跟時段對不上：這個時段是週${WEEKDAY_LABELS[window.weekday]}，請重新選擇日期`);
+      setWeekdayAlert(closureAlert);
       return;
     }
     const res = await fetch('/api/tutoring-window-closures', {
@@ -300,7 +303,8 @@ export default function AdminTutoringPage() {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      showToast(data.error === 'INVALID_WEEKDAY' ? '停開日跟時段的星期對不上，請重新選擇' : '新增停開日失敗');
+      if (data.error === 'INVALID_WEEKDAY') setWeekdayAlert(closureAlert);
+      else showToast('新增停開日失敗');
       return;
     }
     setClosureDate((prev) => ({ ...prev, [window.id]: '' }));
@@ -438,6 +442,7 @@ export default function AdminTutoringPage() {
       ))}
 
       <EnrollmentManager />
+      <WeekdayAlertModal info={weekdayAlert} onClose={() => setWeekdayAlert(null)} />
       {ConfirmDialog}
     </>
   );

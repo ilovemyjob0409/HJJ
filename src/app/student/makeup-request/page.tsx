@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 import { ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
+import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 
 interface LeaveRow {
   id: string;
@@ -60,6 +61,7 @@ export default function MakeupRequestPage() {
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [availability, setAvailability] = useState<AvailabilityWindow[]>([]);
   const [message, setMessage] = useState('');
+  const [weekdayAlert, setWeekdayAlert] = useState<WeekdayAlertInfo | null>(null);
   const [quota, setQuota] = useState<Quota | null>(null);
   const [notices, setNotices] = useState<NoticeItem[]>([]);
 
@@ -129,8 +131,11 @@ export default function MakeupRequestPage() {
     e.preventDefault();
     setMessage('');
     const targetClass = eligibleClasses.find((c) => c.id === insertionForm.targetClassId);
+    const insertionAlert: WeekdayAlertInfo | null = targetClass
+      ? { title: '插班日期選錯了', name: targetClass.name, weekday: targetClass.weekday, noun: '插班日期' }
+      : null;
     if (targetClass && insertionForm.targetDate && new Date(insertionForm.targetDate).getUTCDay() !== targetClass.weekday) {
-      setMessage(`日期跟班級對不上：${targetClass.name}是週${WEEKDAY_LABELS[targetClass.weekday]}上課，請重新選擇日期`);
+      setWeekdayAlert(insertionAlert);
       return;
     }
     setSubmitting(true);
@@ -142,8 +147,10 @@ export default function MakeupRequestPage() {
       const data = await res.json();
       if (res.ok) {
         setMessage('已送出插班申請，待行政確認');
+      } else if (data.error === 'INVALID_WEEKDAY' && insertionAlert) {
+        setWeekdayAlert(insertionAlert);
       } else {
-        setMessage(data.error === 'INVALID_WEEKDAY' ? '日期跟班級上課的星期對不上，請重新選擇' : `錯誤：${data.error}`);
+        setMessage(`錯誤：${data.error}`);
       }
     } finally {
       setSubmitting(false);
@@ -370,6 +377,7 @@ export default function MakeupRequestPage() {
       )}
 
       {message && <p className="mt-4 text-sm text-ink">{message}</p>}
+      <WeekdayAlertModal info={weekdayAlert} onClose={() => setWeekdayAlert(null)} />
     </>
   );
 }

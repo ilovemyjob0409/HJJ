@@ -6,6 +6,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
+import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 
 interface ClassOption {
   id: string;
@@ -18,6 +19,7 @@ export default function TeacherLeaveRequestPage() {
   const [form, setForm] = useState({ classId: '', date: '', reason: '' });
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [weekdayAlert, setWeekdayAlert] = useState<WeekdayAlertInfo | null>(null);
 
   useEffect(() => {
     fetch('/api/classes').then((r) => r.json()).then(setClasses);
@@ -28,8 +30,11 @@ export default function TeacherLeaveRequestPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMessage('');
+    const weekdayInfo: WeekdayAlertInfo | null = selectedClass
+      ? { title: '代課日期選錯了', name: selectedClass.name, weekday: selectedClass.weekday, noun: '日期' }
+      : null;
     if (selectedClass && form.date && new Date(form.date).getUTCDay() !== selectedClass.weekday) {
-      setMessage(`日期跟班級對不上：${selectedClass.name}是週${WEEKDAY_LABELS[selectedClass.weekday]}上課，請重新選擇日期`);
+      setWeekdayAlert(weekdayInfo);
       return;
     }
     setSubmitting(true);
@@ -37,7 +42,8 @@ export default function TeacherLeaveRequestPage() {
       const res = await fetch('/api/substitute-requests', { method: 'POST', body: JSON.stringify(form) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setMessage(data.error === 'INVALID_WEEKDAY' ? '日期跟班級上課的星期對不上，請重新選擇' : '送出失敗');
+        if (data.error === 'INVALID_WEEKDAY' && weekdayInfo) setWeekdayAlert(weekdayInfo);
+        else setMessage('送出失敗');
         return;
       }
       setMessage('已送出，行政將安排代課老師');
@@ -66,6 +72,7 @@ export default function TeacherLeaveRequestPage() {
         </form>
         {message && <p className="mt-4 text-sm text-ink">{message}</p>}
       </Card>
+      <WeekdayAlertModal info={weekdayAlert} onClose={() => setWeekdayAlert(null)} />
     </>
   );
 }
