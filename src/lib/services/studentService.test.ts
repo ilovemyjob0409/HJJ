@@ -5,6 +5,7 @@ import { createStudent, listStudents, updateStudent, deleteStudent } from './stu
 import { createTeacher } from './teacherService';
 import { createClass, enrollStudent } from './classService';
 import { createLeaveRequest } from './leaveRequestService';
+import { createProgram, createEnrollment, updateEnrollment } from './tutoringProgramService';
 import { p2002TargetsField } from '@/lib/prismaErrors';
 import { setSiblings } from './familyService';
 
@@ -104,6 +105,20 @@ describe('listStudents', () => {
     expect(found?.enrollments[0].totalSessions).toBe(12);
     expect(found?.enrollments[0].usedSessions).toBe(1);
     expect(found?.enrollments[0].remaining).toBe(11);
+  });
+
+  it('includes active tutoring programs and excludes inactive enrollments', async () => {
+    const student = await createStudent({ name: '小美', email: 'student-list-tutoring@example.com', password: 'x' });
+    const english = await createProgram({ name: '英文個別輔導' });
+    const math = await createProgram({ name: '數學個別輔導' });
+    await createEnrollment({ studentId: student.id, programId: english.id });
+    const mathEnrollment = await createEnrollment({ studentId: student.id, programId: math.id });
+    await updateEnrollment(mathEnrollment.id, { active: false });
+
+    const students = await listStudents();
+
+    const found = students.find((s) => s.id === student.id);
+    expect(found?.tutoringPrograms.map((p) => p.name)).toEqual(['英文個別輔導']);
   });
 });
 

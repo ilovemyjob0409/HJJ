@@ -46,15 +46,21 @@ export async function listStudents() {
       familyGroupId: true,
       user: { select: SAFE_USER_SELECT },
       enrollments: { select: { classId: true } },
+      // 個別輔導方案唯讀併入（比照集點頁「班級」欄慣例）：報名管理仍在個別輔導頁。
+      tutoringEnrollments: {
+        where: { active: true },
+        select: { program: { select: { id: true, name: true } } },
+      },
     },
     orderBy: { user: { name: 'asc' } },
   });
   return Promise.all(
-    students.map(async (s) => ({
+    students.map(async ({ tutoringEnrollments, ...s }) => ({
       ...s,
       enrollments: await Promise.all(
         s.enrollments.map(async (e) => ({ classId: e.classId, ...(await getClassEnrollmentQuota(e.classId, s.id)) }))
       ),
+      tutoringPrograms: tutoringEnrollments.map((e) => e.program),
     }))
   );
 }

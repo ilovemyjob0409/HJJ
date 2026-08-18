@@ -31,6 +31,7 @@ interface StudentRow {
   familyGroupId: string | null;
   user: { name: string; email: string };
   enrollments: EnrollmentQuota[];
+  tutoringPrograms: { id: string; name: string }[];
 }
 
 interface ClassOption {
@@ -478,7 +479,11 @@ function StudentsContent() {
     { header: '學號', render: (s) => s.studentNumber ?? '-', sortValue: (s) => s.studentNumber ?? null },
     { header: '帳號', render: (s) => s.user.email, sortValue: (s) => s.user.email },
     { header: '家長電話', render: (s) => s.parentPhone ?? '-', sortValue: (s) => s.parentPhone ?? null },
-    { header: '班級數', render: (s) => s.enrollments.length, sortValue: (s) => s.enrollments.length },
+    {
+      header: '班級數',
+      render: (s) => s.enrollments.length + s.tutoringPrograms.length,
+      sortValue: (s) => s.enrollments.length + s.tutoringPrograms.length,
+    },
     {
       header: '操作',
       render: (s) => (
@@ -497,7 +502,10 @@ function StudentsContent() {
     { header: '家長電話', value: (s: StudentRow) => s.parentPhone ?? '' },
     {
       header: '所屬班級',
-      value: (s: StudentRow) => s.enrollments.map((e) => classNameById.get(e.classId) ?? '').filter(Boolean).join('、'),
+      value: (s: StudentRow) =>
+        [...s.enrollments.map((e) => classNameById.get(e.classId) ?? '').filter(Boolean), ...s.tutoringPrograms.map((p) => p.name)].join(
+          '、'
+        ),
     },
   ];
 
@@ -800,6 +808,30 @@ function StudentsContent() {
                       </div>
                     );
                   })()}
+              </div>
+
+              <div>
+                <p className="mb-1 text-xs font-medium text-inkMuted">個別輔導（唯讀）</p>
+                {editing && editing.tutoringPrograms.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {editing.tutoringPrograms.map((p) => (
+                      <span key={p.id} className="rounded-full bg-stripe px-3 py-1 text-sm text-ink">
+                        {p.name}
+                      </span>
+                    ))}
+                    <Link href="/admin/tutoring" className="text-sm text-brandDark hover:underline">
+                      前往個別輔導管理 →
+                    </Link>
+                  </div>
+                ) : (
+                  <p className="text-sm text-inkMuted">
+                    未報名個別輔導；報名請到
+                    <Link href="/admin/tutoring" className="text-brandDark hover:underline">
+                      個別輔導管理
+                    </Link>
+                    。
+                  </p>
+                )}
               </div>
             </div>
           </div>
