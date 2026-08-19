@@ -47,6 +47,7 @@ export default function EnrollmentManager() {
   const [newMonthlyQuota, setNewMonthlyQuota] = useState('');
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
   const [editingEnrollment, setEditingEnrollment] = useState<EnrollmentRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -117,6 +118,7 @@ export default function EnrollmentManager() {
         setSelectedStudentIds([]);
         setProgramId('');
         setNewMonthlyQuota('');
+        setAddOpen(false);
       }
       setStudentQuery('');
       load();
@@ -207,7 +209,18 @@ export default function EnrollmentManager() {
         <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">學生報名管理</h2>
         <CollapsibleSearchInput placeholder="搜尋學生或課程" value={listSearch} onChange={setListSearch} />
       </div>
+      {!addOpen ? (
+        <div className="mb-4">
+          <Button onClick={() => setAddOpen(true)}>＋ 新增報名</Button>
+        </div>
+      ) : (
       <Card className="mb-4">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-sm font-medium text-ink">新增報名</p>
+          <button type="button" className="text-xs text-inkMuted hover:underline" onClick={() => setAddOpen(false)}>
+            收合
+          </button>
+        </div>
         <div className="flex flex-wrap items-end gap-2">
           {/* 這裡刻意用 div 不用 label：label 會把點擊轉發給第一個表單控件，
               Safari 連點在按鈕上也照轉——選完學生後第一個控件變成 chip 的 ✕，
@@ -313,6 +326,7 @@ export default function EnrollmentManager() {
           <Button onClick={createEnrollments} loading={submitting}>新增報名</Button>
         </div>
       </Card>
+      )}
       <Card>
         <DataTable
           columns={columns}
