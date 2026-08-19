@@ -499,18 +499,22 @@ function StudentsContent() {
   ];
 
   const classNameById = new Map(classes.map((c) => [c.id, c.name]));
+  // 匯出採「一列一課程」：學生有幾種課程（一般班級＋個別輔導各算一種）就
+  // 展開成幾列，每列重複基本資料，方便 Excel 篩選／樞紐分析；完全沒有
+  // 課程的學生保留一列、班級欄留空。
+  const exportRows = filteredStudents.flatMap((s) => {
+    const courses = [
+      ...s.enrollments.map((e) => classNameById.get(e.classId) ?? '').filter(Boolean),
+      ...s.tutoringPrograms.map((p) => p.name),
+    ];
+    return courses.length === 0 ? [{ student: s, course: '' }] : courses.map((course) => ({ student: s, course }));
+  });
   const exportColumns = [
-    { header: '姓名', value: (s: StudentRow) => s.user.name },
-    { header: '學號', value: (s: StudentRow) => s.studentNumber ?? '' },
-    { header: '帳號', value: (s: StudentRow) => s.user.email },
-    { header: '家長電話', value: (s: StudentRow) => s.parentPhone ?? '' },
-    {
-      header: '所屬班級',
-      value: (s: StudentRow) =>
-        [...s.enrollments.map((e) => classNameById.get(e.classId) ?? '').filter(Boolean), ...s.tutoringPrograms.map((p) => p.name)].join(
-          '、'
-        ),
-    },
+    { header: '姓名', value: (r: { student: StudentRow; course: string }) => r.student.user.name },
+    { header: '學號', value: (r: { student: StudentRow; course: string }) => r.student.studentNumber ?? '' },
+    { header: '帳號', value: (r: { student: StudentRow; course: string }) => r.student.user.email },
+    { header: '家長電話', value: (r: { student: StudentRow; course: string }) => r.student.parentPhone ?? '' },
+    { header: '所屬班級', value: (r: { student: StudentRow; course: string }) => r.course },
   ];
 
   return (
@@ -523,7 +527,7 @@ function StudentsContent() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
         />
-        <ExportExcelButton rows={filteredStudents} columns={exportColumns} filename="學生名單" />
+        <ExportExcelButton rows={exportRows} columns={exportColumns} filename="學生名單" />
         {!showAddForm && <Button onClick={() => setShowAddForm(true)}>＋ 新增學生</Button>}
       </div>
       {showAddForm && (
