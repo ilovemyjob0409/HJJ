@@ -7,7 +7,7 @@ import { createClass, enrollStudent, addEnrollmentSessions } from './classServic
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
 import { setTeacherAvailability } from './availabilityService';
-import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance, getClassAttendanceOverview, getTutoringWindowAttendanceOverview } from './attendanceService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance, getClassAttendanceOverview, getTutoringWindowAttendanceOverview, getTutoringEnrollmentAttendance } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
@@ -1534,5 +1534,48 @@ describe('getTutoringWindowAttendanceOverview', () => {
     const { window } = await setup();
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     expect(overview).toEqual([]);
+  });
+});
+
+describe('getTutoringEnrollmentAttendance', () => {
+  async function setup() {
+    const teacher = await createTeacher({ name: '米奇老師', email: `enr-att-mickey-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '17:00', endTime: '19:00', capacity: 5, teacherId: teacher.id });
+    const student = await createStudent({ name: '小明', email: `enr-att-ming-${Date.now()}@example.com`, password: 'x' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+    return { window, enrollment };
+  }
+
+  it('returns student/program names and all bookings newest first, including cancelled and unmarked ones', async () => {
+    const { window, enrollment } = await setup();
+    const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
+    await saveTutoringAttendance('marker-1', [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
+    const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 10)) });
+    await adminCancelBooking(cancelled.id);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
+
+    const result = await getTutoringEnrollmentAttendance(enrollment.id);
+    expect(result.studentName).toBe('小明');
+    expect(result.programName).toBe('英文個別輔導');
+    expect(result.records.map((r) => r.date)).toEqual([
+      new Date(Date.UTC(2099, 0, 2)),
+      new Date(Date.UTC(2020, 0, 10)),
+      new Date(Date.UTC(2020, 0, 3)),
+    ]);
+    expect(result.records[0]).toMatchObject({ bookingStatus: 'BOOKED', attendanceStatus: null });
+    expect(result.records[1]).toMatchObject({ bookingStatus: 'CANCELLED', attendanceStatus: null });
+    expect(result.records[2]).toMatchObject({
+      attendanceStatus: 'PRESENT',
+      bookingStatus: 'BOOKED',
+      checkInTime: '17:00',
+      checkOutTime: '19:00',
+      isMakeup: false,
+    });
+    expect(typeof result.records[2].id).toBe('string');
+  });
+
+  it('throws ENROLLMENT_NOT_FOUND for a missing enrollment', async () => {
+    await expect(getTutoringEnrollmentAttendance('nonexistent-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
   });
 });

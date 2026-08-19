@@ -1410,3 +1410,50 @@ export async function getTutoringWindowAttendanceOverview(windowId: string): Pro
     }))
     .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }
+
+export interface TutoringEnrollmentAttendanceRecord extends TutoringWindowOverviewRecord {
+  id: string;
+}
+
+export interface TutoringEnrollmentAttendanceResult {
+  studentName: string;
+  programName: string;
+  records: TutoringEnrollmentAttendanceRecord[];
+}
+
+// 單一報名（學生 × 課程）的完整出缺勤：全部 booking（含取消／逾時取消）依日期
+// 新→舊。record 形狀比照 getTutoringWindowAttendanceOverview，多帶 booking id
+// 當列 key（同日可能有「取消後重約」兩筆，日期不唯一）。
+export async function getTutoringEnrollmentAttendance(enrollmentId: string): Promise<TutoringEnrollmentAttendanceResult> {
+  const enrollment = await prisma.tutoringEnrollment.findUnique({
+    where: { id: enrollmentId },
+    select: { student: { select: NAME_SELECT }, program: { select: { name: true } } },
+  });
+  if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
+
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { enrollmentId },
+    select: {
+      id: true,
+      date: true,
+      status: true,
+      kind: true,
+      attendance: { select: { status: true, checkInTime: true, checkOutTime: true } },
+    },
+    orderBy: { date: 'desc' },
+  });
+
+  return {
+    studentName: enrollment.student.user.name,
+    programName: enrollment.program.name,
+    records: bookings.map((b) => ({
+      id: b.id,
+      date: b.date,
+      attendanceStatus: (b.attendance?.status as AttendanceStatusValue) ?? null,
+      bookingStatus: b.status as TutoringWindowOverviewRecord['bookingStatus'],
+      checkInTime: b.attendance?.checkInTime ?? null,
+      checkOutTime: b.attendance?.checkOutTime ?? null,
+      isMakeup: b.kind === 'MAKEUP',
+    })),
+  };
+}
