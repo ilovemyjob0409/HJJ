@@ -25,9 +25,9 @@ interface BookingRow {
   id: string;
   programName: string;
   date: string;
+  // MAKEUP 等狀態僅出現在歷史紀錄（現行收費規範沒有補課概念）
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
-  canRequestMakeup: boolean;
 }
 
 export default function StudentTutoringPage() {
@@ -36,7 +36,6 @@ export default function StudentTutoringPage() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>('');
   const [bookings, setBookings] = useState<BookingRow[]>([]);
-  const [makeupFor, setMakeupFor] = useState<BookingRow | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
 
   async function loadEnrollments() {
@@ -78,20 +77,12 @@ export default function StudentTutoringPage() {
     { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
     {
       header: '操作',
-      render: (r) => (
-        <div className="flex flex-col items-center gap-1">
-          {r.status === 'BOOKED' && (
-            <Button className="px-3 py-1 text-xs" variant="secondary" onClick={() => cancelBooking(r)}>
-              取消
-            </Button>
-          )}
-          {r.canRequestMakeup && (
-            <Button className="px-3 py-1 text-xs" onClick={() => setMakeupFor(r)}>
-              申請補課
-            </Button>
-          )}
-        </div>
-      ),
+      render: (r) =>
+        r.status === 'BOOKED' ? (
+          <Button className="px-3 py-1 text-xs" variant="secondary" onClick={() => cancelBooking(r)}>
+            取消
+          </Button>
+        ) : null,
     },
   ];
 
@@ -132,19 +123,15 @@ export default function StudentTutoringPage() {
             </Card>
           )}
 
-          <h2 className="mb-2 font-bold text-ink">{makeupFor ? '本月及下月可預約日期' : '本月可預約日期'}</h2>
+          <h2 className="mb-2 font-bold text-ink">本月可預約日期</h2>
           <Card className="mb-6">
             {selectedEnrollment && (
               <TutoringBookingCalendar
-                key={`${selectedEnrollment.id}-${makeupFor ? 'makeup' : 'regular'}-${calendarRefreshKey}`}
+                key={`${selectedEnrollment.id}-${calendarRefreshKey}`}
                 enrollmentId={selectedEnrollment.id}
-                mode={makeupFor ? 'makeup' : 'regular'}
-                makeupForBookingId={makeupFor?.id}
-                onCancel={() => setMakeupFor(null)}
                 onBooked={() => {
                   loadBookings();
-                  if (!makeupFor) loadEnrollments();
-                  setMakeupFor(null);
+                  loadEnrollments();
                 }}
                 onCancelledBooking={() => {
                   loadBookings();
@@ -153,14 +140,6 @@ export default function StudentTutoringPage() {
               />
             )}
           </Card>
-
-          {makeupFor && (
-            <Card className="mb-6 border-pending">
-              <p className="text-sm text-ink">
-                正在為 <b>{formatDateWithWeekday(makeupFor.date)}</b> 的缺席選一個補課日期，請在上方點選日期。
-              </p>
-            </Card>
-          )}
 
           <h2 className="mb-2 font-bold text-ink">我的預約紀錄</h2>
           <Card>

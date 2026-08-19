@@ -9,9 +9,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   if (session.user.role === 'ADMIN') {
-    const body = await req.json().catch(() => ({}));
     try {
-      await adminCancelBooking(params.id, Boolean(body.countsTowardQuota));
+      await adminCancelBooking(params.id);
       return NextResponse.json({ success: true });
     } catch (err) {
       if (err instanceof Error && err.message === 'BOOKING_NOT_FOUND') {

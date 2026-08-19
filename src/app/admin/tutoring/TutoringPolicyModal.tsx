@@ -5,8 +5,9 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 
 // 個別輔導收費標準及規範（2026-08 與負責人定稿的營運規則）。
-// 純政策文字：部分條文（未來預約上限、未繳費凍結）目前由櫃檯人工執行，
-// 尚未寫進系統邏輯——修改條文時同步確認營運端做得到再改。
+// 扣堂邏輯（有預約且到場才扣堂、取消不計次、無補課）系統已照此執行；
+// 遞延堂數、繳費凍結、未來預約上限目前由櫃檯人工執行——修改條文時
+// 同步確認營運端做得到再改。
 const RULES: { title: string; body: string }[] = [
   {
     title: '收費方式',

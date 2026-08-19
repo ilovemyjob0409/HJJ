@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { listAvailability, daysRemainingInTaipeiMonth, daysRemainingThroughNextTaipeiMonth } from '@/lib/services/tutoringBookingService';
+import { listAvailability, daysRemainingInTaipeiMonth } from '@/lib/services/tutoringBookingService';
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -19,8 +19,7 @@ export async function GET(req: NextRequest) {
     if (enrollment.studentId !== student.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const months = req.nextUrl.searchParams.get('months') === '2' ? 2 : 1;
-  const days = months === 2 ? daysRemainingThroughNextTaipeiMonth(new Date()) : daysRemainingInTaipeiMonth(new Date());
+  const days = daysRemainingInTaipeiMonth(new Date());
   try {
     return NextResponse.json(await listAvailability(enrollmentId, days));
   } catch (err) {

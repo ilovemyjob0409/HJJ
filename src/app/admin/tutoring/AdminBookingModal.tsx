@@ -6,15 +6,11 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
 import TutoringQuotaBar from '@/components/tutoring/TutoringQuotaBar';
 
-interface MissedBookingOption {
-  id: string;
-  date: string;
-}
-
 interface QuotaStatus {
   locked: number;
   upcoming: number;
   quota: number;
+  // MAKEUP／PENDING_ADMIN 僅出現在歷史資料（收費規範已無補課概念）
   upcomingBookings: { id: string; date: string; kind: 'REGULAR' | 'MAKEUP'; status: 'BOOKED' | 'PENDING_ADMIN' }[];
 }
 
@@ -25,9 +21,6 @@ interface AdminBookingModalProps {
 }
 
 export default function AdminBookingModal({ enrollment, onClose, onBooked }: AdminBookingModalProps) {
-  const [kind, setKind] = useState<'regular' | 'makeup'>('regular');
-  const [missedBookings, setMissedBookings] = useState<MissedBookingOption[]>([]);
-  const [makeupOriginalId, setMakeupOriginalId] = useState('');
   const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null);
   const [selectedCount, setSelectedCount] = useState(0);
 
@@ -41,18 +34,6 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enrollment.id]);
 
-  useEffect(() => {
-    if (kind !== 'makeup') {
-      setMissedBookings([]);
-      setMakeupOriginalId('');
-      return;
-    }
-    setMakeupOriginalId('');
-    fetch(`/api/tutoring-bookings/makeup-eligible?enrollmentId=${enrollment.id}`)
-      .then((res) => res.json())
-      .then(setMissedBookings);
-  }, [kind, enrollment.id]);
-
   return (
     <Modal open onClose={onClose} title={`新增預約：${enrollment.studentName}・${enrollment.programName}`}>
       {quotaStatus && (
@@ -61,7 +42,7 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
             locked={quotaStatus.locked}
             upcoming={quotaStatus.upcoming}
             quota={quotaStatus.quota}
-            selectedCount={kind === 'regular' ? selectedCount : 0}
+            selectedCount={selectedCount}
           />
           {quotaStatus.upcomingBookings.length > 0 && (
             <p className="mt-1.5 text-xs text-inkMuted">
@@ -73,58 +54,20 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
           )}
         </div>
       )}
-      <div className="mb-3 flex flex-wrap items-end gap-2">
-        <label className="text-xs text-inkMuted">
-          類型
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as 'regular' | 'makeup')}
-            className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-          >
-            <option value="regular">一般</option>
-            <option value="makeup">補課</option>
-          </select>
-        </label>
-        {kind === 'makeup' && (
-          <label className="text-xs text-inkMuted">
-            要補的缺席紀錄
-            <select
-              value={makeupOriginalId}
-              onChange={(e) => setMakeupOriginalId(e.target.value)}
-              className="mt-1 block rounded-lg border border-borderSubtle bg-card px-2 py-1 text-sm text-ink"
-            >
-              <option value="">請選擇</option>
-              {missedBookings.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {formatDateWithWeekday(b.date)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-      {kind === 'makeup' && missedBookings.length === 0 && (
-        <p className="text-sm text-inkMuted">這位學生目前沒有可補課的紀錄</p>
-      )}
-      {(kind === 'regular' || makeupOriginalId) && (
-        <TutoringBookingCalendar
-          key={`${kind}-${makeupOriginalId}`}
-          enrollmentId={enrollment.id}
-          mode={kind}
-          makeupForBookingId={kind === 'makeup' ? makeupOriginalId : undefined}
-          successMessage={kind === 'makeup' ? '已建立補課預約' : '已新增預約'}
-          isAdmin
-          onBooked={() => {
-            onBooked();
-            onClose();
-          }}
-          onCancelledBooking={() => {
-            loadQuota();
-            onBooked();
-          }}
-          onSelectionChange={setSelectedCount}
-        />
-      )}
+      <TutoringBookingCalendar
+        enrollmentId={enrollment.id}
+        successMessage="已新增預約"
+        isAdmin
+        onBooked={() => {
+          onBooked();
+          onClose();
+        }}
+        onCancelledBooking={() => {
+          loadQuota();
+          onBooked();
+        }}
+        onSelectionChange={setSelectedCount}
+      />
     </Modal>
   );
 }

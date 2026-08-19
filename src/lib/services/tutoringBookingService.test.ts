@@ -1,17 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import {
-  utcDateKey,
-  daysRemainingInTaipeiMonth,
-  daysRemainingThroughNextTaipeiMonth,
-} from './tutoringBookingService';
+import { utcDateKey, daysRemainingInTaipeiMonth } from './tutoringBookingService';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
-import { createBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
-import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
+import { createBooking, cancelBooking, adminCancelBooking } from './tutoringBookingService';
+import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger, listWalkInCandidates } from './tutoringBookingService';
-import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment, listMonthlyBookingCounts } from './tutoringBookingService';
+import { listMonthlyAttendanceSummary, listMonthlyBookingCounts } from './tutoringBookingService';
 
 describe('utcDateKey / taipeiDateKey', () => {
   it('formats as YYYY-MM-DD', () => {
@@ -30,16 +26,6 @@ describe('daysRemainingInTaipeiMonth', () => {
 
   it('returns 1 on the last day of the month', () => {
     expect(daysRemainingInTaipeiMonth(new Date('2026-08-31T00:00:00.000Z'))).toBe(1);
-  });
-});
-
-describe('daysRemainingThroughNextTaipeiMonth', () => {
-  it('adds the full next month to the days remaining in the current one', () => {
-    expect(daysRemainingThroughNextTaipeiMonth(new Date('2026-08-15T00:00:00.000Z'))).toBe(17 + 30);
-  });
-
-  it('handles a December-to-January year rollover', () => {
-    expect(daysRemainingThroughNextTaipeiMonth(new Date('2026-12-20T00:00:00.000Z'))).toBe(12 + 31);
   });
 });
 
@@ -239,136 +225,61 @@ describe('cancelBooking', () => {
 });
 
 describe('adminCancelBooking', () => {
-  it('keeps the row as CANCELLED when countsTowardQuota is false', async () => {
+  it('always marks CANCELLED — 收費規範沒有「計次取消」，扣堂只看有無到場', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await adminCancelBooking(booking.id, false);
+    await adminCancelBooking(booking.id);
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('CANCELLED');
   });
 
-  it('marks CANCELLED_LATE when countsTowardQuota is true', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await adminCancelBooking(booking.id, true);
-    expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('CANCELLED_LATE');
-  });
-});
-
-describe('requestMakeup / decideMakeup', () => {
-  it('rejects a makeup request for a booking that was not missed', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await expect(
-      requestMakeup({ originalBookingId: booking.id, windowId: window.id, date: FRIDAY })
-    ).rejects.toThrow('NOT_ELIGIBLE');
-  });
-
-  it('creates a PENDING_ADMIN MAKEUP booking for a late-cancelled original, and approving it flips status without re-checking capacity', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment(1);
-    const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
-    await adminCancelBooking(original.id, true); // CANCELLED_LATE
-
-    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
-    let row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } });
-    expect(row.kind).toBe('MAKEUP');
-    expect(row.status).toBe('PENDING_ADMIN');
-    expect(row.makeupForId).toBe(original.id);
-
-    // capacity is 1 and already reserved by the PENDING_ADMIN makeup — another student's regular booking for the same slot must fail
-    const other = await createStudent({ name: '擠不進來', email: `nofit-${Date.now()}@example.com`, password: 'x' });
-    const otherEnrollment = await prisma.tutoringEnrollment.create({
-      data: { programId: (await prisma.tutoringWindow.findUniqueOrThrow({ where: { id: window.id } })).programId, studentId: other.id },
-    });
-    await expect(
-      createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: FRIDAY })
-    ).rejects.toThrow('WINDOW_FULL');
-
-    await decideMakeup(makeup.id, 'APPROVED');
-    row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } });
-    expect(row.status).toBe('BOOKED');
-  });
-
-  it('rejects a second makeup request for the same original booking', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
-    await adminCancelBooking(original.id, true);
-    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
-
-    await expect(
-      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY })
-    ).rejects.toThrow('ALREADY_REQUESTED');
-  });
-
-  it('sets status to REJECTED when the admin rejects', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
-    await adminCancelBooking(original.id, true);
-    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
-
-    await decideMakeup(makeup.id, 'REJECTED');
-    expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: makeup.id } })).status).toBe('REJECTED');
-  });
-
-  it('allows only one of two concurrent makeup requests for the same original booking to succeed', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
-    await adminCancelBooking(original.id, true);
-
-    const results = await Promise.allSettled([
-      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY }),
-      requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY }),
-    ]);
-
-    const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-    expect(rejected[0].reason.message).toBe('ALREADY_REQUESTED');
-
-    const created = await prisma.tutoringBooking.count({ where: { makeupForId: original.id } });
-    expect(created).toBe(1);
-  });
-
-  it('rejects deciding the same makeup booking twice', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
-    await adminCancelBooking(original.id, true);
-    const makeup = await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
-
-    await decideMakeup(makeup.id, 'APPROVED');
-    await expect(decideMakeup(makeup.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
-  });
-
-  it('rejects deciding a REGULAR booking', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await expect(decideMakeup(booking.id, 'APPROVED')).rejects.toThrow('ALREADY_DECIDED');
-  });
-
   it('rejects with BOOKING_NOT_FOUND for a nonexistent booking id', async () => {
-    await expect(decideMakeup('nonexistent-booking-id', 'APPROVED')).rejects.toThrow('BOOKING_NOT_FOUND');
+    await expect(adminCancelBooking('nonexistent-booking-id')).rejects.toThrow('BOOKING_NOT_FOUND');
   });
 });
+
+async function createMarker() {
+  return prisma.user.create({
+    data: { name: '行政', email: `marker-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`, password: 'x', role: 'ADMIN' },
+  });
+}
 
 describe('getMonthlyQuotaStatus', () => {
-  it('counts a past-dated REGULAR booking as locked regardless of status, and excludes MAKEUP bookings', async () => {
+  it('counts only attended bookings: no attendance or ABSENT does not deduct', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    const past = new Date('2020-08-07'); // locked (date has passed)
-    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
+    const marker = await createMarker();
+    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: attended.id, status: 'PRESENT', markedById: marker.id } });
+    // 日期已過但沒點名：不扣堂
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
-    // requestMakeup requires the original to be missed (CANCELLED_LATE or ABSENT); mark it so
-    // it's eligible, while its status still counts toward `locked` regardless of status.
-    await adminCancelBooking(attended.id, true);
-    await requestMakeup({ originalBookingId: attended.id, windowId: window.id, date: new Date('2020-08-21') });
+    // 缺席：不扣堂
+    const absent = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: absent.id, status: 'ABSENT', markedById: marker.id } });
 
     const status = await getMonthlyQuotaStatus(enrollment.id, '2020-08');
-    expect(status.locked).toBe(2); // the two REGULAR bookings, MAKEUP excluded
+    expect(status.locked).toBe(1);
     expect(status.quota).toBe(8);
+  });
+
+  it('counts LATE and LEFT_EARLY as attended (到場即計一堂)', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const marker = await createMarker();
+    const late = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: late.id, status: 'LATE', markedById: marker.id } });
+    const leftEarly = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: leftEarly.id, status: 'LEFT_EARLY', markedById: marker.id } });
+
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2020-08');
+    expect(status.locked).toBe(2);
+  });
+
+  it('a legacy CANCELLED_LATE booking without attendance no longer deducts', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringBooking.update({ where: { id: booking.id }, data: { status: 'CANCELLED_LATE' } });
+
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2020-08');
+    expect(status.locked).toBe(0);
+    expect(status.upcoming).toBe(0);
   });
 
   it('counts a future BOOKED REGULAR booking as upcoming, not locked', async () => {
@@ -485,21 +396,20 @@ describe('listAvailability', () => {
 });
 
 describe('listBookingsForStudent', () => {
-  it('flags canRequestMakeup for a late-cancelled (admin, counted) booking', async () => {
+  it('lists bookings newest first, including legacy CANCELLED_LATE rows for display', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
-    const past = new Date('2020-08-07');
-    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
-    await adminCancelBooking(missed.id, true);
+    const legacy = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringBooking.update({ where: { id: legacy.id }, data: { status: 'CANCELLED_LATE' } });
 
     const rows = await listBookingsForStudent(enrollment.studentId);
     expect(rows).toHaveLength(2);
-    const missedRow = rows.find((r) => r.status === 'CANCELLED_LATE')!;
-    expect(missedRow.canRequestMakeup).toBe(true);
+    expect(rows[0].status).toBe('BOOKED');
+    expect(rows[1].status).toBe('CANCELLED_LATE');
   });
 
-  it('keeps a self-cancelled booking visible in history, with no makeup affordance (nothing was lost)', async () => {
+  it('keeps a self-cancelled booking visible in history', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const future = new Date(Date.UTC(2099, 0, 2));
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
@@ -507,17 +417,18 @@ describe('listBookingsForStudent', () => {
 
     const rows = await listBookingsForStudent(enrollment.studentId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ status: 'CANCELLED', canRequestMakeup: false });
+    expect(rows[0].status).toBe('CANCELLED');
   });
 });
 
 describe('getTutoringDeductionLedger', () => {
-  it('adds a GRANT row for each month and counts past REGULAR bookings as DEDUCT within their own month, resetting at each month boundary', async () => {
+  it('adds a GRANT row per month and a DEDUCT per attended booking, resetting at month boundaries', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment(); // quota 8 (program default)
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') });
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04') });
+    const marker = await createMarker();
+    for (const date of ['2020-08-07', '2020-08-14', '2020-08-21', '2020-09-04']) {
+      const b = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(date) });
+      await prisma.tutoringAttendance.create({ data: { bookingId: b.id, status: 'PRESENT', markedById: marker.id } });
+    }
 
     const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
     expect(monthlyQuota).toBe(8);
@@ -531,39 +442,34 @@ describe('getTutoringDeductionLedger', () => {
     ]);
   });
 
-  it('excludes a MAKEUP booking and a REGULAR booking whose date has not passed yet, keeping only the GRANT and the actual deduction', async () => {
+  it('omits unattended, absent, cancelled, and legacy MAKEUP bookings — only attended ones deduct', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    const future = new Date(Date.UTC(2099, 0, 2));
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
-    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await adminCancelBooking(missed.id, true);
-    await requestMakeup({ originalBookingId: missed.id, windowId: window.id, date: new Date('2020-08-14') });
+    const marker = await createMarker();
+    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: attended.id, status: 'PRESENT', markedById: marker.id } });
+    // 日期已過但沒點名：不扣
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
+    // 缺席：不扣
+    const absent = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: absent.id, status: 'ABSENT', markedById: marker.id } });
+    // 提前取消：不扣
+    const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-28') });
+    await prisma.tutoringBooking.update({ where: { id: cancelled.id }, data: { status: 'CANCELLED' } });
+    // 歷史補課（MAKEUP）即使有出席也不扣（補課本來就免扣）
+    const legacyMakeup = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04'), kind: 'MAKEUP' })
+    await prisma.tutoringBooking.update({ where: { id: legacyMakeup.id }, data: { status: 'BOOKED' } });
+    await prisma.tutoringAttendance.create({ data: { bookingId: legacyMakeup.id, status: 'PRESENT', markedById: marker.id } });
 
     const { history } = await getTutoringDeductionLedger(enrollment.id);
-    // the future REGULAR booking and the MAKEUP booking are both omitted — only
-    // each month's GRANT and the missed original booking's DEDUCT remain
     expect(history.map((h) => [utcDateKey(h.date), h.kind, h.status, h.remainingAfter])).toEqual([
-      ['2099-01-01', 'GRANT', null, 8],
-      ['2020-08-07', 'DEDUCT', 'CANCELLED_LATE', 7],
+      ['2020-09-01', 'GRANT', null, 8],
+      ['2020-08-07', 'DEDUCT', 'BOOKED', 7],
       ['2020-08-01', 'GRANT', null, 8],
     ]);
   });
 
   it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
     await expect(getTutoringDeductionLedger('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
-  });
-
-  it('does not deduct for an early-cancelled (CANCELLED) booking even after its date passes', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
-    await prisma.tutoringBooking.update({ where: { id: cancelled.id }, data: { status: 'CANCELLED' } });
-
-    const { history } = await getTutoringDeductionLedger(enrollment.id);
-    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.remainingAfter])).toEqual([
-      ['2020-08-07', 'DEDUCT', 7],
-      ['2020-08-01', 'GRANT', 8],
-    ]);
   });
 });
 
@@ -581,10 +487,10 @@ describe('listMonthlyBookingCounts', () => {
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
     await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-07') });
 
-    // 8/14：一筆當天取消（不該計入）＋一筆補課申請待核准（pending）
+    // 8/14：一筆行政取消（不該計入）＋一筆歷史遺留的待核准補課（pending）
     const late = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
-    await adminCancelBooking(late.id, true);
-    await requestMakeup({ originalBookingId: late.id, windowId: window.id, date: new Date('2020-08-14') });
+    await adminCancelBooking(late.id);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14'), kind: 'MAKEUP' });
 
     const counts = await listMonthlyBookingCounts('2020-08');
     expect(counts).toEqual([
@@ -599,36 +505,7 @@ describe('listMonthlyBookingCounts', () => {
   });
 });
 
-describe('listMissedBookingsForEnrollment', () => {
-  it('returns only missed REGULAR bookings without an existing makeup child, scoped to the given enrollment', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-
-    const missed = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await adminCancelBooking(missed.id, true); // CANCELLED_LATE, eligible
-
-    const alreadyRequested = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
-    await adminCancelBooking(alreadyRequested.id, true);
-    await requestMakeup({ originalBookingId: alreadyRequested.id, windowId: window.id, date: FRIDAY });
-
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') }); // BOOKED, not missed
-
-    const otherStudent = await createStudent({ name: '小華', email: `hua-${Date.now()}@example.com`, password: 'x' });
-    const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: enrollment.programId, studentId: otherStudent.id } });
-    const otherMissed = await createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: new Date('2020-08-28') });
-    await adminCancelBooking(otherMissed.id, true);
-
-    const rows = await listMissedBookingsForEnrollment(enrollment.id);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].id).toBe(missed.id);
-  });
-
-  it('returns an empty array when there are no missed bookings', async () => {
-    const { enrollment } = await setupProgramWithEnrollment();
-    expect(await listMissedBookingsForEnrollment(enrollment.id)).toEqual([]);
-  });
-});
-
-describe('listBookingsOverview and listPendingTutoringMakeupRequests', () => {
+describe('listBookingsOverview', () => {
   it('lists all bookings for a date with student and program names', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
@@ -636,18 +513,6 @@ describe('listBookingsOverview and listPendingTutoringMakeupRequests', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].studentName).toBe('小明');
     expect(rows[0].programName).toBe('英文個別輔導');
-  });
-
-  it('lists pending makeup requests with the original booking date', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const past = new Date('2020-08-07');
-    const original = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: past });
-    await adminCancelBooking(original.id, true);
-    await requestMakeup({ originalBookingId: original.id, windowId: window.id, date: FRIDAY });
-
-    const rows = await listPendingTutoringMakeupRequests();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].originalDate.toISOString().slice(0, 10)).toBe('2020-08-07');
   });
 });
 
@@ -671,32 +536,23 @@ describe('sendMonthlyQuotaReminders', () => {
 });
 
 describe('listMonthlyAttendanceSummary', () => {
-  it('buckets locked REGULAR bookings into attended/cancelledLate/absent and counts approved MAKEUP separately', async () => {
+  it('counts attended and absent from attendance records only; unmarked and cancelled bookings are ignored', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
-    // Fixture gap in the brief: TutoringAttendance.markedById has an FK to User,
-    // and this file (unlike attendanceService.test.ts) has no marker-user
-    // beforeEach, so the literal 'marker-1' id must be created here first.
-    await prisma.user.create({ data: { id: 'marker-1', email: 'tutoring-summary-marker@example.com', password: 'x', name: 'Marker', role: 'ADMIN' } });
-    const past = '2020-08-';
-    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '07') });
-    await prisma.tutoringAttendance.create({ data: { bookingId: attended.id, status: 'PRESENT', markedById: 'marker-1' } });
+    const marker = await createMarker();
+    const attended = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: attended.id, status: 'PRESENT', markedById: marker.id } });
 
-    const lateCancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '14') });
-    await adminCancelBooking(lateCancelled.id, true);
+    const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
+    await adminCancelBooking(cancelled.id);
 
-    const absentBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '21') });
-    await prisma.tutoringAttendance.create({ data: { bookingId: absentBooking.id, status: 'ABSENT', markedById: 'marker-1' } });
+    const absentBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: absentBooking.id, status: 'ABSENT', markedById: marker.id } });
 
-    const makeupOriginal = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(past + '28') });
-    await adminCancelBooking(makeupOriginal.id, true);
-    const makeup = await requestMakeup({ originalBookingId: makeupOriginal.id, windowId: window.id, date: new Date('2020-09-04') });
-    await decideMakeup(makeup.id, 'APPROVED');
+    // 日期已過但沒點名：不列入統計
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-28') });
 
     const augustSummary = await listMonthlyAttendanceSummary('2020-08');
     expect(augustSummary).toHaveLength(1);
-    expect(augustSummary[0]).toMatchObject({ studentName: '小明', attended: 1, cancelledLate: 2, absent: 1 });
-
-    const septemberSummary = await listMonthlyAttendanceSummary('2020-09');
-    expect(septemberSummary[0].makeup).toBe(1);
+    expect(augustSummary[0]).toMatchObject({ studentName: '小明', attended: 1, absent: 1 });
   });
 });

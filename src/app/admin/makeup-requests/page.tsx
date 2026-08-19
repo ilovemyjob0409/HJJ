@@ -23,17 +23,9 @@ interface PendingRow {
   slotEndTime: string | null;
 }
 
-interface TutoringPendingRow {
-  id: string;
-  studentName: string;
-  programName: string;
-  originalDate: string;
-  date: string;
-}
-
 interface MergedRow {
   key: string;
-  source: 'CLASS' | 'TUTORING';
+  source: 'CLASS';
   studentName: string;
   origin: string;
   typeBadge: ReactNode;
@@ -46,20 +38,14 @@ function AdminMakeupRequestsContent() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
   const [classRows, setClassRows] = useState<PendingRow[]>([]);
-  const [tutoringRows, setTutoringRows] = useState<TutoringPendingRow[]>([]);
-  const [sourceFilter, setSourceFilter] = useState<'ALL' | 'CLASS' | 'TUTORING'>('ALL');
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const leaveListRef = useRef<LeaveRequestListHandle>(null);
 
   async function load() {
     try {
-      const [classRes, tutoringRes] = await Promise.all([
-        fetch('/api/makeup-requests/pending'),
-        fetch('/api/tutoring-makeup-requests'),
-      ]);
+      const classRes = await fetch('/api/makeup-requests/pending');
       setClassRows(await classRes.json());
-      setTutoringRows(await tutoringRes.json());
     } finally {
       setLoading(false);
     }
@@ -91,19 +77,8 @@ function AdminMakeupRequestsContent() {
           </div>
         ),
     })),
-    ...tutoringRows.map((r) => ({
-      key: r.id,
-      source: 'TUTORING' as const,
-      studentName: r.studentName,
-      origin: `${r.programName}・原 ${formatDateWithWeekday(r.originalDate)}`,
-      typeBadge: (
-        <span className="whitespace-nowrap rounded-full bg-pendingBg px-2.5 py-0.5 text-xs font-bold text-pending">個別輔導補課</span>
-      ),
-      dateLabel: formatDateWithWeekday(r.date),
-      target: <span className="whitespace-nowrap">{r.programName}</span>,
-    })),
   ];
-  const visibleRows = sourceFilter === 'ALL' ? mergedRows : mergedRows.filter((r) => r.source === sourceFilter);
+  const visibleRows = mergedRows;
 
   useEffect(() => {
     load();
@@ -123,8 +98,7 @@ function AdminMakeupRequestsContent() {
   async function decide(row: MergedRow, decision: 'APPROVED' | 'REJECTED') {
     setPendingId(row.key);
     try {
-      const path = row.source === 'CLASS' ? `/api/makeup-requests/${row.key}` : `/api/tutoring-makeup-requests/${row.key}`;
-      await fetch(path, { method: 'PATCH', body: JSON.stringify({ decision }) });
+      await fetch(`/api/makeup-requests/${row.key}`, { method: 'PATCH', body: JSON.stringify({ decision }) });
       showToast(decision === 'APPROVED' ? '已核准' : '已拒絕');
       load();
       leaveListRef.current?.reload();
@@ -165,22 +139,7 @@ function AdminMakeupRequestsContent() {
       <h1 className="mb-4 text-xl font-bold text-ink">請假管理</h1>
       <ArrangeMakeupForm onArranged={() => leaveListRef.current?.reload()} />
 
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-bold text-ink">待確認補課申請</h2>
-        <div className="flex gap-2">
-          {(['ALL', 'CLASS', 'TUTORING'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setSourceFilter(f)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                sourceFilter === f ? 'bg-brand text-brandInk' : 'border border-borderStrong text-inkMuted'
-              }`}
-            >
-              {f === 'ALL' ? '全部' : f === 'CLASS' ? '班級補課' : '輔導補課'}
-            </button>
-          ))}
-        </div>
-      </div>
+      <h2 className="mb-2 font-bold text-ink">待確認補課申請</h2>
       <Card>
         <DataTable
           columns={columns}

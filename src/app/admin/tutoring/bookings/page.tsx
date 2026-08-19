@@ -29,9 +29,7 @@ interface SummaryRow {
   studentName: string;
   programName: string;
   attended: number;
-  cancelledLate: number;
   absent: number;
-  makeup: number;
 }
 
 interface DailyCount {
@@ -61,7 +59,6 @@ export default function AdminTutoringBookingsPage() {
   const [rows, setRows] = useState<OverviewRow[]>([]);
   const [month, setMonth] = useState(todayDateInput().slice(0, 7));
   const [summary, setSummary] = useState<SummaryRow[]>([]);
-  const [choosingId, setChoosingId] = useState<string | null>(null);
 
   async function loadCounts() {
     const res = await fetch(`/api/tutoring-bookings/overview?month=${calMonth}`);
@@ -69,7 +66,6 @@ export default function AdminTutoringBookingsPage() {
   }
 
   async function loadDay(date: string) {
-    setChoosingId(null);
     setRows([]);
     const res = await fetch(`/api/tutoring-bookings/overview?date=${date}`);
     setRows(await res.json());
@@ -95,14 +91,10 @@ export default function AdminTutoringBookingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
-  async function cancel(row: OverviewRow, countsTowardQuota: boolean) {
-    const message = countsTowardQuota ? '確定要取消並計入這位學生本月次數嗎？' : '確定要取消嗎？此次不計入學生次數。';
-    if (!(await confirm(message, { danger: true }))) return;
-    await fetch(`/api/tutoring-bookings/${row.id}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countsTowardQuota }),
-    });
+  // 收費規範：取消一律不計次（扣堂只看有無到場），沒有「計次取消」。
+  async function cancel(row: OverviewRow) {
+    if (!(await confirm('確定要取消這筆預約嗎？（不扣堂）', { danger: true }))) return;
+    await fetch(`/api/tutoring-bookings/${row.id}`, { method: 'DELETE' });
     showToast('已取消');
     if (selectedDate) loadDay(selectedDate);
     loadCounts();
@@ -115,29 +107,14 @@ export default function AdminTutoringBookingsPage() {
     { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
     {
       header: '操作',
-      render: (r) => {
-        if (r.status !== 'BOOKED') return <span className="text-inkMuted">—</span>;
-        if (choosingId !== r.id) {
-          return (
-            <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setChoosingId(r.id)}>
-              取消
-            </Button>
-          );
-        }
-        return (
-          <div className="flex flex-col items-start gap-1">
-            <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => cancel(r, false)}>
-              不計次
-            </Button>
-            <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => cancel(r, true)}>
-              計次
-            </Button>
-            <button type="button" className="text-xs text-inkMuted hover:underline" onClick={() => setChoosingId(null)}>
-              返回
-            </button>
-          </div>
-        );
-      },
+      render: (r) =>
+        r.status === 'BOOKED' ? (
+          <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => cancel(r)}>
+            取消
+          </Button>
+        ) : (
+          <span className="text-inkMuted">—</span>
+        ),
     },
   ];
 
@@ -145,9 +122,7 @@ export default function AdminTutoringBookingsPage() {
     { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
     { header: '已上', render: (r) => r.attended, sortValue: (r) => r.attended },
-    { header: '當天取消', render: (r) => r.cancelledLate, sortValue: (r) => r.cancelledLate },
     { header: '缺席', render: (r) => r.absent, sortValue: (r) => r.absent },
-    { header: '補課', render: (r) => r.makeup, sortValue: (r) => r.makeup },
   ];
 
   return (
@@ -204,14 +179,13 @@ export default function AdminTutoringBookingsPage() {
                   >
                     <span>{i + 1}</span>
                     {count && count.booked > 0 && <span className="text-[10px] font-normal text-inkMuted">預約{count.booked}人</span>}
-                    {count && count.pending > 0 && <span className="text-[10px] font-normal text-pending">待確認{count.pending}</span>}
                   </button>
                 );
               }),
             ];
           })()}
         </div>
-        <p className="mt-2 text-xs text-inkMuted">點有預約的日期查看名單；「待確認」為尚未核准的補課申請。</p>
+        <p className="mt-2 text-xs text-inkMuted">點有預約的日期查看名單。</p>
       </Card>
 
       <Modal open={selectedDate !== null} onClose={() => setSelectedDate(null)} title={selectedDate ? `${formatDateWithWeekday(selectedDate)} 名單` : ''}>
@@ -229,9 +203,7 @@ export default function AdminTutoringBookingsPage() {
               { header: '學生', value: (r) => r.studentName },
               { header: '課程', value: (r) => r.programName },
               { header: '已上', value: (r) => r.attended },
-              { header: '當天取消', value: (r) => r.cancelledLate },
               { header: '缺席', value: (r) => r.absent },
-              { header: '補課', value: (r) => r.makeup },
             ]}
           />
         </div>

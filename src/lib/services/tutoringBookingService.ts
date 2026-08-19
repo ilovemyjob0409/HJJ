@@ -25,13 +25,6 @@ export function daysRemainingInTaipeiMonth(now: Date): number {
   return lastDayOfMonth - d + 1;
 }
 
-export function daysRemainingThroughNextTaipeiMonth(now: Date): number {
-  const remaining = daysRemainingInTaipeiMonth(now);
-  const todayKey = taipeiDateKey(now);
-  const [y, m] = todayKey.split('-').map(Number);
-  const daysInNextMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  return remaining + daysInNextMonth;
-}
 
 export interface CreateBookingInput {
   enrollmentId: string;
@@ -146,90 +139,22 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
   }
   if (booking.enrollment.studentId !== studentId) throw new Error('NOT_OWNER');
 
-  // 學生自行取消一律不計次（含當天取消）：保留紀錄（狀態 CANCELLED），學生的
-  // 預約紀錄才看得到這筆取消。CANCELLED_LATE 只留給行政明確選「計次」取消時用
-  // （adminCancelBooking countsTowardQuota=true），不再由學生自行取消觸發。
+  // 收費規範：未到場不扣堂——取消一律不計次，保留紀錄（狀態 CANCELLED）
+  // 讓學生的預約紀錄看得到這筆取消。
   await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
 }
 
-// 行政取消：可選是否計次，處理特殊個案（例如場地臨時取消，不該算學生的堂數）。
-export async function adminCancelBooking(bookingId: string, countsTowardQuota: boolean): Promise<void> {
+// 行政取消：與學生取消同語意，一律不計次（收費規範沒有「計次取消」——
+// 扣堂只看有無到場）。CANCELLED_LATE 僅存在於歷史資料，不再產生。
+export async function adminCancelBooking(bookingId: string): Promise<void> {
   try {
-    if (!countsTowardQuota) {
-      await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
-      return;
-    }
-    await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED_LATE' } });
+    await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       throw new Error('BOOKING_NOT_FOUND');
     }
     throw err;
   }
-}
-
-export async function requestMakeup(input: {
-  originalBookingId: string;
-  windowId: string;
-  date: Date;
-}): Promise<{ id: string }> {
-  const original = await prisma.tutoringBooking.findUniqueOrThrow({
-    where: { id: input.originalBookingId },
-    include: { attendance: true, makeupChild: true },
-  });
-  if (original.kind !== 'REGULAR') throw new Error('NOT_ELIGIBLE');
-  if (original.makeupChild) throw new Error('ALREADY_REQUESTED');
-  const missed = original.status === 'CANCELLED_LATE' || original.attendance?.status === 'ABSENT';
-  if (!missed) throw new Error('NOT_ELIGIBLE');
-
-  try {
-    return await createBooking({
-      enrollmentId: original.enrollmentId,
-      windowId: input.windowId,
-      date: input.date,
-      kind: 'MAKEUP',
-      makeupForId: original.id,
-    });
-  } catch (err) {
-    // TOCTOU: the makeupChild check above runs outside a transaction, so two
-    // concurrent requestMakeup calls for the same original can both pass it
-    // before either commits. The DB's unique constraint on makeupForId then
-    // rejects the loser's insert with P2002 — translate that into the same
-    // ALREADY_REQUESTED error the pre-check above throws, instead of leaking
-    // the raw Prisma error.
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new Error('ALREADY_REQUESTED');
-    }
-    // 同日防呆也會攔到「兩個併發申請選了同一天」的輸家——若該筆缺席其實已
-    // 產生補課，回報 ALREADY_REQUESTED 比 ALREADY_BOOKED_SAME_DAY 準確；
-    // 若是使用者自己選到已有預約的日子，維持原錯誤讓他換一天。
-    if (err instanceof Error && err.message === 'ALREADY_BOOKED_SAME_DAY') {
-      const child = await prisma.tutoringBooking.findFirst({ where: { makeupForId: original.id }, select: { id: true } });
-      if (child) throw new Error('ALREADY_REQUESTED');
-    }
-    throw err;
-  }
-}
-
-// 容量在 PENDING_ADMIN 建立時已檢查並佔位（createBooking 把 PENDING_ADMIN 一併算進容量），
-// 核准時不必再查一次容量。
-export async function decideMakeup(bookingId: string, decision: 'APPROVED' | 'REJECTED'): Promise<void> {
-  let booking;
-  try {
-    booking = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: bookingId } });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-      throw new Error('BOOKING_NOT_FOUND');
-    }
-    throw err;
-  }
-  if (booking.kind !== 'MAKEUP' || booking.status !== 'PENDING_ADMIN') {
-    throw new Error('ALREADY_DECIDED');
-  }
-  await prisma.tutoringBooking.update({
-    where: { id: bookingId },
-    data: { status: decision === 'APPROVED' ? 'BOOKED' : 'REJECTED' },
-  });
 }
 
 export async function getMonthlyQuotaStatus(
@@ -249,16 +174,18 @@ export async function getMonthlyQuotaStatus(
 
   const bookings = await prisma.tutoringBooking.findMany({
     where: { enrollmentId, kind: 'REGULAR', date: { gte: monthStart, lte: monthEnd } },
-    select: { date: true, status: true },
+    select: { date: true, status: true, attendance: { select: { status: true } } },
   });
 
   let locked = 0;
   let upcoming = 0;
   for (const b of bookings) {
-    if (b.status === 'CANCELLED') continue; // 提前取消不計次，日期過了也一樣
-    const key = utcDateKey(b.date);
-    if (key <= todayKey) locked++;
-    else if (b.status === 'BOOKED') upcoming++;
+    if (b.status === 'CANCELLED' || b.status === 'CANCELLED_LATE') continue;
+    // 收費規範：「有預約且到場上課才扣堂」——有出席紀錄（且非缺席）才計次。
+    // 日期過了但沒到場、沒點名、缺席都不扣堂；當天（含）以後仍有效的預約
+    // 顯示為「已預約」，過期未到的預約兩邊都不算。
+    if (b.attendance && b.attendance.status !== 'ABSENT') locked++;
+    else if (b.status === 'BOOKED' && utcDateKey(b.date) >= todayKey) upcoming++;
   }
   return { locked, upcoming, quota };
 }
@@ -339,9 +266,10 @@ export interface StudentBookingRow {
   id: string;
   programName: string;
   date: Date;
+  // MAKEUP／PENDING_ADMIN／CANCELLED_LATE／REJECTED 僅存在於歷史資料
+  //（收費規範已無補課概念），保留型別讓舊紀錄能正常顯示。
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
-  canRequestMakeup: boolean;
 }
 
 export async function listBookingsForStudent(studentId: string): Promise<StudentBookingRow[]> {
@@ -353,22 +281,16 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
       kind: true,
       status: true,
       window: { select: { program: { select: { name: true } } } },
-      attendance: { select: { status: true } },
-      makeupChild: { select: { id: true } },
     },
     orderBy: { date: 'desc' },
   });
-  return bookings.map((b) => {
-    const missed = b.status === 'CANCELLED_LATE' || b.attendance?.status === 'ABSENT';
-    return {
-      id: b.id,
-      programName: b.window.program.name,
-      date: b.date,
-      kind: b.kind as 'REGULAR' | 'MAKEUP',
-      status: b.status as StudentBookingRow['status'],
-      canRequestMakeup: b.kind === 'REGULAR' && missed && !b.makeupChild,
-    };
-  });
+  return bookings.map((b) => ({
+    id: b.id,
+    programName: b.window.program.name,
+    date: b.date,
+    kind: b.kind as 'REGULAR' | 'MAKEUP',
+    status: b.status as StudentBookingRow['status'],
+  }));
 }
 
 export interface TutoringLedgerRow {
@@ -383,12 +305,11 @@ export interface TutoringLedgerRow {
 
 // 學生自己看的個別輔導「扣堂紀錄」：跟班級／弈廳一樣是一份完整的堂數增減
 // 帳本——每個月月初核發當月額度（GRANT，+monthlyQuota）算一筆「建立」，之後
-// 每一堂真的扣掉名額的預約（一般預約且日期已過，不論後來狀態是 BOOKED 還是
-// 被記為 CANCELLED_LATE，判斷邏輯跟 getMonthlyQuotaStatus 一致）算一筆
-// DEDUCT（-1）。還沒發生的預約、補課本身（補課是把名額補回來，不會再扣一
-// 次）都不算增減事件，不放進帳本——那些屬於「我的預約紀錄」。月額度按月重
-// 置，跟班級／弈廳的終身堂數池不同，所以要照預約日期所在月份分組，各自從
-// 當月額度倒推，不能跨月累加。
+// 每一堂真的扣掉名額的預約（收費規範：有預約且到場才扣堂——有出席紀錄且
+// 非缺席，判斷邏輯跟 getMonthlyQuotaStatus 一致）算一筆 DEDUCT（-1）。
+// 未到場、未點名、取消的預約都不是增減事件，不放進帳本——那些屬於「我的
+// 預約紀錄」。月額度按月重置，跟班級／弈廳的終身堂數池不同，所以要照預約
+// 日期所在月份分組，各自從當月額度倒推，不能跨月累加。
 export async function getTutoringDeductionLedger(
   enrollmentId: string
 ): Promise<{ monthlyQuota: number; history: TutoringLedgerRow[] }> {
@@ -398,7 +319,6 @@ export async function getTutoringDeductionLedger(
   });
   if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
   const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
-  const todayKey = taipeiDateKey(new Date());
 
   const bookings = await prisma.tutoringBooking.findMany({
     where: { enrollmentId },
@@ -407,7 +327,7 @@ export async function getTutoringDeductionLedger(
       date: true,
       kind: true,
       status: true,
-      attendance: { select: { checkInTime: true } },
+      attendance: { select: { status: true, checkInTime: true } },
     },
     orderBy: { date: 'desc' },
   });
@@ -421,11 +341,17 @@ export async function getTutoringDeductionLedger(
 
   const history: TutoringLedgerRow[] = [];
   for (const [monthKey, rows] of Array.from(monthGroups.entries())) {
-    // 提前取消（CANCELLED）不扣堂，日期過了也一樣——判斷邏輯跟 getMonthlyQuotaStatus 一致
-    const countedInMonth = rows.filter((b) => b.kind === 'REGULAR' && b.status !== 'CANCELLED' && utcDateKey(b.date) <= todayKey).length;
+    // 有出席紀錄（非缺席）才扣堂——判斷邏輯跟 getMonthlyQuotaStatus 一致
+    const isCounted = (b: (typeof rows)[number]) =>
+      b.kind === 'REGULAR' &&
+      b.status !== 'CANCELLED' &&
+      b.status !== 'CANCELLED_LATE' &&
+      b.attendance != null &&
+      b.attendance.status !== 'ABSENT';
+    const countedInMonth = rows.filter(isCounted).length;
     let runningAfter = quota - countedInMonth;
     for (const b of rows) {
-      const counted = b.kind === 'REGULAR' && b.status !== 'CANCELLED' && utcDateKey(b.date) <= todayKey;
+      const counted = isCounted(b);
       const remainingAfter = runningAfter;
       if (counted) runningAfter += 1;
       if (!counted) continue;
@@ -453,28 +379,6 @@ export async function getTutoringDeductionLedger(
   }
 
   return { monthlyQuota: quota, history };
-}
-
-export interface MissedBookingRow {
-  id: string;
-  date: Date;
-}
-
-export async function listMissedBookingsForEnrollment(enrollmentId: string): Promise<MissedBookingRow[]> {
-  const bookings = await prisma.tutoringBooking.findMany({
-    where: { enrollmentId, kind: 'REGULAR' },
-    select: {
-      id: true,
-      date: true,
-      status: true,
-      attendance: { select: { status: true } },
-      makeupChild: { select: { id: true } },
-    },
-    orderBy: { date: 'desc' },
-  });
-  return bookings
-    .filter((b) => (b.status === 'CANCELLED_LATE' || b.attendance?.status === 'ABSENT') && !b.makeupChild)
-    .map((b) => ({ id: b.id, date: b.date }));
 }
 
 export interface OverviewBookingRow {
@@ -542,37 +446,6 @@ export async function listMonthlyBookingCounts(monthKey: string): Promise<DailyB
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export interface PendingMakeupRow {
-  id: string;
-  studentName: string;
-  programName: string;
-  originalDate: Date;
-  date: Date;
-}
-
-export async function listPendingTutoringMakeupRequests(): Promise<PendingMakeupRow[]> {
-  const rows = await prisma.tutoringBooking.findMany({
-    where: { kind: 'MAKEUP', status: 'PENDING_ADMIN' },
-    select: {
-      id: true,
-      date: true,
-      enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
-      window: { select: { program: { select: { name: true } } } },
-      makeupFor: { select: { date: true } },
-    },
-    orderBy: { date: 'asc' },
-  });
-  return rows.map((r) => ({
-    id: r.id,
-    studentName: r.enrollment.student.user.name,
-    programName: r.window.program.name,
-    originalDate: r.makeupFor!.date,
-    date: r.date,
-  }));
-}
-
-// 每月 20 號由 Vercel Cron 觸發（見 Task 18）；本函式本身不檢查日期，
-// 靠 lastQuotaReminderMonth 保證同一學生同一月只提醒一次，可安全重複呼叫。
 export async function sendMonthlyQuotaReminders(): Promise<{ notified: number }> {
   const monthKey = taipeiDateKey(new Date()).slice(0, 7);
   const enrollments = await prisma.tutoringEnrollment.findMany({
@@ -610,9 +483,7 @@ export interface MonthlySummaryRow {
   studentName: string;
   programName: string;
   attended: number;
-  cancelledLate: number;
   absent: number;
-  makeup: number;
 }
 
 // 已上／當天取消／缺席／補課 統計，供行政對帳與 CSV 匯出。「已上」= 已鎖定且非取消非缺席的
@@ -621,7 +492,6 @@ export async function listMonthlyAttendanceSummary(monthKey: string): Promise<Mo
   const [year, month] = monthKey.split('-').map(Number);
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 0));
-  const todayKey = taipeiDateKey(new Date());
 
   const bookings = await prisma.tutoringBooking.findMany({
     where: { date: { gte: monthStart, lte: monthEnd } },
@@ -644,20 +514,15 @@ export async function listMonthlyAttendanceSummary(monthKey: string): Promise<Mo
         studentName: b.enrollment.student.user.name,
         programName: b.window.program.name,
         attended: 0,
-        cancelledLate: 0,
         absent: 0,
-        makeup: 0,
       });
     }
+    // 收費規範：只看出席紀錄——有點名且非缺席算「已上」，點了缺席算「缺席」
+    //（不扣堂，純供出席參考）；沒點名、取消的預約不列入統計。
     const row = byEnrollmentId.get(key)!;
-    if (b.kind === 'MAKEUP') {
-      if (b.status === 'BOOKED') row.makeup++;
-      continue;
-    }
-    if (utcDateKey(b.date) > todayKey) continue;
-    if (b.status === 'CANCELLED_LATE') row.cancelledLate++;
-    else if (b.attendance?.status === 'ABSENT') row.absent++;
-    else if (b.status === 'BOOKED') row.attended++;
+    if (!b.attendance) continue;
+    if (b.attendance.status === 'ABSENT') row.absent++;
+    else row.attended++;
   }
   return Array.from(byEnrollmentId.values()).sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }

@@ -32,28 +32,21 @@ function buildMonthCells(year: number, month: number): MonthCell[] {
 
 interface TutoringBookingCalendarProps {
   enrollmentId: string;
-  mode: 'regular' | 'makeup';
-  makeupForBookingId?: string;
   successMessage?: string;
   isAdmin?: boolean;
-  onCancel?: () => void;
   onBooked: () => void;
   onCancelledBooking?: () => void;
   // 已勾選（尚未送出）的天數變動時通知外層，額度條要即時扣剩餘
   onSelectionChange?: (count: number) => void;
 }
 
-// 預約不再選時段，一天就是一格：一般預約可以連點好幾天再一次送出（每天各
-// 自建立一筆預約、各自檢查容量）；補課是在補一筆特定的缺席，維持點一天就
-// 直接送出。格子上顯示當天剩餘名額。本人已約的日期以「已約」標示，一般模
-// 式下點擊可直接取消該天預約（按掉）。
+// 預約不再選時段，一天就是一格：可以連點好幾天再一次送出（每天各自建立
+// 一筆預約、各自檢查容量）。格子上顯示當天剩餘名額。本人已約的日期以
+// 「已約」標示，點擊可直接取消該天預約（按掉）。
 export default function TutoringBookingCalendar({
   enrollmentId,
-  mode,
-  makeupForBookingId,
   successMessage,
   isAdmin,
-  onCancel,
   onBooked,
   onCancelledBooking,
   onSelectionChange,
@@ -70,30 +63,21 @@ export default function TutoringBookingCalendar({
   }, [selectedDates]);
 
   async function loadAvailability() {
-    const months = mode === 'makeup' ? 2 : 1;
-    const res = await fetch(`/api/tutoring-availability?enrollmentId=${enrollmentId}&months=${months}`);
+    const res = await fetch(`/api/tutoring-availability?enrollmentId=${enrollmentId}`);
     setAvailability(await res.json());
   }
 
   useEffect(() => {
     loadAvailability();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enrollmentId, mode]);
+  }, [enrollmentId]);
 
   const now = new Date();
   const calendarYear = now.getFullYear();
   const calendarMonth = now.getMonth() + 1;
   const availabilityByDate = new Map(availability.map((day) => [day.date, day]));
 
-  const nextMonthDate = new Date(Date.UTC(calendarYear, calendarMonth, 1));
-  const nextCalendarYear = nextMonthDate.getUTCFullYear();
-  const nextCalendarMonth = nextMonthDate.getUTCMonth() + 1;
-
   function toggleDay(day: AvailabilityDay) {
-    if (mode === 'makeup') {
-      submitMakeup(day);
-      return;
-    }
     setSelectedDates((prev) => (prev.includes(day.date) ? prev.filter((d) => d !== day.date) : [...prev, day.date].sort()));
   }
 
@@ -143,8 +127,8 @@ export default function TutoringBookingCalendar({
           {cells.map((cell) => {
             const day = availabilityByDate.get(cell.dateKey);
             const mine = !!day?.myBookingId;
-            // 已約日期只有「一般模式＋已確定的預約」才能按掉；待核准的補課申請回列表處理
-            const cancellable = mine && day!.myBookingStatus === 'BOOKED' && mode === 'regular';
+            // 已約日期只有「已確定的預約」能按掉（歷史遺留的待核准補課不行）
+            const cancellable = mine && day!.myBookingStatus === 'BOOKED';
             const bookable = !mine && !!day && day.remaining > 0;
             const selected = !mine && selectedDates.includes(cell.dateKey);
             return (
@@ -178,33 +162,6 @@ export default function TutoringBookingCalendar({
     );
   }
 
-  async function submitMakeup(day: AvailabilityDay) {
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/tutoring-bookings/${makeupForBookingId}/makeup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ windowId: day.windowId, date: day.date }),
-      });
-      if (!res.ok) {
-        const { error } = await res.json();
-        showToast(
-          error === 'WINDOW_FULL'
-            ? '這天名額已滿，請選別天'
-            : error === 'ALREADY_BOOKED_SAME_DAY'
-              ? '這天已經有預約了，請選別天'
-              : '申請失敗，請稍後再試'
-        );
-        return;
-      }
-      showToast(successMessage ?? '已送出補課申請，待行政核准');
-      onBooked();
-      loadAvailability();
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function submitSelected() {
     setSubmitting(true);
     try {
@@ -235,25 +192,12 @@ export default function TutoringBookingCalendar({
   return (
     <>
       {renderMonthGrid(calendarYear, calendarMonth)}
-      {mode === 'makeup' && renderMonthGrid(nextCalendarYear, nextCalendarMonth)}
 
-      {mode === 'regular' && availability.some((d) => d.myBookingId) && (
+      {availability.some((d) => d.myBookingId) && (
         <p className="text-xs text-inkMuted">「已約」為這位學生已預約的日期，點一下即可取消該天預約。</p>
       )}
 
-      {mode === 'makeup' ? (
-        <div className="mt-3 flex items-center justify-between gap-2 border-t border-borderSubtle pt-3">
-          <p className="text-sm text-inkMuted">{submitting ? '送出中…' : '點選日期即送出補課申請'}</p>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              onCancel?.();
-            }}
-          >
-            取消
-          </Button>
-        </div>
-      ) : (
+      {(
         selectedDates.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-borderSubtle pt-3">
             <p className="text-sm text-ink">

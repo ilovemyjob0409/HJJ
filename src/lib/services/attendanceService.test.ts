@@ -12,7 +12,7 @@ import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
 import { createProgram, createWindow, createEnrollment } from './tutoringProgramService';
-import { createBooking, adminCancelBooking, decideMakeup } from './tutoringBookingService';
+import { createBooking, adminCancelBooking } from './tutoringBookingService';
 
 beforeEach(async () => {
   // Create marker user for attendance marking
@@ -1461,17 +1461,17 @@ describe('getTutoringWindowAttendanceOverview', () => {
   it('reflects a CANCELLED booking', async () => {
     const { window, studentA, enrollmentA } = await setup();
     const booking = await createBooking({ enrollmentId: enrollmentA.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-    await adminCancelBooking(booking.id, false);
+    await adminCancelBooking(booking.id);
 
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     const row = overview.find((s) => s.studentId === studentA.id)!;
     expect(row.records[0]).toMatchObject({ bookingStatus: 'CANCELLED', attendanceStatus: null });
   });
 
-  it('reflects a CANCELLED_LATE booking', async () => {
+  it('reflects a legacy CANCELLED_LATE booking', async () => {
     const { window, studentA, enrollmentA } = await setup();
     const booking = await createBooking({ enrollmentId: enrollmentA.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-    await adminCancelBooking(booking.id, true);
+    await prisma.tutoringBooking.update({ where: { id: booking.id }, data: { status: 'CANCELLED_LATE' } });
 
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     const row = overview.find((s) => s.studentId === studentA.id)!;
@@ -1491,13 +1491,13 @@ describe('getTutoringWindowAttendanceOverview', () => {
     expect(record).toMatchObject({ isMakeup: true, bookingStatus: 'PENDING_ADMIN' });
   });
 
-  it('reflects a rejected makeup booking', async () => {
+  it('reflects a legacy rejected makeup booking', async () => {
     const { window, studentA, enrollmentA } = await setup();
     const original = await createBooking({ enrollmentId: enrollmentA.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
     const makeup = await createBooking({
       enrollmentId: enrollmentA.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 10)), kind: 'MAKEUP', makeupForId: original.id,
     });
-    await decideMakeup(makeup.id, 'REJECTED');
+    await prisma.tutoringBooking.update({ where: { id: makeup.id }, data: { status: 'REJECTED' } });
 
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     const row = overview.find((s) => s.studentId === studentA.id)!;
