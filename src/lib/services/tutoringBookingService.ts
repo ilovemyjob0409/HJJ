@@ -270,6 +270,9 @@ export interface StudentBookingRow {
   //（收費規範已無補課概念），保留型別讓舊紀錄能正常顯示。
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
+  attendanceStatus: 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED' | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
 }
 
 export async function listBookingsForStudent(studentId: string): Promise<StudentBookingRow[]> {
@@ -281,6 +284,7 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
       kind: true,
       status: true,
       window: { select: { program: { select: { name: true } } } },
+      attendance: { select: { status: true, checkInTime: true, checkOutTime: true } },
     },
     orderBy: { date: 'desc' },
   });
@@ -290,6 +294,9 @@ export async function listBookingsForStudent(studentId: string): Promise<Student
     date: b.date,
     kind: b.kind as 'REGULAR' | 'MAKEUP',
     status: b.status as StudentBookingRow['status'],
+    attendanceStatus: (b.attendance?.status as StudentBookingRow['attendanceStatus']) ?? null,
+    checkInTime: b.attendance?.checkInTime ?? null,
+    checkOutTime: b.attendance?.checkOutTime ?? null,
   }));
 }
 

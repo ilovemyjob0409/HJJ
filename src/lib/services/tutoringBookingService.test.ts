@@ -8,6 +8,7 @@ import { createBooking, cancelBooking, adminCancelBooking } from './tutoringBook
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger, listWalkInCandidates } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMonthlyBookingCounts } from './tutoringBookingService';
+import { saveTutoringAttendance } from './attendanceService';
 
 describe('utcDateKey / taipeiDateKey', () => {
   it('formats as YYYY-MM-DD', () => {
@@ -418,6 +419,18 @@ describe('listBookingsForStudent', () => {
     const rows = await listBookingsForStudent(enrollment.studentId);
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe('CANCELLED');
+  });
+
+  it('carries attendance status and check-in/out times; null when unmarked', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const marker = await createMarker();
+    const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await saveTutoringAttendance(marker.id, [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
+
+    const rows = await listBookingsForStudent(enrollment.studentId);
+    expect(rows[0]).toMatchObject({ attendanceStatus: null, checkInTime: null, checkOutTime: null });
+    expect(rows[1]).toMatchObject({ attendanceStatus: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' });
   });
 });
 

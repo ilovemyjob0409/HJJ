@@ -28,6 +28,9 @@ interface BookingRow {
   // MAKEUP 等狀態僅出現在歷史紀錄（現行收費規範沒有補課概念）
   kind: 'REGULAR' | 'MAKEUP';
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
+  attendanceStatus: 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED' | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
 }
 
 export default function StudentTutoringPage() {
@@ -75,6 +78,13 @@ export default function StudentTutoringPage() {
     { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
     { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般'), sortValue: (r) => r.kind },
     { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
+    {
+      header: '出席',
+      render: (r) => (r.attendanceStatus ? <StatusBadge status={r.attendanceStatus} /> : '-'),
+      sortValue: (r) => r.attendanceStatus ?? null,
+    },
+    { header: '簽到', render: (r) => r.checkInTime ?? '-', sortValue: (r) => r.checkInTime ?? null },
+    { header: '簽退', render: (r) => r.checkOutTime ?? '-', sortValue: (r) => r.checkOutTime ?? null },
     {
       header: '操作',
       render: (r) =>
