@@ -10,7 +10,7 @@ import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking, requestMakeup, decideMakeup } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, listPendingTutoringMakeupRequests, sendMonthlyQuotaReminders } from './tutoringBookingService';
-import { getTutoringDeductionLedger } from './tutoringBookingService';
+import { getTutoringDeductionLedger, listWalkInCandidates } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMissedBookingsForEnrollment, listMonthlyBookingCounts } from './tutoringBookingService';
 
 describe('utcDateKey / taipeiDateKey', () => {
@@ -91,6 +91,61 @@ describe('createBooking', () => {
     await expect(
       createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('WINDOW_CLOSED');
+  });
+
+  it('allows exceeding capacity when allowOverCapacity is set (walk-in force add)', async () => {
+    const { window, program, enrollment } = await setupProgramWithEnrollment(1);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    const other = await createStudent({ name: '硬開生', email: `force-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: other.id } });
+
+    const booking = await createBooking({
+      enrollmentId: otherEnrollment.id,
+      windowId: window.id,
+      date: FRIDAY,
+      allowOverCapacity: true,
+    });
+
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(row.status).toBe('BOOKED');
+  });
+
+  it('allowOverCapacity does not bypass the other guards', async () => {
+    const { window, program, enrollment } = await setupProgramWithEnrollment(1);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    // 同一報名同一天不能疊，即使強制加入
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, allowOverCapacity: true })
+    ).rejects.toThrow('ALREADY_BOOKED_SAME_DAY');
+    // 停開日照擋
+    const other = await createStudent({ name: '停開生', email: `force-closed-${Date.now()}@example.com`, password: 'x' });
+    const otherEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: other.id } });
+    const nextFriday = new Date('2026-08-14');
+    await prisma.tutoringWindowClosure.create({ data: { windowId: window.id, date: nextFriday } });
+    await expect(
+      createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: nextFriday, allowOverCapacity: true })
+    ).rejects.toThrow('WINDOW_CLOSED');
+  });
+});
+
+describe('listWalkInCandidates', () => {
+  it('lists active enrollees of the window program that are not booked that day', async () => {
+    const { window, program, enrollment, student } = await setupProgramWithEnrollment();
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+
+    const walkIn = await createStudent({ name: '臨時生', email: `walkin-${Date.now()}@example.com`, password: 'x' });
+    const walkInEnrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: walkIn.id } });
+    const inactive = await createStudent({ name: '停用生', email: `walkin-inactive-${Date.now()}@example.com`, password: 'x' });
+    await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: inactive.id, active: false } });
+
+    const candidates = await listWalkInCandidates(window.id, FRIDAY);
+
+    expect(candidates.map((c) => c.enrollmentId)).toEqual([walkInEnrollment.id]);
+    expect(candidates[0].studentName).toBe('臨時生');
+    // 已預約的學生（小明）與停用報名都不在名單裡
+    expect(candidates.some((c) => c.studentName === '小明')).toBe(false);
+    expect(candidates.some((c) => c.studentName === '停用生')).toBe(false);
+    void student;
   });
 
   it('rejects a nonexistent window id', async () => {

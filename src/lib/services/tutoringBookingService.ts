@@ -39,6 +39,9 @@ export interface CreateBookingInput {
   date: Date;
   kind?: 'REGULAR' | 'MAKEUP';
   makeupForId?: string;
+  // 點名現場加入的「硬開」：名額已滿仍可加入（老師/行政確認後）。
+  // 只跳過容量檢查，其餘防呆（星期、停開日、同日重複、停用報名）照擋。
+  allowOverCapacity?: boolean;
 }
 
 // 預約不再選時段：一筆預約＝「這位學生這天會來」，booking 的 startTime/endTime
@@ -71,10 +74,12 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
         });
         if (sameDay > 0) throw new Error('ALREADY_BOOKED_SAME_DAY');
 
-        const booked = await tx.tutoringBooking.count({
-          where: { windowId: input.windowId, date: input.date, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
-        });
-        if (booked >= window.capacity) throw new Error('WINDOW_FULL');
+        if (!input.allowOverCapacity) {
+          const booked = await tx.tutoringBooking.count({
+            where: { windowId: input.windowId, date: input.date, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
+          });
+          if (booked >= window.capacity) throw new Error('WINDOW_FULL');
+        }
 
         return tx.tutoringBooking.create({
           data: {
@@ -93,6 +98,37 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
   );
+}
+
+export interface WalkInCandidate {
+  enrollmentId: string;
+  studentId: string;
+  studentName: string;
+}
+
+// 點名「現場加入」的候選名單：該時段課程的 active 報名，扣掉當天已有
+// 有效預約的人（他們本來就在點名表上）。
+export async function listWalkInCandidates(windowId: string, date: Date): Promise<WalkInCandidate[]> {
+  const window = await prisma.tutoringWindow.findUnique({ where: { id: windowId }, select: { programId: true } });
+  if (!window) throw new Error('WINDOW_NOT_FOUND');
+
+  const enrollments = await prisma.tutoringEnrollment.findMany({
+    where: { programId: window.programId, active: true },
+    select: {
+      id: true,
+      studentId: true,
+      student: { select: { user: { select: { name: true } } } },
+      bookings: {
+        where: { date, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
+        select: { id: true },
+      },
+    },
+    orderBy: { student: { user: { name: 'asc' } } },
+  });
+
+  return enrollments
+    .filter((e) => e.bookings.length === 0)
+    .map((e) => ({ enrollmentId: e.id, studentId: e.studentId, studentName: e.student.user.name }));
 }
 
 export async function cancelBooking(bookingId: string, studentId: string): Promise<void> {

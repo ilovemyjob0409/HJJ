@@ -6,6 +6,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import AttendanceRosterEditor, { RosterRow, SavedRecord, ClearedRecord } from '@/components/AttendanceRosterEditor';
 import { TUTORING_HIDDEN_STATUSES } from '@/components/attendanceStatusOptions';
 
@@ -68,6 +69,13 @@ interface TutoringRosterApiRow {
   quotaLabel: string;
 }
 
+// 個別輔導點名的「現場加入」資訊（未預約到場的學生由老師/行政當場登記）
+interface WalkInInfo {
+  candidates: { enrollmentId: string; studentId: string; studentName: string }[];
+  booked: number;
+  capacity: number;
+}
+
 export function todayDateInput() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -90,7 +98,12 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState<SessionSummary | null>(null);
   const [rosterRows, setRosterRows] = useState<RosterRow[] | null>(null);
+  const [walkIn, setWalkIn] = useState<WalkInInfo | null>(null);
+  const [walkInOpen, setWalkInOpen] = useState(false);
+  const [walkInQuery, setWalkInQuery] = useState('');
+  const [walkInBusy, setWalkInBusy] = useState(false);
   const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   async function load() {
     setLoading(true);
@@ -158,7 +171,10 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
         }))
       );
     } else if (s.type === 'TUTORING') {
-      const res = await fetch(`/api/attendance/tutoring/${s.id}?date=${date}`);
+      const [res, walkInRes] = await Promise.all([
+        fetch(`/api/attendance/tutoring/${s.id}?date=${date}`),
+        fetch(`/api/attendance/tutoring/${s.id}/walk-in?date=${date}`),
+      ]);
       const roster = await res.json();
       setRosterRows(
         roster.map((r: TutoringRosterApiRow) => ({
@@ -171,6 +187,7 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
           quotaLabel: r.quotaLabel,
         }))
       );
+      setWalkIn(walkInRes.ok ? await walkInRes.json() : null);
     } else {
       const res = await fetch(`/api/attendance/activity/${s.id}?date=${date}`);
       const roster = await res.json();
@@ -241,6 +258,48 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
     load();
   }
 
+  function closeRoster() {
+    setOpening(null);
+    setRosterRows(null);
+    setWalkIn(null);
+    setWalkInOpen(false);
+    setWalkInQuery('');
+  }
+
+  // 未預約到場：現場登記一筆當天預約，之後點名/扣堂照一般流程走。
+  // 名額已滿時經確認可強制加入（老師/行政都可）。
+  async function addWalkIn(candidate: { enrollmentId: string; studentName: string }) {
+    if (!opening || !walkIn || walkInBusy) return;
+    const full = walkIn.booked >= walkIn.capacity;
+    if (full) {
+      const ok = await confirm(
+        `今日名額已滿（${walkIn.booked}/${walkIn.capacity}），仍要強制加入「${candidate.studentName}」嗎？`,
+        { danger: true }
+      );
+      if (!ok) return;
+    }
+    setWalkInBusy(true);
+    try {
+      const res = await fetch(`/api/attendance/tutoring/${opening.id}/walk-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrollmentId: candidate.enrollmentId, date, force: full }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error === 'ALREADY_BOOKED_SAME_DAY' ? '這位學生今天已在名單上' : '加入失敗，請稍後再試');
+        return;
+      }
+      showToast(`已加入 ${candidate.studentName}`);
+      setWalkInQuery('');
+      setWalkInOpen(false);
+      await openSession(opening);
+      load();
+    } finally {
+      setWalkInBusy(false);
+    }
+  }
+
   const columns: Column<SessionSummary>[] = [
     { header: '類型', render: (s) => TYPE_LABEL[s.type], sortValue: (s) => s.type },
     { header: '名稱', render: (s) => s.title, sortValue: (s) => s.title },
@@ -268,21 +327,64 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
 
       <Modal
         open={opening !== null}
-        onClose={() => {
-          setOpening(null);
-          setRosterRows(null);
-        }}
+        onClose={closeRoster}
         title={opening ? `${TYPE_LABEL[opening.type]}點名 - ${opening.title}` : ''}
         maxWidthClassName="max-w-2xl"
       >
+        {opening?.type === 'TUTORING' && walkIn && (
+          <div className="mb-3">
+            {!walkInOpen ? (
+              <button type="button" className="text-sm text-brandDark hover:underline" onClick={() => setWalkInOpen(true)}>
+                ＋ 現場加入學生（今日 {walkIn.booked}/{walkIn.capacity}）
+              </button>
+            ) : (
+              <div className="rounded-lg border border-borderSubtle p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-medium text-ink">現場加入（今日 {walkIn.booked}/{walkIn.capacity}）</p>
+                  <button type="button" className="text-xs text-inkMuted hover:underline" onClick={() => setWalkInOpen(false)}>
+                    收合
+                  </button>
+                </div>
+                <Input placeholder="搜尋學生姓名…" value={walkInQuery} onChange={(e) => setWalkInQuery(e.target.value)} />
+                {(() => {
+                  const q = walkInQuery.trim().toLowerCase();
+                  const matches = walkIn.candidates
+                    .filter((c) => !q || c.studentName.toLowerCase().includes(q))
+                    .slice(0, 8);
+                  if (matches.length === 0) {
+                    return <p className="mt-2 text-sm text-inkMuted">沒有可加入的學生（未預約的有效報名才會出現）</p>;
+                  }
+                  return (
+                    <div className="mt-2 flex max-h-40 flex-col overflow-y-auto rounded-lg border border-borderStrong">
+                      {matches.map((c) => (
+                        <button
+                          key={c.enrollmentId}
+                          type="button"
+                          disabled={walkInBusy}
+                          onClick={() => addWalkIn(c)}
+                          className="flex items-center justify-between border-b border-borderSubtle px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stripe disabled:opacity-50"
+                        >
+                          <span className="text-ink">{c.studentName}</span>
+                          <span className="text-xs text-brandDark">加入</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        )}
         {rosterRows && (
           <AttendanceRosterEditor
+            key={rosterRows.map((r) => r.key).join(',')}
             rows={rosterRows}
             onSave={handleSaveRoster}
             hiddenStatuses={opening?.type === 'TUTORING' ? TUTORING_HIDDEN_STATUSES : undefined}
           />
         )}
       </Modal>
+      {ConfirmDialog}
     </>
   );
 }
