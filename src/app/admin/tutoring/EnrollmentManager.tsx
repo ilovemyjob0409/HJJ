@@ -62,6 +62,7 @@ export default function EnrollmentManager() {
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
   const [editingEnrollment, setEditingEnrollment] = useState<EnrollmentRow | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[] | null>(null);
+  const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0); // 彈窗內預約成功後刷新出缺勤表格
   const [addOpen, setAddOpen] = useState(false);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -106,7 +107,7 @@ export default function EnrollmentManager() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingEnrollmentId]);
+  }, [editingEnrollmentId, attendanceRefreshKey]);
 
   // 深連結：/admin/tutoring?student=<id>（學生名單「前往管理」）——
   // 報名載入後把清單篩到該學生；只有一筆報名就直接開編輯彈窗。
@@ -460,7 +461,14 @@ export default function EnrollmentManager() {
         )}
       </Modal>
       {bookingTarget && (
-        <AdminBookingModal enrollment={bookingTarget} onClose={() => setBookingTarget(null)} onBooked={load} />
+        <AdminBookingModal
+          enrollment={bookingTarget}
+          onClose={() => setBookingTarget(null)}
+          onBooked={() => {
+            load();
+            setAttendanceRefreshKey((k) => k + 1);
+          }}
+        />
       )}
       {ConfirmDialog}
     </>
