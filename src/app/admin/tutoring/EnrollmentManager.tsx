@@ -7,8 +7,12 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
+import StatusBadge, { getStatusBadgeConfig } from '@/components/ui/StatusBadge';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 import AdminBookingModal from './AdminBookingModal';
 
 interface EnrollmentRow {
@@ -22,6 +26,16 @@ interface EnrollmentRow {
   active: boolean;
   locked: number;
   upcoming: number;
+}
+
+interface AttendanceRecord {
+  id: string;
+  date: string;
+  attendanceStatus: 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED' | null;
+  bookingStatus: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  isMakeup: boolean;
 }
 
 interface StudentOption {
@@ -47,6 +61,7 @@ export default function EnrollmentManager() {
   const [newMonthlyQuota, setNewMonthlyQuota] = useState('');
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
   const [editingEnrollment, setEditingEnrollment] = useState<EnrollmentRow | null>(null);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[] | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -65,6 +80,17 @@ export default function EnrollmentManager() {
   useEffect(() => {
     load();
   }, []);
+
+  // 編輯彈窗開啟時載入該報名的完整出缺勤；null = 載入中（表格顯示骨架屏）
+  const editingEnrollmentId = editingEnrollment?.id ?? null;
+  useEffect(() => {
+    setAttendanceRecords(null);
+    if (!editingEnrollmentId) return;
+    fetch(`/api/tutoring-enrollments/${editingEnrollmentId}/attendance`)
+      .then((res) => (res.ok ? res.json() : { records: [] }))
+      .then((data) => setAttendanceRecords(data.records))
+      .catch(() => setAttendanceRecords([]));
+  }, [editingEnrollmentId]);
 
   // 深連結：/admin/tutoring?student=<id>（學生名單「前往管理」）——
   // 報名載入後把清單篩到該學生；只有一筆報名就直接開編輯彈窗。
@@ -193,14 +219,27 @@ export default function EnrollmentManager() {
         </>
       ),
     },
+  ];
+
+  const attendanceColumns: Column<AttendanceRecord>[] = [
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
     {
-      header: '操作',
-      render: (r) => (
-        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setEditingEnrollment(r)}>
-          編輯
-        </Button>
-      ),
+      header: '狀態',
+      render: (r) => <StatusBadge status={r.attendanceStatus ?? r.bookingStatus} />,
+      sortValue: (r) => r.attendanceStatus ?? r.bookingStatus,
     },
+    { header: '類型', render: (r) => (r.isMakeup ? '補課' : '一般'), sortValue: (r) => (r.isMakeup ? 1 : 0) },
+    { header: '簽到', render: (r) => r.checkInTime ?? '-', sortValue: (r) => r.checkInTime ?? null },
+    { header: '簽退', render: (r) => r.checkOutTime ?? '-', sortValue: (r) => r.checkOutTime ?? null },
+  ];
+
+  // 匯出欄位：畫面欄位是 React 節點，匯出要另外給純文字（ExportExcelButton 慣例）
+  const attendanceExportColumns = [
+    { header: '日期', value: (r: AttendanceRecord) => formatDateWithWeekday(r.date) },
+    { header: '狀態', value: (r: AttendanceRecord) => getStatusBadgeConfig(r.attendanceStatus ?? r.bookingStatus).label },
+    { header: '類型', value: (r: AttendanceRecord) => (r.isMakeup ? '補課' : '一般') },
+    { header: '簽到', value: (r: AttendanceRecord) => r.checkInTime ?? '' },
+    { header: '簽退', value: (r: AttendanceRecord) => r.checkOutTime ?? '' },
   ];
 
   return (
@@ -332,6 +371,7 @@ export default function EnrollmentManager() {
           columns={columns}
           rows={filteredEnrollments}
           keyField={(r) => r.id}
+          onRowClick={(r) => setEditingEnrollment(r)}
           emptyText={listSearch.trim() ? '沒有符合搜尋的學生' : '目前沒有學生報名個別輔導'}
         />
       </Card>
@@ -339,6 +379,7 @@ export default function EnrollmentManager() {
         open={editingEnrollment !== null}
         onClose={() => setEditingEnrollment(null)}
         title={`${editingEnrollment?.studentName ?? ''}・${editingEnrollment?.programName ?? ''}`}
+        maxWidthClassName="max-w-2xl"
       >
         {editingEnrollment && (
           <div className="flex flex-col gap-3">
@@ -379,6 +420,25 @@ export default function EnrollmentManager() {
             >
               移除
             </Button>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-medium text-inkMuted">出缺勤紀錄</p>
+                <ExportExcelButton
+                  rows={attendanceRecords ?? []}
+                  columns={attendanceExportColumns}
+                  filename={`個別輔導出缺勤_${editingEnrollment.studentName}_${editingEnrollment.programName}`}
+                  className="px-2 py-1 text-xs"
+                />
+              </div>
+              <CollapsibleDataTable
+                columns={attendanceColumns}
+                rows={attendanceRecords ?? []}
+                loading={attendanceRecords === null}
+                keyField={(r) => r.id}
+                maxRows={3}
+                emptyText="尚無預約紀錄"
+              />
+            </div>
           </div>
         )}
       </Modal>
