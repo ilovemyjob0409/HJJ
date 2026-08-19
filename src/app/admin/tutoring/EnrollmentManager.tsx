@@ -82,14 +82,30 @@ export default function EnrollmentManager() {
   }, []);
 
   // 編輯彈窗開啟時載入該報名的完整出缺勤；null = 載入中（表格顯示骨架屏）
+  // cancelled flag：快速切換不同報名時，丟棄前一筆已過期的回應。
   const editingEnrollmentId = editingEnrollment?.id ?? null;
   useEffect(() => {
     setAttendanceRecords(null);
     if (!editingEnrollmentId) return;
+    let cancelled = false;
     fetch(`/api/tutoring-enrollments/${editingEnrollmentId}/attendance`)
-      .then((res) => (res.ok ? res.json() : { records: [] }))
-      .then((data) => setAttendanceRecords(data.records))
-      .catch(() => setAttendanceRecords([]));
+      .then((res) => {
+        if (!res.ok) throw new Error('LOAD_FAILED');
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) setAttendanceRecords(data.records);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          showToast('出缺勤紀錄載入失敗');
+          setAttendanceRecords([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingEnrollmentId]);
 
   // 深連結：/admin/tutoring?student=<id>（學生名單「前往管理」）——
@@ -372,6 +388,7 @@ export default function EnrollmentManager() {
           rows={filteredEnrollments}
           keyField={(r) => r.id}
           onRowClick={(r) => setEditingEnrollment(r)}
+          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
           emptyText={listSearch.trim() ? '沒有符合搜尋的學生' : '目前沒有學生報名個別輔導'}
         />
       </Card>
