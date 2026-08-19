@@ -11,6 +11,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
 import EnrollmentManager from './EnrollmentManager';
+import TutoringPolicyModal from './TutoringPolicyModal';
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -324,9 +325,12 @@ export default function AdminTutoringPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">個別輔導管理</h1>
 
-      <Link href="/admin/tutoring/bookings" className="mb-4 inline-block text-sm font-semibold text-brand hover:underline">
-        查看每日預約總覽 →
-      </Link>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Link href="/admin/tutoring/bookings" className="text-sm font-semibold text-brand hover:underline">
+          查看每日預約總覽 →
+        </Link>
+        <TutoringPolicyModal />
+      </div>
 
       <Card className="mb-6">
         <p className="mb-2 font-semibold text-ink">新增課程</p>
