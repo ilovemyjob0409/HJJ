@@ -52,7 +52,8 @@ model PushSubscription {
   顯示「開啟通知」。因此「關閉」（刪除綁定）持久生效、不會被自動重綁蓋掉；手足帳號
   在同裝置首次使用需各按一次「開啟通知」（裝置已授權過，不會再跳權限視窗）。
 - 推播回應 404/410（訂閱失效）時，刪除該 endpoint 的**所有**列（跨帳號）。
-- `Student.lineUserId`、`Student.lineBindCode` 從 schema 移除；正式站跑 DROP COLUMN。
+- `Student.lineUserId`、`Student.lineBindCode` 從 schema 移除；正式站跑 DROP COLUMN
+  （**部署完成後**才跑，見部署文件）。
 
 ## pushService（伺服器端）
 
@@ -92,7 +93,8 @@ model PushSubscription {
 | 弈廳堂票過低 | attendanceService | 學生 | 學生首頁 |
 | 補課核准／駁回／撤銷 | makeupRequestService | 學生 | 學生首頁 |
 | 個輔月額度提醒 | tutoring-quota-reminder cron | 學生 | 個輔預約頁 |
-| 新補課申請送出 | 請假／補課申請建立流程 | 全體行政 | 補課審核頁 |
+| 新補課申請送出 | makeupRequestService | 全體行政 | 補課審核頁 |
+| 新請假申請 | leaveRequestService | 全體行政 | `/admin`（行政首頁請假紀錄表） |
 | 學生預約個輔 | tutoringBookingService | 全體行政＋該時段老師 | 各自管理頁 |
 | 學生取消個輔 | tutoringBookingService | 全體行政＋該時段老師 | 各自管理頁 |
 | 被指派代課／一對一 | 指派流程 | 該老師 | 老師首頁 |
@@ -141,9 +143,6 @@ model PushSubscription {
 
 ## 部署（上線時）
 
-1. `npx web-push generate-vapid-keys` 產生金鑰；Vercel 設
-   `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT`。
-2. 正式站 SQL：`CREATE TABLE "PushSubscription" ...`＋
-   `ALTER TABLE "Student" DROP COLUMN "lineUserId", DROP COLUMN "lineBindCode"`。
-3. push 觸發 Vercel 部署。
-4. LINE Developers 後台 channel 由使用者自行停用。
+`npx web-push generate-vapid-keys` 產生正式金鑰；詳細步驟與順序見
+`2026-08-20-web-push-deployment.md`（關鍵順序：建表在部署前、**DROP COLUMN 一定在部署完成後**——
+舊程式碼未帶 select 的 findUnique 會 SELECT 全欄位）。

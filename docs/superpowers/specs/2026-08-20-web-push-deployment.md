@@ -53,3 +53,5 @@ ALTER TABLE "Student" DROP COLUMN "lineUserId", DROP COLUMN "lineBindCode";
 - LINE Developers 後台的 Messaging API channel 自行停用（程式碼已全移除，留著也不會被呼叫）。
 - 使用手冊 PDF 重製（`/guide` 已更新，PDF 另行處理）。
 - 提醒家長：手足共用手機時，每個小孩帳號第一次都要各按一次「開啟通知」。
+- 檢查後台「常見問題」與「補課須知」是否有提到 LINE 的條目（DB 內容，程式碼 grep 掃不到），改寫成推播通知。
+- /guide 第 11 章的實機截圖（Android／iPhone 圖解）：等正式金鑰上線後用真機補拍，跟 PDF 重製一起處理。

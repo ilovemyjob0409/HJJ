@@ -337,7 +337,8 @@ export default async function GuidePage() {
           </p>
           <Step no="1" title="iPhone：先加入主畫面">
             用 Safari 開啟本網站，點下方「分享」按鈕，選「加入主畫面」。之後請一律從主畫面的 MUP
-            圖示開啟系統（直接用 Safari 開啟收不到通知）。
+            圖示開啟系統（直接用 Safari 開啟收不到通知）。從主畫面第一次開啟時需要再登入一次
+            （它跟 Safari 的登入是分開的）。
           </Step>
           <Step no="2" title="Android：直接開啟即可">
             用 Chrome 開啟本網站即可，不需要加入主畫面（加入主畫面使用起來更方便）。
