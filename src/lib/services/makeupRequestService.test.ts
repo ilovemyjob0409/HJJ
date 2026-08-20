@@ -23,6 +23,7 @@ import {
   rejectMakeupCancellation,
   revokeMakeup,
 } from './makeupRequestService';
+import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 
 // 報名帶堂數 → setStudentEnrollments 會建立第一期，之後的一對一額度
 // 都從這期起算（一期 1 次）。
@@ -464,7 +465,7 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
     expect(pendingAfter.map((m) => m.id)).not.toContain(makeup.id);
   });
 
-  it('does not throw when the student has no LINE binding', async () => {
+  it('does not throw when the student has no push subscription', async () => {
     const { classB, leave } = await setup();
     const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
@@ -473,14 +474,33 @@ describe('listPendingMakeupRequests / decideMakeupRequest', () => {
     expect(decided.status).toBe('APPROVED');
   });
 
-  it('does not throw when the student has a LINE binding but no access token is configured', async () => {
+  it('does not throw when the student has a push subscription but VAPID keys are not configured', async () => {
     const { student, classB, leave } = await setup();
-    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent123' } });
+    await subscribeStudentForTest(student.id);
     const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: classB.id, targetDate: new Date(Date.UTC(2026, 6, 22)) });
 
     const decided = await decideMakeupRequest(makeup.id, 'REJECTED');
 
     expect(decided.status).toBe('REJECTED');
+  });
+
+  it('approving a one-on-one makeup does not throw when the assigned teacher exists', async () => {
+    const { student, teacher, leave } = await setup();
+    await subscribeStudentForTest(student.id);
+    await prisma.teacherAvailability.create({
+      data: { teacherId: teacher.id, weekday: new Date(Date.UTC(2026, 6, 22)).getUTCDay(), startTime: '10:00', endTime: '18:00' },
+    });
+    const makeup = await createOneOnOneMakeupRequest({
+      leaveRequestId: leave.id,
+      studentId: student.id,
+      teacherId: teacher.id,
+      slotDate: new Date(Date.UTC(2026, 6, 22)),
+      slotStartTime: '10:00',
+    });
+
+    const decided = await decideMakeupRequest(makeup.id, 'APPROVED');
+
+    expect(decided.status).toBe('APPROVED');
   });
 });
 

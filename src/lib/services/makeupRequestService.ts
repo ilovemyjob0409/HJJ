@@ -5,7 +5,7 @@ import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
 import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
 import { listTeacherAvailability } from './availabilityService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
-import { pushLineMessage } from './lineService';
+import { pushToUser } from './pushService';
 
 export const GO_SUBJECT = '圍棋';
 export const ONE_ON_ONE_PERIOD_LIMIT = 1;
@@ -212,26 +212,37 @@ export function formatMakeupSlot(m: {
 }
 
 const MAKEUP_NOTIFY_INCLUDE = {
-  leaveRequest: { select: { student: { select: { id: true, lineUserId: true, user: { select: { name: true } } } } } },
+  leaveRequest: { select: { student: { select: { id: true, user: { select: { id: true, name: true } } } } } },
   targetClass: { select: { name: true, startTime: true, endTime: true } },
+  teacher: { select: { userId: true } },
 } as const;
 
 type MakeupWithNotifyInfo = Prisma.MakeupRequestGetPayload<{ include: typeof MAKEUP_NOTIFY_INCLUDE }>;
 
-// LINE 通知家長；失敗只記 log，不影響主流程（核准／代排／撤銷共用）。
+// 推播通知家長；一對一另通知被指派老師。失敗只記 log，不影響主流程
+// （核准／代排／撤銷共用）。
 async function notifyMakeup(makeup: MakeupWithNotifyInfo, kind: 'APPROVED' | 'REJECTED' | 'REVOKED') {
   try {
     const student = makeup.leaveRequest.student;
-    if (!student.lineUserId) return;
-    const text =
+    const slot = formatMakeupSlot(makeup);
+    const studentMessage =
       kind === 'APPROVED'
-        ? `【MUP】${student.user.name}的補課申請已核准：${formatMakeupSlot(makeup)}`
+        ? { title: '補課已核准', body: `${student.user.name}的補課申請已核准：${slot}` }
         : kind === 'REVOKED'
-          ? `【MUP】${student.user.name}的補課已取消：${formatMakeupSlot(makeup)}，如需重新安排請洽行政人員`
-          : `【MUP】${student.user.name}的補課申請未通過，請洽行政人員`;
-    await pushLineMessage(student.lineUserId, text);
+          ? { title: '補課已取消', body: `${student.user.name}的補課已取消：${slot}，如需重新安排請洽行政人員` }
+          : { title: '補課申請未通過', body: `${student.user.name}的補課申請未通過，請洽行政人員` };
+    await pushToUser(student.user.id, { ...studentMessage, url: '/student' });
+
+    // 一對一補課有指定老師：核准＝確定指派、撤銷＝行程取消，都要讓老師知道。
+    if (makeup.teacher && kind !== 'REJECTED') {
+      const teacherMessage =
+        kind === 'APPROVED'
+          ? { title: '一對一補課指派', body: `您被指派 ${student.user.name} 的一對一補課：${slot}` }
+          : { title: '一對一補課取消', body: `${student.user.name} 的一對一補課已取消：${slot}` };
+      await pushToUser(makeup.teacher.userId, { ...teacherMessage, url: '/teacher' });
+    }
   } catch (err) {
-    console.error('makeup LINE notification failed', err);
+    console.error('makeup push notification failed', err);
   }
 }
 

@@ -22,7 +22,7 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
 }
 
 // 撤銷請假（學生／老師／行政共用）。掛有補課時先走 revokeMakeup
-// （刪補課＋LINE 通知；補課已點名會擋 MAKEUP_HAS_ATTENDANCE），再刪請假。
+// （刪補課＋推播通知；補課已點名會擋 MAKEUP_HAS_ATTENDANCE），再刪請假。
 // 兩步非同一交易：與現有「通知在交易外」的行為一致，最壞情況是補課已
 // 撤而請假仍在，可重按一次撤銷完成。
 export async function revokeLeaveRequest(leaveRequestId: string) {
