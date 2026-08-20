@@ -14,7 +14,7 @@ import Modal from '@/components/ui/Modal';
 const RULES: { title: string; body: string }[] = [
   {
     title: '收費方式',
-    body: '月費制，自每月 1 號起算，每月 3,000 元。原則上每週 2 堂課——多上的不收費，少上的幫你補。',
+    body: '個別輔導採月費制，自每月 1 號起算，每月 3,000 元，原則上每週上課 2 堂。當週多上不另收費，少上則安排補課（詳見下方「缺席與補課」）。',
   },
   {
     title: '繳費期限',
