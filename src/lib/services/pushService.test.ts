@@ -110,15 +110,15 @@ describe('pushToUser', () => {
     expect(await prisma.pushSubscription.count({ where: { endpoint: SUB.endpoint } })).toBe(0);
   });
 
-  it('deletes the subscription rows on a 403 response (VAPID key rotated)', async () => {
+  it('keeps the subscription rows on a 403 response (server-side key misconfig must not wipe the table)', async () => {
     setVapidEnv();
     const user = await createUser('STUDENT', 'push-l@example.com');
     await saveSubscription(user.id, SUB);
     sendNotificationMock.mockRejectedValue(Object.assign(new Error('invalid signature'), { statusCode: 403 }));
 
-    await pushToUser(user.id, PAYLOAD);
+    await expect(pushToUser(user.id, PAYLOAD)).resolves.toBeUndefined();
 
-    expect(await prisma.pushSubscription.count({ where: { endpoint: SUB.endpoint } })).toBe(0);
+    expect(await prisma.pushSubscription.count({ where: { endpoint: SUB.endpoint } })).toBe(1);
   });
 
   it("keeps the subscription and does not throw on other send errors", async () => {

@@ -69,9 +69,11 @@ export async function pushToUsers(userIds: string[], payload: PushPayload): Prom
       );
     } catch (err) {
       const statusCode = (err as { statusCode?: number }).statusCode;
-      if (statusCode === 403 || statusCode === 404 || statusCode === 410) {
-        // 訂閱已失效（使用者清了網站資料）或 VAPID 金鑰已輪換（403 InvalidSignature）：
-        // 這個 endpoint 的所有帳號綁定一併清掉，客戶端下次掛載會重新引導訂閱
+      if (statusCode === 404 || statusCode === 410) {
+        // 訂閱已失效（使用者清了網站資料等）：這個 endpoint 的所有帳號綁定一併清掉。
+        // 403 刻意「不」清——它分不清「這筆訂閱的金鑰舊了」和「伺服器端金鑰貼錯」，
+        // 後者會把整張表清光；金鑰輪換交給客戶端 matchesCurrentKey 自癒
+        // （退掉舊訂閱後，這個 endpoint 之後自然回 404/410 走這裡清掉）。
         await prisma.pushSubscription.deleteMany({ where: { endpoint: sub.endpoint } }).catch(() => {});
       } else {
         console.error(`web push to ${sub.endpoint} failed`, err);
