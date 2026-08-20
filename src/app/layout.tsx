@@ -2,7 +2,12 @@ import Script from 'next/script';
 import './globals.css';
 import Providers from './providers';
 
-export const metadata = { title: 'MUP' };
+export const metadata = {
+  title: 'MUP',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'MUP', statusBarStyle: 'default' as const },
+  icons: { apple: '/apple-touch-icon.png' },
+};
 
 const THEME_INIT_SCRIPT = `
   try {
