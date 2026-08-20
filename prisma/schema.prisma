@@ -99,6 +99,7 @@ model User {
   markedGoHallAttendances   GoHallAttendance[]
   markedActivityAttendances ActivityAttendance[]
   markedTutoringAttendances TutoringAttendance[]
+  pushSubscriptions         PushSubscription[]
 }
 
 model Teacher {
@@ -550,4 +551,19 @@ model FamilySwitchToken {
   targetUserId String
   expiresAt    DateTime
   usedAt       DateTime?
+}
+
+// Web Push 訂閱：一個 User 可有多裝置；同一裝置（endpoint）也可綁多個
+// 帳號——家長一支手機切換手足帳號時，各帳號都收得到自己的通知。
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, endpoint])
 }
