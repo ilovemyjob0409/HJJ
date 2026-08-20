@@ -13,6 +13,7 @@ import { createActivity, createCategory, registerForActivity } from './activityS
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
 import { createProgram, createWindow, createEnrollment } from './tutoringProgramService';
 import { createBooking, adminCancelBooking } from './tutoringBookingService';
+import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 
 beforeEach(async () => {
   // Create marker user for attendance marking
@@ -781,10 +782,10 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     expect(record).toBeNull();
   });
 
-  it('flags low quota after a check-in drops remaining sessions to the threshold, when the student is LINE-bound', async () => {
+  it('flags low quota after a check-in drops remaining sessions to the threshold, when the student has a push subscription', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota1@example.com', password: 'x', subjects: '數學' });
     const student = await setupStudentWithNumber('S011', 'checkin-lowquota-student1@example.com');
-    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent011' } });
+    await subscribeStudentForTest(student.id);
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
     await enrollStudent(cls.id, student.id);
     await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls.id } }, data: { totalSessions: 4 } });
@@ -851,10 +852,10 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     expect(enrollment.lowQuotaNotifiedAt).toBeNull();
   });
 
-  it('does not throw when the student has a LINE binding but no access token is configured', async () => {
+  it('does not throw when the student has a push subscription but VAPID keys are not configured', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'checkin-linebound@example.com', password: 'x', subjects: '數學' });
     const student = await setupStudentWithNumber('S014', 'checkin-linebound-student@example.com');
-    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'Uparent999' } });
+    await subscribeStudentForTest(student.id);
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
     await enrollStudent(cls.id, student.id);
 
@@ -863,7 +864,7 @@ describe('checkInByStudentNumber / resolveCheckIn', () => {
     expect(result).toEqual({ result: 'CHECKED_IN', studentName: '小明', sessionTitle: '數學A班', time: '19:00' });
   });
 
-  it('does not burn the low-quota flag for a student who is not yet LINE-bound', async () => {
+  it('does not burn the low-quota flag for a student with no push subscription', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'checkin-lowquota-unbound@example.com', password: 'x', subjects: '數學' });
     const student = await setupStudentWithNumber('S015', 'checkin-lowquota-unbound-student@example.com');
     const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
@@ -978,7 +979,7 @@ describe('go-hall ticket deduction on attendance', () => {
 
   it('sets the low-quota flag once when balance drops to the threshold', async () => {
     const { student, session } = await setupGoHallSessionWithStudent();
-    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'U-test-line' } });
+    await subscribeStudentForTest(student.id);
     await buyGoHallTickets({ studentId: student.id, sessions: 4 }); // 扣 1 後剩 3 → 觸發
 
     await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
@@ -987,9 +988,9 @@ describe('go-hall ticket deduction on attendance', () => {
     expect(fresh.goHallLowQuotaNotifiedAt).not.toBeNull();
   });
 
-  it('does not set the flag when balance stays above the threshold or student has no LINE', async () => {
+  it('does not set the flag when balance stays above the threshold or student has no push subscription', async () => {
     const { student, session } = await setupGoHallSessionWithStudent();
-    await buyGoHallTickets({ studentId: student.id, sessions: 10 }); // 剩 9，未達門檻；且未綁 LINE
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 }); // 剩 9，未達門檻；且未訂閱推播
 
     await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
 

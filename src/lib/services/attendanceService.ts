@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
-import { pushLineMessage } from './lineService';
+import { pushToUser, hasPushSubscription } from './pushService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
@@ -1113,10 +1113,10 @@ function toCandidateOption(c: CheckInCandidate): CheckInCandidateOption {
 }
 
 async function maybeNotifyLowQuota(
-  student: { id: string; lineUserId: string | null; user: { name: string } },
+  student: { id: string; user: { id: string; name: string } },
   classId: string
 ): Promise<void> {
-  if (!student.lineUserId) return;
+  if (!(await hasPushSubscription(student.user.id))) return;
 
   const enrollment = await prisma.classEnrollment.findUnique({ where: { studentId_classId: { studentId: student.id, classId } } });
   if (!enrollment || enrollment.lowQuotaNotifiedAt !== null) return;
@@ -1125,7 +1125,11 @@ async function maybeNotifyLowQuota(
   if (remaining === null || remaining > LOW_CLASS_QUOTA_THRESHOLD) return;
 
   await prisma.classEnrollment.update({ where: { id: enrollment.id }, data: { lowQuotaNotifiedAt: new Date() } });
-  await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`);
+  await pushToUser(student.user.id, {
+    title: '堂數提醒',
+    body: `${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`,
+    url: '/student',
+  });
 }
 
 // 弈廳堂票低堂數提醒：扣堂後剩餘 ≤ LOW_TICKET_THRESHOLD 且未提醒過才發，
@@ -1134,29 +1138,36 @@ async function maybeNotifyLowGoHallTickets(studentId: string): Promise<void> {
   try {
     const student = await prisma.student.findUnique({
       where: { id: studentId },
-      select: { id: true, lineUserId: true, goHallLowQuotaNotifiedAt: true, user: { select: { name: true } } },
+      select: { id: true, goHallLowQuotaNotifiedAt: true, user: { select: { id: true, name: true } } },
     });
-    if (!student?.lineUserId || student.goHallLowQuotaNotifiedAt !== null) return;
+    if (!student || student.goHallLowQuotaNotifiedAt !== null) return;
+    if (!(await hasPushSubscription(student.user.id))) return;
     const remaining = await getTicketBalance(studentId);
     if (remaining > LOW_TICKET_THRESHOLD) return;
     await prisma.student.update({ where: { id: studentId }, data: { goHallLowQuotaNotifiedAt: new Date() } });
-    await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 弈廳堂票剩餘：${remaining} 堂，請盡快與行政人員聯繫續購`);
+    await pushToUser(student.user.id, {
+      title: '弈廳堂票提醒',
+      body: `${student.user.name} 弈廳堂票剩餘：${remaining} 堂，請盡快與行政人員聯繫續購`,
+      url: '/student',
+    });
   } catch (err) {
     console.error('maybeNotifyLowGoHallTickets failed', err);
   }
 }
 
 async function notifyAttendanceResult(
-  student: { id: string; lineUserId: string | null; user: { name: string } },
+  student: { id: string; user: { id: string; name: string } },
   match: CheckInCandidate,
   action: 'CHECKED_IN' | 'CHECKED_OUT',
   timeStr: string
 ): Promise<void> {
   try {
-    if (student.lineUserId) {
-      const verb = action === 'CHECKED_IN' ? '簽到' : '簽退';
-      await pushLineMessage(student.lineUserId, `【MUP】${student.user.name} 已於 ${timeStr} 完成${verb}（${match.title}）`);
-    }
+    const verb = action === 'CHECKED_IN' ? '簽到' : '簽退';
+    await pushToUser(student.user.id, {
+      title: `${verb}完成`,
+      body: `${student.user.name} 已於 ${timeStr} 完成${verb}（${match.title}）`,
+      url: '/student',
+    });
     if (action === 'CHECKED_IN' && match.classId) {
       await maybeNotifyLowQuota(student, match.classId);
     }
@@ -1176,7 +1187,7 @@ export async function checkInByStudentNumber(
 ): Promise<CheckInResult> {
   const student = await prisma.student.findUnique({
     where: { studentNumber: code },
-    select: { id: true, lineUserId: true, user: { select: { name: true } } },
+    select: { id: true, user: { select: { id: true, name: true } } },
   });
   if (!student) return { result: 'NOT_FOUND' };
 
@@ -1213,7 +1224,7 @@ export async function resolveCheckIn(
 ): Promise<CheckInResult> {
   const student = await prisma.student.findUnique({
     where: { studentNumber: code },
-    select: { id: true, lineUserId: true, user: { select: { name: true } } },
+    select: { id: true, user: { select: { id: true, name: true } } },
   });
   if (!student) return { result: 'NOT_FOUND' };
 
