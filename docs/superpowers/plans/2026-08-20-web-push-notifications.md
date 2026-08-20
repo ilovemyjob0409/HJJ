@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-20-web-push-notifications-design.md`
 
+**執行期修訂（2026-08-20，使用者拍板）：** Task 4 審查發現「關閉通知」會被掛載時自動重綁蓋掉（Critical）。
+修正為**伺服器為準**：訂閱路由新增 `GET ?endpoint=`（回 `{ subscribed }`，配套 pushService
+`hasSubscriptionForEndpoint`）；卡片掛載時先 GET 查此帳號綁定，有才 upsert＋顯示已開啟，沒有就顯示
+「開啟通知」——關閉因此持久，手足帳號首次各按一次。enable/disable 均加 try/catch＋res.ok＋Toast 錯誤
+提示，關閉鈕加 in-flight guard。Task 2/4 的程式碼區塊以實作為準（fix commit 見 ledger）。
+另：使用者確認不做獨立推播設定頁——首頁卡片即設定介面。
+
 ## Global Constraints
 
 - 所有 UI 與通知文案為繁體中文；日期顯示一律 `formatDateWithWeekday(date, 'zh-TW')`（`@/lib/dateFormat`）。

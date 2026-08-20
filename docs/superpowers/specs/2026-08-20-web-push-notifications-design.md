@@ -47,7 +47,10 @@ model PushSubscription {
 
 - 唯一鍵是 **(userId, endpoint)**，不是 endpoint 單獨唯一。同一支手機（同一 endpoint）
   可綁多個帳號——配合「手足帳號快速切換」，家長一支手機收得到所有小孩的通知。
-  每次登入某帳號並啟用（或已啟用）通知時，前端把目前訂閱 upsert 到該帳號名下。
+- 顯示與重綁**以伺服器為準**（2026-08-20 執行期修訂，使用者拍板）：卡片掛載時先查
+  此帳號在此 endpoint 是否有綁定（GET），有綁定才 upsert 刷新並顯示已開啟；沒有就
+  顯示「開啟通知」。因此「關閉」（刪除綁定）持久生效、不會被自動重綁蓋掉；手足帳號
+  在同裝置首次使用需各按一次「開啟通知」（裝置已授權過，不會再跳權限視窗）。
 - 推播回應 404/410（訂閱失效）時，刪除該 endpoint 的**所有**列（跨帳號）。
 - `Student.lineUserId`、`Student.lineBindCode` 從 schema 移除；正式站跑 DROP COLUMN。
 
@@ -68,6 +71,8 @@ model PushSubscription {
 - `POST /api/push/subscribe`：需登入；body 為瀏覽器 PushSubscription JSON＋userAgent，
   綁到 session user。
 - `DELETE /api/push/subscribe`：需登入；依 endpoint 移除 session user 名下的訂閱。
+- `GET /api/push/subscribe?endpoint=…`：需登入；回 `{ subscribed: boolean }`——
+  此帳號在該 endpoint 是否已綁定（卡片掛載時的伺服器為準查詢）。
 
 ## Service Worker 與 PWA
 
