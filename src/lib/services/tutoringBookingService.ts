@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { pushLineMessage } from './lineService';
+import { pushToUser, pushToUsers, pushToAdmins, hasPushSubscription } from './pushService';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export function utcDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -35,14 +36,16 @@ export interface CreateBookingInput {
   // 點名現場加入的「硬開」：名額已滿仍可加入（老師/行政確認後）。
   // 只跳過容量檢查，其餘防呆（星期、停開日、同日重複、停用報名）照擋。
   allowOverCapacity?: boolean;
+  // 學生自行預約時通知行政與時段老師；行政代排、點名現場加入不通知。
+  notifyStaff?: boolean;
 }
 
 // 預約不再選時段：一筆預約＝「這位學生這天會來」，booking 的 startTime/endTime
 // 直接沿用窗口本身的時段（DB 欄位保留，kiosk 掃碼簽到等既有流程仍靠它排序
 // 與顯示）。容量也因此簡化成當天人數上限：BOOKED＋PENDING_ADMIN 的既有預約
 // 數達到 window.capacity 就滿了。
-export function createBooking(input: CreateBookingInput): Promise<{ id: string }> {
-  return runSerializableWithRetry(() =>
+export async function createBooking(input: CreateBookingInput): Promise<{ id: string }> {
+  const booking = await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
         const [window, enrollment] = await Promise.all([
@@ -91,6 +94,8 @@ export function createBooking(input: CreateBookingInput): Promise<{ id: string }
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
   );
+  if (input.notifyStaff) await notifyStaffBookingChange(booking.id, 'BOOKED');
+  return booking;
 }
 
 export interface WalkInCandidate {
@@ -142,6 +147,7 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
   // 收費規範：未到場不扣堂——取消一律不計次，保留紀錄（狀態 CANCELLED）
   // 讓學生的預約紀錄看得到這筆取消。
   await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
+  await notifyStaffBookingChange(bookingId, 'CANCELLED');
 }
 
 // 行政取消：與學生取消同語意，一律不計次（收費規範沒有「計次取消」——
@@ -154,6 +160,41 @@ export async function adminCancelBooking(bookingId: string): Promise<void> {
       throw new Error('BOOKING_NOT_FOUND');
     }
     throw err;
+  }
+}
+
+// 學生自行預約／取消時通知行政與該時段老師（含第二老師）。
+// 失敗只記 log，不影響主流程。
+async function notifyStaffBookingChange(bookingId: string, change: 'BOOKED' | 'CANCELLED') {
+  try {
+    const booking = await prisma.tutoringBooking.findUnique({
+      where: { id: bookingId },
+      select: {
+        date: true,
+        window: {
+          select: {
+            teacher: { select: { userId: true } },
+            teacher2: { select: { userId: true } },
+            program: { select: { name: true } },
+          },
+        },
+        enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
+      },
+    });
+    if (!booking) return;
+    const studentName = booking.enrollment.student.user.name;
+    const dateLabel = formatDateWithWeekday(booking.date, 'zh-TW');
+    const payload =
+      change === 'BOOKED'
+        ? { title: '個別輔導預約', body: `${studentName} 已預約 ${dateLabel}「${booking.window.program.name}」` }
+        : { title: '個別輔導取消', body: `${studentName} 已取消 ${dateLabel}「${booking.window.program.name}」` };
+    const teacherUserIds = [booking.window.teacher.userId, booking.window.teacher2?.userId].filter(
+      (id): id is string => Boolean(id)
+    );
+    await pushToUsers(teacherUserIds, { ...payload, url: '/teacher' });
+    await pushToAdmins({ ...payload, url: '/admin/tutoring/bookings' });
+  } catch (err) {
+    console.error('tutoring booking push notification failed', err);
   }
 }
 
@@ -466,19 +507,20 @@ export async function sendMonthlyQuotaReminders(): Promise<{ notified: number }>
     },
     include: {
       program: { select: { name: true } },
-      student: { select: { id: true, lineUserId: true, user: { select: { name: true } } } },
+      student: { select: { id: true, user: { select: { id: true, name: true } } } },
     },
   });
 
   let notified = 0;
   for (const e of enrollments) {
-    if (!e.student.lineUserId) continue;
+    if (!(await hasPushSubscription(e.student.user.id))) continue;
     const { locked, upcoming, quota } = await getMonthlyQuotaStatus(e.id, monthKey);
     if (locked + upcoming >= quota) continue;
-    await pushLineMessage(
-      e.student.lineUserId,
-      `【MUP】${e.student.user.name} 本月「${e.program.name}」還剩 ${quota - locked - upcoming} 堂未預約，記得安排上課時間`
-    );
+    await pushToUser(e.student.user.id, {
+      title: '個別輔導額度提醒',
+      body: `${e.student.user.name} 本月「${e.program.name}」還剩 ${quota - locked - upcoming} 堂未預約，記得安排上課時間`,
+      url: '/student/tutoring',
+    });
     await prisma.tutoringEnrollment.update({ where: { id: e.id }, data: { lastQuotaReminderMonth: monthKey } });
     notified++;
   }

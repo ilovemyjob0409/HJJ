@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { utcDateKey, daysRemainingInTaipeiMonth } from './tutoringBookingService';
 import { prisma } from '@/lib/db';
+import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
@@ -530,9 +531,9 @@ describe('listBookingsOverview', () => {
 });
 
 describe('sendMonthlyQuotaReminders', () => {
-  it('notifies an under-quota enrollment with a lineUserId once, then skips it on a second run', async () => {
+  it('notifies an under-quota enrollment with a push subscription once, then skips it on a second run', async () => {
     const { student } = await setupProgramWithEnrollment();
-    await prisma.student.update({ where: { id: student.id }, data: { lineUserId: 'line-1' } });
+    await subscribeStudentForTest(student.id);
 
     const first = await sendMonthlyQuotaReminders();
     expect(first.notified).toBe(1);
@@ -541,10 +542,26 @@ describe('sendMonthlyQuotaReminders', () => {
     expect(second.notified).toBe(0);
   });
 
-  it('skips enrollments without a lineUserId', async () => {
+  it('skips enrollments without a push subscription', async () => {
     await setupProgramWithEnrollment();
     const result = await sendMonthlyQuotaReminders();
     expect(result.notified).toBe(0);
+  });
+});
+
+describe('booking staff notifications', () => {
+  it('createBooking with notifyStaff does not throw', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, notifyStaff: true });
+    expect(booking.id).toBeTruthy();
+  });
+
+  it('student cancelBooking does not throw and still cancels', async () => {
+    const { window, enrollment, student } = await setupProgramWithEnrollment();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await cancelBooking(booking.id, student.id);
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(row.status).toBe('CANCELLED');
   });
 });
 
