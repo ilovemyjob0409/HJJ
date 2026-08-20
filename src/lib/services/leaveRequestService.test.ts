@@ -94,6 +94,28 @@ describe('listAllLeaveRequests', () => {
   });
 });
 
+describe('createLeaveRequest 通知行政', () => {
+  it('creating a student leave request does not throw when an admin has a push subscription', async () => {
+    const admin = await prisma.user.create({ data: { email: 'leave-admin@example.com', password: 'x', name: '行政', role: 'ADMIN' } });
+    await prisma.pushSubscription.create({
+      data: { userId: admin.id, endpoint: 'https://push.example/admin-1', p256dh: 'k', auth: 'a' },
+    });
+    const teacher = await createTeacher({ name: '陳老師', email: 'leave-t@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'leave-s@example.com', password: 'x' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+
+    const leave = await createLeaveRequest({
+      studentId: student.id,
+      classId: cls.id,
+      date: new Date(Date.UTC(2026, 6, 22)),
+      reason: '事假',
+    });
+
+    expect(leave.status).toBe('APPROVED');
+  });
+});
+
 describe('origin 標記', () => {
   it('學生自行申請的請假標記為 STUDENT', async () => {
     const { student, cls } = await setupClassAndStudent();

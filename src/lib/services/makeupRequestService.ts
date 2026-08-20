@@ -5,7 +5,7 @@ import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
 import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
 import { listTeacherAvailability } from './availabilityService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
-import { pushToUser } from './pushService';
+import { pushToUser, pushToAdmins } from './pushService';
 
 export const GO_SUBJECT = '圍棋';
 export const ONE_ON_ONE_PERIOD_LIMIT = 1;
@@ -64,7 +64,7 @@ export interface CreateInsertionInput {
 // 插班補課不限次數（所有科目），所以不再有額度檢查與交易需求。
 export async function createInsertionMakeupRequest(input: CreateInsertionInput) {
   await assertTargetClassWeekday(input.targetClassId, input.targetDate);
-  return prisma.makeupRequest.create({
+  const makeup = await prisma.makeupRequest.create({
     data: {
       leaveRequestId: input.leaveRequestId,
       type: 'INSERTION',
@@ -73,6 +73,8 @@ export async function createInsertionMakeupRequest(input: CreateInsertionInput) 
       targetDate: input.targetDate,
     },
   });
+  await notifyAdminsNewMakeupRequest(input.leaveRequestId);
+  return makeup;
 }
 
 // 插班目標日期必須落在目標班級的上課星期，否則排進去的是一個不存在的
@@ -92,9 +94,29 @@ export interface CreateOneOnOneInput {
 }
 
 export async function createOneOnOneMakeupRequest(input: CreateOneOnOneInput) {
-  return runSerializableWithRetry(() => createOneOnOneMakeupRequestTx(input));
+  const makeup = await runSerializableWithRetry(() => createOneOnOneMakeupRequestTx(input));
+  await notifyAdminsNewMakeupRequest(input.leaveRequestId);
+  return makeup;
 }
 
+// 學生送出補課申請（PENDING_ADMIN）時提醒行政審核；行政代排直接 APPROVED，
+// 不經過這兩個入口。失敗只記 log。
+async function notifyAdminsNewMakeupRequest(leaveRequestId: string) {
+  try {
+    const leave = await prisma.leaveRequest.findUnique({
+      where: { id: leaveRequestId },
+      select: { student: { select: { user: { select: { name: true } } } } },
+    });
+    if (!leave) return;
+    await pushToAdmins({
+      title: '新補課申請',
+      body: `${leave.student.user.name} 送出補課申請，請至系統審核`,
+      url: '/admin/makeup-requests',
+    });
+  } catch (err) {
+    console.error('new makeup request push notification failed', err);
+  }
+}
 
 // 一對一補課的共用檢查（給學生申請與行政代排）：圍棋限定、每期
 // （最新一期起算）限 1 次、老師可補課時段、時段衝突。必須在

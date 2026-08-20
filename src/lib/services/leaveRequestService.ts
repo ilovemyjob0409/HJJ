@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/db';
 import { revokeMakeup } from './makeupRequestService';
+import { pushToAdmins } from './pushService';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export interface CreateLeaveRequestInput {
   studentId: string;
@@ -11,14 +13,34 @@ export interface CreateLeaveRequestInput {
 export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   const enrolled = await prisma.classEnrollment.findUnique({
     where: { studentId_classId: { studentId: input.studentId, classId: input.classId } },
-    include: { class: { select: { weekday: true } } },
+    include: { class: { select: { weekday: true, name: true } } },
   });
   if (!enrolled) throw new Error('NOT_ENROLLED');
   if (input.date.getUTCDay() !== enrolled.class.weekday) throw new Error('INVALID_WEEKDAY');
 
-  return prisma.leaveRequest.create({
+  const leave = await prisma.leaveRequest.create({
     data: { ...input, status: 'APPROVED', origin: 'STUDENT' },
   });
+  await notifyAdminsNewLeave(input.studentId, enrolled.class.name, input.date);
+  return leave;
+}
+
+// 學生自行請假時提醒行政（行政代辦 arrangeLeaveOnly 不經過這裡）。失敗只記 log。
+async function notifyAdminsNewLeave(studentId: string, className: string, date: Date) {
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { user: { select: { name: true } } },
+    });
+    if (!student) return;
+    await pushToAdmins({
+      title: '新請假申請',
+      body: `${student.user.name} 已請假：${formatDateWithWeekday(date, 'zh-TW')}「${className}」`,
+      url: '/admin',
+    });
+  } catch (err) {
+    console.error('new leave request push notification failed', err);
+  }
 }
 
 // 撤銷請假（學生／老師／行政共用）。掛有補課時先走 revokeMakeup
