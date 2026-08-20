@@ -245,7 +245,7 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
           // enrolled class's totalSessions verbatim on every save (even when
           // editing an unrelated field like phone number), so resetting this
           // unconditionally would let a parent who already got the low-quota
-          // LINE warning get a spurious duplicate one on the next check-in.
+          // push warning get a spurious duplicate one on the next check-in.
           ...(e.totalSessions !== currentByClassId.get(e.classId) ? { lowQuotaNotifiedAt: null } : {}),
         },
       })

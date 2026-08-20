@@ -4,7 +4,7 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 
 export type GoHallQualificationValue = 'SEASON_PASS' | 'TICKET' | 'SINGLE';
 
-export const LOW_TICKET_THRESHOLD = 3; // 剩餘 ≤3 堂時 LINE 提醒（比照課程低堂數）
+export const LOW_TICKET_THRESHOLD = 3; // 剩餘 ≤3 堂時推播提醒（比照課程低堂數）
 
 type ClientType = typeof prisma | Prisma.TransactionClient;
 

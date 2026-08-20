@@ -316,7 +316,7 @@ async function findOrCreateLeaveForArrangeTx(tx: Prisma.TransactionClient, input
 }
 
 // 只代辦請假、暫不安排補課；家長之後仍可對這筆請假自行申請補課。
-// 與家長自行請假一致：直接核准、不發 LINE 通知。
+// 與家長自行請假一致：直接核准、不發通知。
 export async function arrangeLeaveOnly(input: ArrangeBaseInput) {
   return prisma.$transaction(async (tx) => {
     if (await findExistingLeaveTx(tx, input)) throw new Error('ALREADY_ON_LEAVE');
