@@ -119,6 +119,16 @@ describe('pushToUser', () => {
     await expect(pushToUser(user.id, PAYLOAD)).resolves.toBeUndefined();
     expect(await prisma.pushSubscription.count({ where: { userId: user.id } })).toBe(1);
   });
+
+  it('does not throw when the subscription lookup itself fails', async () => {
+    setVapidEnv();
+    const spy = vi.spyOn(prisma.pushSubscription, 'findMany').mockRejectedValueOnce(new Error('db down'));
+
+    await expect(pushToUser('any-user-id', PAYLOAD)).resolves.toBeUndefined();
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+  });
 });
 
 describe('pushToUsers / pushToAdmins', () => {
