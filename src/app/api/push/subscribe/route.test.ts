@@ -4,7 +4,7 @@ const sessionMock = vi.fn();
 vi.mock('next-auth', () => ({ getServerSession: (...args: unknown[]) => sessionMock(...args) }));
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 
-import { POST, DELETE } from './route';
+import { POST, DELETE, GET } from './route';
 import { prisma } from '@/lib/db';
 
 function req(method: string, body: unknown) {
@@ -80,5 +80,43 @@ describe('DELETE /api/push/subscribe', () => {
     expect(res.status).toBe(200);
     expect(await prisma.pushSubscription.count({ where: { userId: b.id } })).toBe(0);
     expect(await prisma.pushSubscription.count({ where: { userId: a.id } })).toBe(1);
+  });
+});
+
+describe('GET /api/push/subscribe', () => {
+  it('403 when not logged in', async () => {
+    sessionMock.mockResolvedValue(null);
+    const res = await GET(new Request(`http://x/api/push/subscribe?endpoint=${encodeURIComponent('https://push.example/ep-1')}`) as never);
+    expect(res.status).toBe(403);
+  });
+
+  it('400 when endpoint param is missing', async () => {
+    const user = await createUser('sub-g@example.com');
+    sessionMock.mockResolvedValue({ user: { id: user.id, role: 'STUDENT' } });
+    const res = await GET(new Request('http://x/api/push/subscribe') as never);
+    expect(res.status).toBe(400);
+  });
+
+  it('reports subscribed=true only for the account that holds the binding', async () => {
+    const a = await createUser('sub-h@example.com');
+    const b = await createUser('sub-i@example.com');
+    sessionMock.mockResolvedValue({ user: { id: a.id, role: 'STUDENT' } });
+    await POST(req('POST', GOOD_BODY) as never);
+
+    const url = `http://x/api/push/subscribe?endpoint=${encodeURIComponent(GOOD_BODY.endpoint)}`;
+    expect((await (await GET(new Request(url) as never)).json()).subscribed).toBe(true);
+
+    sessionMock.mockResolvedValue({ user: { id: b.id, role: 'STUDENT' } });
+    expect((await (await GET(new Request(url) as never)).json()).subscribed).toBe(false);
+  });
+
+  it('reports subscribed=false after DELETE', async () => {
+    const user = await createUser('sub-j@example.com');
+    sessionMock.mockResolvedValue({ user: { id: user.id, role: 'STUDENT' } });
+    await POST(req('POST', GOOD_BODY) as never);
+    await DELETE(req('DELETE', { endpoint: GOOD_BODY.endpoint }) as never);
+
+    const url = `http://x/api/push/subscribe?endpoint=${encodeURIComponent(GOOD_BODY.endpoint)}`;
+    expect((await (await GET(new Request(url) as never)).json()).subscribed).toBe(false);
   });
 });

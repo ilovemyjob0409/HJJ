@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { saveSubscription, removeSubscription } from '@/lib/services/pushService';
+import { saveSubscription, removeSubscription, hasSubscriptionForEndpoint } from '@/lib/services/pushService';
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -20,6 +20,15 @@ export async function POST(req: NextRequest) {
     typeof body.userAgent === 'string' ? body.userAgent : undefined
   );
   return NextResponse.json({ success: true }, { status: 201 });
+}
+
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const endpoint = new URL(req.url).searchParams.get('endpoint');
+  if (!endpoint) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  return NextResponse.json({ subscribed: await hasSubscriptionForEndpoint(session.user.id, endpoint) });
 }
 
 export async function DELETE(req: NextRequest) {

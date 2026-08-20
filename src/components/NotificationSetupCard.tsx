@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
 
 // Web Push 公鑰要轉成 PushManager.subscribe 接受的 Uint8Array。
 function urlBase64ToUint8Array(base64String: string) {
@@ -23,8 +24,10 @@ async function bindSubscriptionToCurrentUser(subscription: PushSubscription): Pr
 type SetupState = 'loading' | 'hidden' | 'ios-install' | 'prompt' | 'subscribed' | 'denied';
 
 export default function NotificationSetupCard() {
+  const { showToast } = useToast();
   const [state, setState] = useState<SetupState>('loading');
   const [enabling, setEnabling] = useState(false);
+  const [disabling, setDisabling] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,10 +52,15 @@ export default function NotificationSetupCard() {
       const subscription = await registration.pushManager.getSubscription();
       if (cancelled) return;
       if (Notification.permission === 'granted' && subscription) {
-        // 已訂閱：把訂閱綁到目前登入的帳號——手足切換帳號後各自都收得到通知。
-        await bindSubscriptionToCurrentUser(subscription);
-        if (!cancelled) setState('subscribed');
-        return;
+        // 以伺服器為準：只有此帳號真的有綁定才顯示已開啟並刷新綁定資料；
+        // 「關閉」過的帳號不會被自動重綁，手足帳號首次使用要按一次開啟。
+        const res = await fetch(`/api/push/subscribe?endpoint=${encodeURIComponent(subscription.endpoint)}`);
+        if (cancelled) return;
+        if (res.ok && (await res.json()).subscribed) {
+          await bindSubscriptionToCurrentUser(subscription);
+          if (!cancelled) setState('subscribed');
+          return;
+        }
       }
       setState('prompt');
     }
@@ -78,25 +86,39 @@ export default function NotificationSetupCard() {
           applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
         }));
       const res = await bindSubscriptionToCurrentUser(subscription);
-      if (res.ok) setState('subscribed');
+      if (res.ok) {
+        setState('subscribed');
+      } else {
+        showToast('開啟通知失敗，請稍後再試');
+      }
+    } catch {
+      showToast('開啟通知失敗，請稍後再試');
     } finally {
       setEnabling(false);
     }
-  }, []);
+  }, [showToast]);
 
   const disable = useCallback(async () => {
     // 只解除「這個帳號」的綁定，瀏覽器訂閱保留——同裝置其他手足帳號不受影響。
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    if (subscription) {
-      await fetch('/api/push/subscribe', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint: subscription.endpoint }),
-      });
+    setDisabling(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        const res = await fetch('/api/push/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+        if (!res.ok) throw new Error('unsubscribe failed');
+      }
+      setState('prompt');
+    } catch {
+      showToast('關閉通知失敗，請稍後再試');
+    } finally {
+      setDisabling(false);
     }
-    setState('prompt');
-  }, []);
+  }, [showToast]);
 
   if (state === 'loading' || state === 'hidden') return null;
 
@@ -104,7 +126,7 @@ export default function NotificationSetupCard() {
     return (
       <p className="mb-4 text-xs text-inkMuted">
         ✓ 通知已開啟（此裝置）
-        <button type="button" onClick={disable} className="ml-2 underline hover:text-ink">
+        <button type="button" onClick={disable} disabled={disabling} className="ml-2 underline hover:text-ink disabled:opacity-50">
           關閉
         </button>
       </p>

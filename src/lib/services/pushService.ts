@@ -39,6 +39,12 @@ export async function hasPushSubscription(userId: string): Promise<boolean> {
   return (await prisma.pushSubscription.count({ where: { userId } })) > 0;
 }
 
+// 這台裝置（endpoint）是否已綁定此帳號——前端掛載時以伺服器為準決定顯示狀態，
+// 「關閉」後不會被自動重綁蓋掉。
+export async function hasSubscriptionForEndpoint(userId: string, endpoint: string): Promise<boolean> {
+  return (await prisma.pushSubscription.count({ where: { userId, endpoint } })) > 0;
+}
+
 export async function pushToUsers(userIds: string[], payload: PushPayload): Promise<void> {
   if (userIds.length === 0) return;
   const vapidDetails = getVapidDetails();
