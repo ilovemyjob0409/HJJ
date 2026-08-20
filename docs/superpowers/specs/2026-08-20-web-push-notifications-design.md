@@ -124,7 +124,7 @@ model PushSubscription {
 - 推播失敗（網路錯誤、閘道 5xx）：log 後略過，主流程不受影響。
 - 404/410：刪除該 endpoint 全部訂閱列。
 - 未設 VAPID 金鑰：log 後跳過（開發環境友善）。
-- 訂閱 API：未登入 401；body 格式不符 400。
+- 訂閱 API：未登入 403 `{ error: 'Forbidden' }`（全站慣例，不用 401）；body 格式不符 400。
 
 ## 測試
 
