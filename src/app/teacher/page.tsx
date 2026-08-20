@@ -9,6 +9,7 @@ import { listSessionsForTeacher } from '@/lib/services/goHallService';
 import { listClassesForTeacher } from '@/lib/services/classService';
 import { listWindowsForTeacher } from '@/lib/services/tutoringProgramService';
 import Card from '@/components/ui/Card';
+import NotificationSetupCard from '@/components/NotificationSetupCard';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import AttendanceHub from '@/components/AttendanceHub';
 import TeacherClassList from '@/components/TeacherClassList';
@@ -128,6 +129,7 @@ export default async function TeacherDashboard() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
+      <NotificationSetupCard />
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link href="/teacher/leave-request">
           <Card className="text-ink transition-shadow hover:shadow-md">請假/調課申請</Card>

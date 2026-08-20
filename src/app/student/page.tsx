@@ -9,6 +9,7 @@ import { getMyTickets } from '@/lib/services/goHallTicketService';
 import { getPointBalances } from '@/lib/services/pointService';
 import { listEnrollments } from '@/lib/services/tutoringProgramService';
 import Card from '@/components/ui/Card';
+import NotificationSetupCard from '@/components/NotificationSetupCard';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import LeaveHistoryTable from './LeaveHistoryTable';
 import GoHallQualificationCard from './GoHallQualificationCard';
@@ -44,6 +45,7 @@ export default async function StudentDashboard() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
+      <NotificationSetupCard />
 
       <h2 className="mb-2 font-bold text-ink">票券管理</h2>
       <Card className="mb-6">

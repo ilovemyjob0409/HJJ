@@ -7,6 +7,7 @@ import { listAllSessions } from '@/lib/services/goHallService';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
+import NotificationSetupCard from '@/components/NotificationSetupCard';
 import LeaveRecordsTable from './LeaveRecordsTable';
 import SubstituteHistoryTable from './SubstituteHistoryTable';
 
@@ -35,6 +36,7 @@ export default async function AdminDashboard() {
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">{session?.user.name}您好！</h1>
+      <NotificationSetupCard />
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/admin/makeup-requests">
           <Card className="transition-shadow hover:shadow-md">
