@@ -308,7 +308,13 @@ export async function pushToUsers(userIds: string[], payload: PushPayload): Prom
     console.error('VAPID env vars not set, skipping web push');
     return;
   }
-  const subs = await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+  let subs;
+  try {
+    subs = await prisma.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+  } catch (err) {
+    console.error('push subscription lookup failed', err);
+    return;
+  }
   const body = JSON.stringify(payload);
   for (const sub of subs) {
     try {
@@ -334,11 +340,15 @@ export async function pushToUser(userId: string, payload: PushPayload): Promise<
 }
 
 export async function pushToAdmins(payload: PushPayload): Promise<void> {
-  const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
-  await pushToUsers(
-    admins.map((a) => a.id),
-    payload
-  );
+  try {
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+    await pushToUsers(
+      admins.map((a) => a.id),
+      payload
+    );
+  } catch (err) {
+    console.error('pushToAdmins failed', err);
+  }
 }
 ```
 
