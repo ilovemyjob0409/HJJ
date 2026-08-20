@@ -69,8 +69,9 @@ export async function pushToUsers(userIds: string[], payload: PushPayload): Prom
       );
     } catch (err) {
       const statusCode = (err as { statusCode?: number }).statusCode;
-      if (statusCode === 404 || statusCode === 410) {
-        // 訂閱已失效（使用者清了網站資料等）：這個 endpoint 的所有帳號綁定一併清掉
+      if (statusCode === 403 || statusCode === 404 || statusCode === 410) {
+        // 訂閱已失效（使用者清了網站資料）或 VAPID 金鑰已輪換（403 InvalidSignature）：
+        // 這個 endpoint 的所有帳號綁定一併清掉，客戶端下次掛載會重新引導訂閱
         await prisma.pushSubscription.deleteMany({ where: { endpoint: sub.endpoint } }).catch(() => {});
       } else {
         console.error(`web push to ${sub.endpoint} failed`, err);

@@ -13,6 +13,16 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from(rawData, (c) => c.charCodeAt(0));
 }
 
+// VAPID 公鑰輪換後，舊訂閱用舊金鑰簽出來的推播會被推播閘道 403 拒絕——
+// 比對訂閱當初綁的金鑰，不同就先退掉，讓使用者重新訂閱。
+function matchesCurrentKey(subscription: PushSubscription, publicKey: string): boolean {
+  const bound = subscription.options.applicationServerKey;
+  if (!bound) return true;
+  const expected = urlBase64ToUint8Array(publicKey);
+  const actual = new Uint8Array(bound);
+  return actual.length === expected.length && actual.every((byte, i) => byte === expected[i]);
+}
+
 async function bindSubscriptionToCurrentUser(subscription: PushSubscription): Promise<Response> {
   return fetch('/api/push/subscribe', {
     method: 'POST',
@@ -32,7 +42,8 @@ export default function NotificationSetupCard() {
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!publicKey) {
         setState('hidden');
         return;
       }
@@ -51,13 +62,18 @@ export default function NotificationSetupCard() {
       }
       const subscription = await registration.pushManager.getSubscription();
       if (cancelled) return;
-      if (Notification.permission === 'granted' && subscription) {
+      let activeSubscription = subscription;
+      if (activeSubscription && !matchesCurrentKey(activeSubscription, publicKey)) {
+        await activeSubscription.unsubscribe().catch(() => {});
+        activeSubscription = null;
+      }
+      if (Notification.permission === 'granted' && activeSubscription) {
         // 以伺服器為準：只有此帳號真的有綁定才顯示已開啟並刷新綁定資料；
         // 「關閉」過的帳號不會被自動重綁，手足帳號首次使用要按一次開啟。
-        const res = await fetch(`/api/push/subscribe?endpoint=${encodeURIComponent(subscription.endpoint)}`);
+        const res = await fetch(`/api/push/subscribe?endpoint=${encodeURIComponent(activeSubscription.endpoint)}`);
         if (cancelled) return;
         if (res.ok && (await res.json()).subscribed) {
-          await bindSubscriptionToCurrentUser(subscription);
+          await bindSubscriptionToCurrentUser(activeSubscription);
           if (!cancelled) setState('subscribed');
           return;
         }
@@ -79,11 +95,17 @@ export default function NotificationSetupCard() {
         return;
       }
       const registration = await navigator.serviceWorker.ready;
-      const subscription =
-        (await registration.pushManager.getSubscription()) ??
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
+      let subscription = await registration.pushManager.getSubscription();
+      if (subscription && !matchesCurrentKey(subscription, publicKey)) {
+        await subscription.unsubscribe().catch(() => {});
+        subscription = null;
+      }
+      subscription =
+        subscription ??
         (await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
         }));
       const res = await bindSubscriptionToCurrentUser(subscription);
       if (res.ok) {
