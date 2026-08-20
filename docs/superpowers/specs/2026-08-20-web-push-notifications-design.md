@@ -95,9 +95,13 @@ model PushSubscription {
 | 個輔月額度提醒 | tutoring-quota-reminder cron | 學生 | 個輔預約頁 |
 | 新補課申請送出 | makeupRequestService | 全體行政 | 補課審核頁 |
 | 新請假申請 | leaveRequestService | 全體行政 | `/admin`（行政首頁請假紀錄表） |
-| 學生預約個輔 | tutoringBookingService | 全體行政＋該時段老師 | 各自管理頁 |
-| 學生取消個輔 | tutoringBookingService | 全體行政＋該時段老師 | 各自管理頁 |
+| 學生預約個輔 | tutoringBookingService | 該時段老師 | 老師首頁 |
+| 學生取消個輔 | tutoringBookingService | 該時段老師 | 老師首頁 |
 | 被指派代課／一對一 | 指派流程 | 該老師 | 老師首頁 |
+| 點數異動（給點／抽獎／兌換／調整） | pointService | 學生 | 集點卡頁 |
+
+（2026-08-20 上線後修訂，使用者拍板：行政只收「需要審核／需要知道」的通知——新補課申請＋新請假申請；
+個輔預約異動不再通知行政、只通知時段老師。點數異動新增學生推播。）
 
 訊息格式：標題放事件名（例：「簽到完成」），內文為原【MUP】訊息去掉前綴的內容
 （推播本身已顯示來源為 MUP）。日期一律沿用 `formatDateWithWeekday`（日期＋星期慣例）。

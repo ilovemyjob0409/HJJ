@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { pushToUser, pushToUsers, pushToAdmins, hasPushSubscription } from './pushService';
+import { pushToUser, pushToUsers, hasPushSubscription } from './pushService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export function utcDateKey(date: Date): string {
@@ -36,7 +36,7 @@ export interface CreateBookingInput {
   // 點名現場加入的「硬開」：名額已滿仍可加入（老師/行政確認後）。
   // 只跳過容量檢查，其餘防呆（星期、停開日、同日重複、停用報名）照擋。
   allowOverCapacity?: boolean;
-  // 學生自行預約時通知行政與時段老師；行政代排、點名現場加入不通知。
+  // 學生自行預約時通知時段老師；行政代排、點名現場加入不通知。
   notifyStaff?: boolean;
 }
 
@@ -163,7 +163,7 @@ export async function adminCancelBooking(bookingId: string): Promise<void> {
   }
 }
 
-// 學生自行預約／取消時通知行政與該時段老師（含第二老師）。
+// 學生自行預約／取消時通知該時段老師（含第二老師）。
 // 失敗只記 log，不影響主流程。
 async function notifyStaffBookingChange(bookingId: string, change: 'BOOKED' | 'CANCELLED') {
   try {
@@ -191,8 +191,9 @@ async function notifyStaffBookingChange(bookingId: string, change: 'BOOKED' | 'C
     const teacherUserIds = [booking.window.teacher.userId, booking.window.teacher2?.userId].filter(
       (id): id is string => Boolean(id)
     );
+    // 2026-08-20 使用者決定：行政只收「需要審核」的通知，預約異動即時生效
+    // 不用審核，所以只通知該時段老師，不再 pushToAdmins。
     await pushToUsers(teacherUserIds, { ...payload, url: '/teacher' });
-    await pushToAdmins({ ...payload, url: '/admin/tutoring/bookings' });
   } catch (err) {
     console.error('tutoring booking push notification failed', err);
   }

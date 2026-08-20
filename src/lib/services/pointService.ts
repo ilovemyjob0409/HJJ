@@ -1,6 +1,7 @@
 import { Prisma, PointBucket } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
+import { pushToUser } from './pushService';
 
 export const DRAW_COST = 20; // 線下抽獎固定每次消耗
 export const AWARD_MAX = 10; // 老師單次給點上限（防誤按）
@@ -11,6 +12,20 @@ export interface PointBalances {
 }
 
 type ClientType = typeof prisma | Prisma.TransactionClient;
+
+// 點數異動即時推播給學生（家長）。寫入成功後才發；失敗只記 log，不影響主流程。
+async function notifyPointChange(studentId: string, body: string) {
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { user: { select: { id: true } } },
+    });
+    if (!student) return;
+    await pushToUser(student.user.id, { title: '點數異動', body, url: '/student/points' });
+  } catch (err) {
+    console.error('point change push notification failed', err);
+  }
+}
 
 async function sumBucket(client: ClientType, studentId: string, bucket: PointBucket) {
   const agg = await client.pointTransaction.aggregate({ where: { studentId, bucket }, _sum: { amount: true } });
@@ -57,14 +72,17 @@ export async function awardPoints(input: { teacherId: string | null; studentIds:
       teacherId: input.teacherId,
     })),
   });
+  for (const studentId of input.studentIds) {
+    await notifyPointChange(studentId, `獲得 ${input.amount} 點：${reason.label}`);
+  }
 }
 
 // 線下抽獎登記：固定 DRAW_COST/次，從一般點數扣；抽中點數進兌換專用桶。
 // 兌換專用點數不能再拿去抽——檢查與扣點都只看 REGULAR。
-export function recordLottery(input: { studentId: string; draws: number; wonPoints: number }) {
+export async function recordLottery(input: { studentId: string; draws: number; wonPoints: number }) {
   if (!Number.isInteger(input.draws) || input.draws < 1) return Promise.reject(new Error('INVALID_DRAWS'));
   if (!Number.isInteger(input.wonPoints) || input.wonPoints < 0) return Promise.reject(new Error('INVALID_WON_POINTS'));
-  return runSerializableWithRetry(() =>
+  await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
         const cost = input.draws * DRAW_COST;
@@ -82,15 +100,20 @@ export function recordLottery(input: { studentId: string; draws: number; wonPoin
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
   );
+  const cost = input.draws * DRAW_COST;
+  await notifyPointChange(
+    input.studentId,
+    `抽獎 ${input.draws} 次使用 ${cost} 點${input.wonPoints > 0 ? `，獲得 ${input.wonPoints} 點（兌換專用）` : ''}`
+  );
 }
 
 // 兌換（無獎品目錄）：行政輸入扣多少點＋換了什麼。兩桶合計須足夠，
 // 優先扣兌換專用、不足再扣一般（各桶一筆負向紀錄）。
-export function redeemPoints(input: { studentId: string; points: number; description: string }) {
+export async function redeemPoints(input: { studentId: string; points: number; description: string }) {
   if (!Number.isInteger(input.points) || input.points < 1) return Promise.reject(new Error('INVALID_AMOUNT'));
   if (!input.description.trim()) return Promise.reject(new Error('REASON_REQUIRED'));
   const description = input.description.trim();
-  return runSerializableWithRetry(() =>
+  await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
         const [regular, redeemOnly] = await Promise.all([
@@ -114,6 +137,7 @@ export function redeemPoints(input: { studentId: string; points: number; descrip
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
   );
+  await notifyPointChange(input.studentId, `使用 ${input.points} 點兌換：${description}`);
 }
 
 // 行政「集點」主表：每位學生的兩桶餘額＋就讀班級（含個別輔導方案，供班級／名字篩選）。
@@ -154,10 +178,11 @@ export async function listStudentPointSummaries() {
   }));
 }
 
-export function adjustPoints(input: { studentId: string; bucket: PointBucket; amount: number; reason: string }) {
+export async function adjustPoints(input: { studentId: string; bucket: PointBucket; amount: number; reason: string }) {
   if (!Number.isInteger(input.amount) || input.amount === 0) return Promise.reject(new Error('INVALID_AMOUNT'));
   if (!input.reason.trim()) return Promise.reject(new Error('REASON_REQUIRED'));
-  return runSerializableWithRetry(() =>
+  const reason = input.reason.trim();
+  await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
         if (input.amount < 0) {
@@ -165,10 +190,14 @@ export function adjustPoints(input: { studentId: string; bucket: PointBucket; am
           if (balance + input.amount < 0) throw new Error('INSUFFICIENT_POINTS');
         }
         await tx.pointTransaction.create({
-          data: { studentId: input.studentId, bucket: input.bucket, amount: input.amount, kind: 'ADMIN_ADJUST', reason: input.reason.trim() },
+          data: { studentId: input.studentId, bucket: input.bucket, amount: input.amount, kind: 'ADMIN_ADJUST', reason },
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
+  );
+  await notifyPointChange(
+    input.studentId,
+    input.amount > 0 ? `增加 ${input.amount} 點：${reason}` : `扣除 ${-input.amount} 點：${reason}`
   );
 }
