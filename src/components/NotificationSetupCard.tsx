@@ -31,7 +31,32 @@ async function bindSubscriptionToCurrentUser(subscription: PushSubscription): Pr
   });
 }
 
-type SetupState = 'loading' | 'hidden' | 'ios-install' | 'prompt' | 'subscribed' | 'denied';
+type SetupState = 'loading' | 'hidden' | 'ios-install' | 'prompt' | 'subscribed' | 'off' | 'denied';
+
+// iOS 風格膠囊開關：綠色滑層用 opacity、圓鈕用 transform，遵守全站動效慣例
+//（只動 transform/opacity）。demo 頁與通知卡共用。
+export function NotificationToggle({ on, busy, onToggle }: { on: boolean; busy: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={on ? '關閉通知' : '開啟通知'}
+      onClick={onToggle}
+      disabled={busy}
+      className="relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full bg-borderStrong disabled:cursor-wait disabled:opacity-60"
+    >
+      <span
+        aria-hidden
+        className={`absolute inset-0 rounded-full bg-[#34C759] transition-opacity duration-200 ${on ? 'opacity-100' : 'opacity-0'}`}
+      />
+      <span
+        aria-hidden
+        className={`relative ml-1 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${on ? 'translate-x-5' : 'translate-x-0'}`}
+      />
+    </button>
+  );
+}
 
 export default function NotificationSetupCard() {
   const { showToast } = useToast();
@@ -75,8 +100,12 @@ export default function NotificationSetupCard() {
         if (res.ok && (await res.json()).subscribed) {
           await bindSubscriptionToCurrentUser(activeSubscription);
           if (!cancelled) setState('subscribed');
-          return;
+        } else {
+          // 這台裝置設定過通知（瀏覽器訂閱存在），只是此帳號沒綁定
+          //（關閉過、或手足帳號首次登入）——顯示關閉狀態的開關，一撥即開。
+          setState('off');
         }
+        return;
       }
       setState('prompt');
     }
@@ -134,7 +163,7 @@ export default function NotificationSetupCard() {
         });
         if (!res.ok) throw new Error('unsubscribe failed');
       }
-      setState('prompt');
+      setState('off');
     } catch {
       showToast('關閉通知失敗，請稍後再試');
     } finally {
@@ -144,14 +173,13 @@ export default function NotificationSetupCard() {
 
   if (state === 'loading' || state === 'hidden') return null;
 
-  if (state === 'subscribed') {
+  if (state === 'subscribed' || state === 'off') {
+    const on = state === 'subscribed';
     return (
-      <p className="mb-4 text-xs text-inkMuted">
-        ✓ 通知已開啟（此裝置）
-        <button type="button" onClick={disable} disabled={disabling} className="ml-2 underline hover:text-ink disabled:opacity-50">
-          關閉
-        </button>
-      </p>
+      <div className="mb-4 flex items-center gap-3 text-sm text-inkMuted">
+        <span>推播通知（此裝置）</span>
+        <NotificationToggle on={on} busy={enabling || disabling} onToggle={on ? disable : enable} />
+      </div>
     );
   }
 
