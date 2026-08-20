@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/db';
+import { pushToUser } from './pushService';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // 點名等處的班級歸屬檢查：原班導師，或當天已指派的代課老師，皆可存取。
 export async function teacherCanAccessClass(teacherId: string, classId: string, date: Date): Promise<boolean> {
@@ -59,11 +61,24 @@ export function listAllSubstituteRequests() {
   });
 }
 
-export function assignSubstituteTeacher(id: string, substituteTeacherId: string) {
-  return prisma.substituteRequest.update({
+export async function assignSubstituteTeacher(id: string, substituteTeacherId: string) {
+  const updated = await prisma.substituteRequest.update({
     where: { id },
     data: { substituteTeacherId, status: 'ASSIGNED' },
+    include: {
+      substituteTeacher: { select: { userId: true } },
+      class: { select: { name: true, startTime: true, endTime: true } },
+    },
   });
+  // 通知被指派的代課老師（pushToUser 永不 throw，不影響指派）。
+  if (updated.substituteTeacher) {
+    await pushToUser(updated.substituteTeacher.userId, {
+      title: '代課指派',
+      body: `您被指派 ${formatDateWithWeekday(updated.date, 'zh-TW')}「${updated.class.name}」的代課（${updated.class.startTime}-${updated.class.endTime}）`,
+      url: '/teacher',
+    });
+  }
+  return updated;
 }
 
 // For the teacher dashboard: substitute duties assigned to this teacher.

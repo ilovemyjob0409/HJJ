@@ -48,6 +48,27 @@ describe('assignSubstituteTeacher', () => {
     const pending = await listPendingSubstituteRequests();
     expect(pending.map((p) => p.id)).not.toContain(req.id);
   });
+
+  it('assigns and does not throw when the substitute teacher has a push subscription', async () => {
+    const original = await createTeacher({ name: '原老師', email: 'sub-orig@example.com', password: 'x', subjects: '數學' });
+    const substitute = await createTeacher({ name: '代課老師', email: 'sub-sub@example.com', password: 'x', subjects: '數學' });
+    const subUser = await prisma.teacher.findUniqueOrThrow({ where: { id: substitute.id }, select: { userId: true } });
+    await prisma.pushSubscription.create({
+      data: { userId: subUser.userId, endpoint: 'https://push.example/sub-t', p256dh: 'k', auth: 'a' },
+    });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: original.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    const request = await createSubstituteRequest({
+      classId: cls.id,
+      originalTeacherId: original.id,
+      date: new Date(Date.UTC(2026, 6, 22)),
+      reason: '出差',
+    });
+
+    const updated = await assignSubstituteTeacher(request.id, substitute.id);
+
+    expect(updated.status).toBe('ASSIGNED');
+    expect(updated.substituteTeacherId).toBe(substitute.id);
+  });
 });
 
 describe('listAssignedSubstituteRequestsForTeacher', () => {
