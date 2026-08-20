@@ -34,7 +34,7 @@ export async function removeSubscription(userId: string, endpoint: string): Prom
 }
 
 // 「有沒有開通知」的判斷：低堂數提醒等一次性旗標只在有訂閱時才燒掉，
-// 之後才開通知的人不會錯過提醒（沿用原本 lineUserId gate 的語意）。
+// 之後才開通知的人不會錯過提醒。
 export async function hasPushSubscription(userId: string): Promise<boolean> {
   return (await prisma.pushSubscription.count({ where: { userId } })) > 0;
 }

@@ -11,7 +11,6 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
-import QRCode from 'qrcode';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
 import FamilySiblingModal from './FamilySiblingModal';
@@ -27,7 +26,6 @@ interface StudentRow {
   id: string;
   parentPhone: string | null;
   studentNumber: string | null;
-  lineUserId: string | null;
   familyGroupId: string | null;
   user: { name: string; email: string };
   enrollments: EnrollmentQuota[];
@@ -150,20 +148,11 @@ function StudentsContent() {
   const [editError, setEditError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [lineBindInfo, setLineBindInfo] = useState<{ code: string; addFriendUrl: string } | null>(null);
-  const [lineBinding, setLineBinding] = useState(false);
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const editingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     editingIdRef.current = editing?.id ?? null;
   }, [editing]);
-
-  useEffect(() => {
-    if (lineBindInfo && qrCanvasRef.current) {
-      QRCode.toCanvas(qrCanvasRef.current, lineBindInfo.addFriendUrl, { width: 200 });
-    }
-  }, [lineBindInfo]);
 
   async function load() {
     try {
@@ -239,8 +228,6 @@ function StudentsContent() {
     setRenewTarget(null);
     setAddClassQuery('');
     setEditError('');
-    setLineBindInfo(null);
-    setLineBinding(false);
     setAdvancedOpen(false);
   }
 
@@ -422,50 +409,6 @@ function StudentsContent() {
     setEditing(null);
     showToast('已刪除');
     load();
-  }
-
-  async function refreshEditingFromServer() {
-    if (!editing) return;
-    const targetId = editing.id;
-    const res = await fetch('/api/students');
-    const fresh: StudentRow[] = await res.json();
-    if (editingIdRef.current !== targetId) return;
-    setStudents(fresh);
-    const match = fresh.find((s) => s.id === targetId);
-    if (match) setEditing(match);
-  }
-
-  async function handleGenerateLineBindCode() {
-    if (!editing) return;
-    const targetId = editing.id;
-    setLineBinding(true);
-    try {
-      const res = await fetch(`/api/students/${targetId}/line-bind-code`, { method: 'POST' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (editingIdRef.current === targetId) {
-          showToast(data.error === 'LINE_OA_BASIC_ID_NOT_CONFIGURED' ? '尚未設定 LINE_OA_BASIC_ID，請洽系統管理員' : '產生綁定碼失敗');
-        }
-        return;
-      }
-      const data = await res.json();
-      if (editingIdRef.current !== targetId) return;
-      setLineBindInfo(data);
-    } finally {
-      if (editingIdRef.current === targetId) setLineBinding(false);
-    }
-  }
-
-  async function handleLineUnbind() {
-    if (!editing) return;
-    if (!(await confirm('確定要解除這位學生的 LINE 綁定嗎？', { danger: true }))) return;
-    const res = await fetch(`/api/students/${editing.id}/line-unbind`, { method: 'POST' });
-    if (!res.ok) {
-      showToast('解除綁定失敗');
-      return;
-    }
-    showToast('已解除綁定');
-    await refreshEditingFromServer();
   }
 
   const filteredStudents = students.filter((s) => {
@@ -848,48 +791,6 @@ function StudentsContent() {
             </button>
             {advancedOpen && (
               <div className="mt-3 flex flex-col gap-4">
-                <div>
-                  <p className="mb-1 text-xs font-medium text-inkMuted">LINE 通知</p>
-                  <div className="rounded-lg bg-background p-3">
-                    {editing?.lineUserId ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-approved">已綁定</span>
-                        <button type="button" className="text-xs text-rejected hover:underline" onClick={handleLineUnbind}>
-                          解除綁定
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-inkMuted">未綁定</span>
-                          <div className="flex items-center gap-3">
-                            <button type="button" className="text-xs text-brandDark hover:underline" onClick={refreshEditingFromServer}>
-                              重新查詢狀態
-                            </button>
-                            <Button type="button" variant="secondary" loading={lineBinding} onClick={handleGenerateLineBindCode}>
-                              產生綁定 QR code
-                            </Button>
-                          </div>
-                        </div>
-                        {lineBindInfo && (
-                          <div className="flex flex-col items-center gap-2 rounded-lg border border-borderSubtle p-3">
-                            <canvas ref={qrCanvasRef} />
-                            <p className="text-xs text-inkMuted">綁定碼：{lineBindInfo.code}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <Link
-                      href="/admin/line-setup"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 inline-block text-xs text-brandDark hover:underline"
-                    >
-                      查看設定教學
-                    </Link>
-                  </div>
-                </div>
-
                 <div>
                   <p className="mb-1 text-xs font-medium text-inkMuted">手足帳號</p>
                   <div className="rounded-lg bg-background p-3">

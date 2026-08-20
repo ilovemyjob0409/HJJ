@@ -126,8 +126,6 @@ model Student {
   user                  User                   @relation(fields: [userId], references: [id])
   parentPhone           String?
   studentNumber         String?                @unique
-  lineUserId            String?                @unique
-  lineBindCode          String?                @unique
   familyGroupId         String?
   enrollments           ClassEnrollment[]
   leaveRequests         LeaveRequest[]

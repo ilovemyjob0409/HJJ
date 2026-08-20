@@ -42,7 +42,6 @@ export async function listStudents() {
       id: true,
       parentPhone: true,
       studentNumber: true,
-      lineUserId: true,
       familyGroupId: true,
       user: { select: SAFE_USER_SELECT },
       enrollments: { select: { classId: true } },
