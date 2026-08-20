@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/tutoring-quota-reminder",
       "schedule": "0 1 20 * *"
+    },
+    {
+      "path": "/api/cron/tutoring-missed-session-reminder",
+      "schedule": "0 1 * * *"
     }
   ]
 }

@@ -528,6 +528,37 @@ export async function sendMonthlyQuotaReminders(): Promise<{ notified: number }>
   return { notified };
 }
 
+// 「未取消未到不扣堂，系統主動通知家長改約」——每天早上檢查昨天完全沒被
+// 點名（含未取消）的預約，推播提醒。只看 status:'BOOKED' 且沒有出席紀錄
+// 的：已取消的不用管（家長已經知道），已點名的（不論出席與否）代表現場
+// 已經處理過，不重複打擾。now 可注入方便測試，cron 呼叫時用預設的「現在」。
+export async function sendMissedSessionReminders(now: Date = new Date()): Promise<{ notified: number }> {
+  const todayKey = taipeiDateKey(now);
+  const [y, m, d] = todayKey.split('-').map(Number);
+  const yesterday = new Date(Date.UTC(y, m - 1, d - 1));
+
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: { status: 'BOOKED', date: yesterday, attendance: null },
+    select: {
+      window: { select: { program: { select: { name: true } } } },
+      enrollment: { select: { student: { select: { user: { select: { id: true, name: true } } } } } },
+    },
+  });
+
+  let notified = 0;
+  for (const b of bookings) {
+    const userId = b.enrollment.student.user.id;
+    if (!(await hasPushSubscription(userId))) continue;
+    await pushToUser(userId, {
+      title: '缺席提醒',
+      body: `${b.enrollment.student.user.name} 昨日「${b.window.program.name}」未到課，請至系統安排補課時間`,
+      url: '/student/tutoring',
+    });
+    notified++;
+  }
+  return { notified };
+}
+
 export interface MonthlySummaryRow {
   enrollmentId: string;
   studentName: string;

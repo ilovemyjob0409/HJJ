@@ -7,6 +7,7 @@ import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
+import { sendMissedSessionReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger, listWalkInCandidates } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMonthlyBookingCounts } from './tutoringBookingService';
 import { saveTutoringAttendance } from './attendanceService';
@@ -545,6 +546,64 @@ describe('sendMonthlyQuotaReminders', () => {
   it('skips enrollments without a push subscription', async () => {
     await setupProgramWithEnrollment();
     const result = await sendMonthlyQuotaReminders();
+    expect(result.notified).toBe(0);
+  });
+});
+
+// FRIDAY (2026-08-07) 是既有 fixture window 的星期五；隔天 2026-08-08（六）
+// 當作「今天」傳入，模擬 cron 每天早上檢查「昨天」未點名的預約。
+const DAY_AFTER_FRIDAY = new Date('2026-08-08');
+
+describe('sendMissedSessionReminders', () => {
+  it('notifies a student whose yesterday booking has no attendance record and a push subscription', async () => {
+    const { window, enrollment, student } = await setupProgramWithEnrollment();
+    await subscribeStudentForTest(student.id);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+
+    const result = await sendMissedSessionReminders(DAY_AFTER_FRIDAY);
+
+    expect(result.notified).toBe(1);
+  });
+
+  it('does not notify without a push subscription', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+
+    const result = await sendMissedSessionReminders(DAY_AFTER_FRIDAY);
+
+    expect(result.notified).toBe(0);
+  });
+
+  it('does not notify a booking that already has an attendance record', async () => {
+    const { window, enrollment, student } = await setupProgramWithEnrollment();
+    await subscribeStudentForTest(student.id);
+    const marker = await createMarker();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await saveTutoringAttendance(marker.id, [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+
+    const result = await sendMissedSessionReminders(DAY_AFTER_FRIDAY);
+
+    expect(result.notified).toBe(0);
+  });
+
+  it('does not notify a cancelled booking', async () => {
+    const { window, enrollment, student } = await setupProgramWithEnrollment();
+    await subscribeStudentForTest(student.id);
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await cancelBooking(booking.id, student.id);
+
+    const result = await sendMissedSessionReminders(DAY_AFTER_FRIDAY);
+
+    expect(result.notified).toBe(0);
+  });
+
+  it('ignores bookings that are not exactly yesterday', async () => {
+    const { window, enrollment, student } = await setupProgramWithEnrollment();
+    await subscribeStudentForTest(student.id);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+
+    const result = await sendMissedSessionReminders(new Date('2026-08-10'));
+
     expect(result.notified).toBe(0);
   });
 });
