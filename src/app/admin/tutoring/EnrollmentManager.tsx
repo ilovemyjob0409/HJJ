@@ -13,6 +13,7 @@ import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { attendanceDisplayStatus } from '@/lib/attendanceDisplay';
 import AdminBookingModal from './AdminBookingModal';
 
 interface EnrollmentRow {
@@ -238,16 +239,12 @@ export default function EnrollmentManager() {
     },
   ];
 
-  // 服務層只回「有點名」或「過期未到（BOOKED、無點名）」的 booking——後者顯示為未到課
-  const attendanceDisplayStatus = (r: AttendanceRecord) =>
-    r.attendanceStatus ?? (r.bookingStatus === 'BOOKED' ? 'NO_SHOW' : r.bookingStatus);
-
   const attendanceColumns: Column<AttendanceRecord>[] = [
     { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
     {
       header: '狀態',
-      render: (r) => <StatusBadge status={attendanceDisplayStatus(r)} />,
-      sortValue: attendanceDisplayStatus,
+      render: (r) => <StatusBadge status={attendanceDisplayStatus(r.attendanceStatus, r.bookingStatus)} />,
+      sortValue: (r) => attendanceDisplayStatus(r.attendanceStatus, r.bookingStatus),
     },
     { header: '類型', render: (r) => (r.isMakeup ? '補課' : '一般'), sortValue: (r) => (r.isMakeup ? 1 : 0) },
     { header: '簽到', render: (r) => r.checkInTime ?? '-', sortValue: (r) => r.checkInTime ?? null },
@@ -257,7 +254,7 @@ export default function EnrollmentManager() {
   // 匯出欄位：畫面欄位是 React 節點，匯出要另外給純文字（ExportExcelButton 慣例）
   const attendanceExportColumns = [
     { header: '日期', value: (r: AttendanceRecord) => formatDateWithWeekday(r.date) },
-    { header: '狀態', value: (r: AttendanceRecord) => getStatusBadgeConfig(attendanceDisplayStatus(r)).label },
+    { header: '狀態', value: (r: AttendanceRecord) => getStatusBadgeConfig(attendanceDisplayStatus(r.attendanceStatus, r.bookingStatus)).label },
     { header: '類型', value: (r: AttendanceRecord) => (r.isMakeup ? '補課' : '一般') },
     { header: '簽到', value: (r: AttendanceRecord) => r.checkInTime ?? '' },
     { header: '簽退', value: (r: AttendanceRecord) => r.checkOutTime ?? '' },
@@ -473,7 +470,7 @@ export default function EnrollmentManager() {
                 loading={attendanceRecords === null}
                 keyField={(r) => r.id}
                 maxRows={3}
-                emptyText="尚無預約紀錄"
+                emptyText="尚無出缺勤紀錄"
               />
             </div>
           </div>

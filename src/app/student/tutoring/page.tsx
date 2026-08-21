@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
-import { useToast } from '@/components/ui/Toast';
-import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { attendanceDisplayStatus } from '@/lib/attendanceDisplay';
 import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
 import TutoringQuotaBar from '@/components/tutoring/TutoringQuotaBar';
 
@@ -34,12 +32,9 @@ interface BookingRow {
 }
 
 export default function StudentTutoringPage() {
-  const { showToast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>('');
-  const [bookings, setBookings] = useState<BookingRow[]>([]);
-  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
+  const [attendanceRows, setAttendanceRows] = useState<BookingRow[]>([]);
 
   async function loadEnrollments() {
     const res = await fetch('/api/tutoring-enrollments/me');
@@ -48,52 +43,31 @@ export default function StudentTutoringPage() {
     if (rows.length > 0) setSelectedEnrollmentId((prev) => prev || rows[0].id);
   }
 
-  async function loadBookings() {
+  async function loadAttendance() {
     const res = await fetch('/api/tutoring-bookings');
-    setBookings(await res.json());
+    setAttendanceRows(await res.json());
   }
 
   useEffect(() => {
     loadEnrollments();
-    loadBookings();
+    loadAttendance();
   }, []);
 
   const selectedEnrollment = enrollments.find((e) => e.id === selectedEnrollmentId);
 
-  async function cancelBooking(row: BookingRow) {
-    if (!(await confirm('確定要取消這筆預約嗎？'))) return;
-    const res = await fetch(`/api/tutoring-bookings/${row.id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      showToast('取消失敗，請稍後再試');
-      return;
-    }
-    showToast('已取消');
-    setCalendarRefreshKey((k) => k + 1);
-    loadBookings();
-    loadEnrollments();
-  }
-
-  const bookingColumns: Column<BookingRow>[] = [
+  // 欄位同行政端「出缺勤紀錄」，前面多一欄課程（學生可能報名多門）。
+  // 取消預約走日曆的「已約」按掉，這張表沒有操作欄。
+  const attendanceColumns: Column<BookingRow>[] = [
     { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
     { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
-    { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般'), sortValue: (r) => r.kind },
-    { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
     {
-      header: '出席',
-      render: (r) => (r.attendanceStatus ? <StatusBadge status={r.attendanceStatus} /> : '-'),
-      sortValue: (r) => r.attendanceStatus ?? null,
+      header: '狀態',
+      render: (r) => <StatusBadge status={attendanceDisplayStatus(r.attendanceStatus, r.status)} />,
+      sortValue: (r) => attendanceDisplayStatus(r.attendanceStatus, r.status),
     },
+    { header: '類型', render: (r) => (r.kind === 'MAKEUP' ? '補課' : '一般'), sortValue: (r) => (r.kind === 'MAKEUP' ? 1 : 0) },
     { header: '簽到', render: (r) => r.checkInTime ?? '-', sortValue: (r) => r.checkInTime ?? null },
     { header: '簽退', render: (r) => r.checkOutTime ?? '-', sortValue: (r) => r.checkOutTime ?? null },
-    {
-      header: '操作',
-      render: (r) =>
-        r.status === 'BOOKED' ? (
-          <Button className="px-3 py-1 text-xs" variant="secondary" onClick={() => cancelBooking(r)}>
-            取消
-          </Button>
-        ) : null,
-    },
   ];
 
   return (
@@ -137,27 +111,26 @@ export default function StudentTutoringPage() {
           <Card className="mb-6">
             {selectedEnrollment && (
               <TutoringBookingCalendar
-                key={`${selectedEnrollment.id}-${calendarRefreshKey}`}
+                key={selectedEnrollment.id}
                 enrollmentId={selectedEnrollment.id}
                 onBooked={() => {
-                  loadBookings();
+                  loadAttendance();
                   loadEnrollments();
                 }}
                 onCancelledBooking={() => {
-                  loadBookings();
+                  loadAttendance();
                   loadEnrollments();
                 }}
               />
             )}
           </Card>
 
-          <h2 className="mb-2 font-bold text-ink">我的預約紀錄</h2>
+          <h2 className="mb-2 font-bold text-ink">我的出缺勤紀錄</h2>
           <Card>
-            <CollapsibleDataTable columns={bookingColumns} rows={bookings} keyField={(r) => r.id} maxRows={3} emptyText="目前沒有預約紀錄" />
+            <CollapsibleDataTable columns={attendanceColumns} rows={attendanceRows} keyField={(r) => r.id} maxRows={3} emptyText="尚無出缺勤紀錄" />
           </Card>
         </>
       )}
-      {ConfirmDialog}
     </>
   );
 }

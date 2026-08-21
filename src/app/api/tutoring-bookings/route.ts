@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { createBooking, listBookingsForStudent } from '@/lib/services/tutoringBookingService';
+import { createBooking, listAttendanceForStudent } from '@/lib/services/tutoringBookingService';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const student = await prisma.student.findUniqueOrThrow({ where: { userId: session.user.id } });
-  return NextResponse.json(await listBookingsForStudent(student.id));
+  return NextResponse.json(await listAttendanceForStudent(student.id));
 }
 
 export async function POST(req: NextRequest) {

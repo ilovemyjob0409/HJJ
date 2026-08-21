@@ -317,9 +317,21 @@ export interface StudentBookingRow {
   checkOutTime: string | null;
 }
 
-export async function listBookingsForStudent(studentId: string): Promise<StudentBookingRow[]> {
+// 學生端「我的出缺勤紀錄」：取列條件同行政端 getTutoringEnrollmentAttendance
+// ——有點名紀錄的 booking＋「未到課」（過期、未取消、未點名；今天的還不算），
+// 跨該學生全部報名。未來預約看日曆的「已約」，未點名的取消不列。
+export async function listAttendanceForStudent(studentId: string, now: Date = new Date()): Promise<StudentBookingRow[]> {
+  const [ty, tm, td] = taipeiDateKey(now).split('-').map(Number);
+  const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
+
   const bookings = await prisma.tutoringBooking.findMany({
-    where: { enrollment: { studentId } },
+    where: {
+      enrollment: { studentId },
+      OR: [
+        { attendance: { isNot: null } },
+        { status: 'BOOKED', attendance: null, date: { lt: todayUtc } },
+      ],
+    },
     select: {
       id: true,
       date: true,

@@ -19,9 +19,9 @@ interface LedgerRow {
 
 // 學生自己的個別輔導扣堂紀錄彈窗：由票券管理卡片（首頁）點某一個個別輔導方
 // 案觸發。是一份完整的堂數增減帳本——每月月初核發額度（GRANT）加上每一堂真
-// 的扣掉名額的預約（DEDUCT），不含還沒發生的預約或補課本身（那些在
-// /student/tutoring 的「我的預約紀錄」看得到）。月額度按月重置，所以「剩餘
-// 堂數」是當月的剩餘堂數，不是終身總數。
+// 的扣掉名額的預約（DEDUCT），不含還沒發生的預約或補課本身（未來預約看
+// /student/tutoring 日曆的「已約」）。月額度按月重置，所以「剩餘堂數」是
+// 當月的剩餘堂數，不是終身總數。
 export default function TutoringDeductionLedgerModal({
   enrollmentId,
   programName,

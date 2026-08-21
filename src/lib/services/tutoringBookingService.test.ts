@@ -6,7 +6,7 @@ import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking } from './tutoringBookingService';
-import { getMonthlyQuotaStatus, listAvailability, listBookingsForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
+import { getMonthlyQuotaStatus, listAvailability, listAttendanceForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { sendMissedSessionReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger, listWalkInCandidates } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMonthlyBookingCounts } from './tutoringBookingService';
@@ -398,41 +398,51 @@ describe('listAvailability', () => {
   });
 });
 
-describe('listBookingsForStudent', () => {
-  it('lists bookings newest first, including legacy CANCELLED_LATE rows for display', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const future = new Date(Date.UTC(2099, 0, 2));
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
-    const legacy = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await prisma.tutoringBooking.update({ where: { id: legacy.id }, data: { status: 'CANCELLED_LATE' } });
-
-    const rows = await listBookingsForStudent(enrollment.studentId);
-    expect(rows).toHaveLength(2);
-    expect(rows[0].status).toBe('BOOKED');
-    expect(rows[1].status).toBe('CANCELLED_LATE');
-  });
-
-  it('keeps a self-cancelled booking visible in history', async () => {
-    const { window, enrollment } = await setupProgramWithEnrollment();
-    const future = new Date(Date.UTC(2099, 0, 2));
-    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
-    await cancelBooking(booking.id, enrollment.studentId);
-
-    const rows = await listBookingsForStudent(enrollment.studentId);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].status).toBe('CANCELLED');
-  });
-
-  it('carries attendance status and check-in/out times; null when unmarked', async () => {
+describe('listAttendanceForStudent', () => {
+  it('returns marked bookings and past no-shows newest first, excluding future and cancelled bookings', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const marker = await createMarker();
     const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
     await saveTutoringAttendance(marker.id, [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
-    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
+    // 過期、未取消、未點名＝未到課，要列入
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
+    const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
+    await cancelBooking(cancelled.id, enrollment.studentId);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 9)) });
 
-    const rows = await listBookingsForStudent(enrollment.studentId);
-    expect(rows[0]).toMatchObject({ attendanceStatus: null, checkInTime: null, checkOutTime: null });
-    expect(rows[1]).toMatchObject({ attendanceStatus: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' });
+    const rows = await listAttendanceForStudent(enrollment.studentId);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ status: 'BOOKED', attendanceStatus: null, checkInTime: null, checkOutTime: null });
+    expect(rows[1]).toMatchObject({
+      status: 'BOOKED',
+      attendanceStatus: 'PRESENT',
+      checkInTime: '16:00',
+      checkOutTime: '17:00',
+      programName: '英文個別輔導',
+    });
+  });
+
+  it('keeps a legacy cancelled-late booking that has an attendance record', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const marker = await createMarker();
+    const legacy = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await saveTutoringAttendance(marker.id, [{ bookingId: legacy.id, status: 'PRESENT' }]);
+    await prisma.tutoringBooking.update({ where: { id: legacy.id }, data: { status: 'CANCELLED_LATE' } });
+
+    const rows = await listAttendanceForStudent(enrollment.studentId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'CANCELLED_LATE', attendanceStatus: 'PRESENT' });
+  });
+
+  it("does not treat today's unmarked booking as a no-show (Taipei day boundary)", async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    // now＝UTC 2026-08-06 22:00 → 台北 2026-08-07 06:00，「今天」是 8/7（週五，配合時段 weekday:5）
+    const now = new Date(Date.UTC(2026, 7, 6, 22, 0));
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2026, 7, 7)) });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2026, 6, 31)) });
+
+    const rows = await listAttendanceForStudent(enrollment.studentId, now);
+    expect(rows.map((r) => r.date)).toEqual([new Date(Date.UTC(2026, 6, 31))]);
   });
 });
 
