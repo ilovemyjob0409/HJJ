@@ -29,16 +29,6 @@ export default function TeacherLeaveTable({ rows }: { rows: TeacherLeaveRow[] })
   const columns: Column<TeacherLeaveRow>[] = [
     { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     {
-      header: '方向',
-      render: (r) =>
-        r.direction === 'MY_STUDENT' ? (
-          <span className="whitespace-nowrap rounded-full bg-stripe px-2.5 py-0.5 text-xs font-bold text-ink">我的學生請假</span>
-        ) : (
-          <span className="whitespace-nowrap rounded-full bg-approvedBg px-2.5 py-0.5 text-xs font-bold text-approved">插班進我班</span>
-        ),
-      sortValue: (r) => r.direction,
-    },
-    {
       header: '原班級',
       render: (r) => <span className="whitespace-nowrap">{r.originClassName}</span>,
       sortValue: (r) => r.originClassName,
