@@ -1432,9 +1432,9 @@ export interface TutoringEnrollmentAttendanceResult {
   records: TutoringEnrollmentAttendanceRecord[];
 }
 
-// 單一報名（學生 × 課程）的完整出缺勤：全部 booking（含取消／逾時取消）依日期
-// 新→舊。record 形狀比照 getTutoringWindowAttendanceOverview，多帶 booking id
-// 當列 key（同日可能有「取消後重約」兩筆，日期不唯一）。
+// 單一報名（學生 × 課程）的出缺勤：只含有點名紀錄的 booking（純預約、未點名的
+// 取消都不列），依日期新→舊。record 形狀比照 getTutoringWindowAttendanceOverview，
+// 多帶 booking id 當列 key（同日可能有「取消後重約」兩筆，日期不唯一）。
 export async function getTutoringEnrollmentAttendance(enrollmentId: string): Promise<TutoringEnrollmentAttendanceResult> {
   const enrollment = await prisma.tutoringEnrollment.findUnique({
     where: { id: enrollmentId },
@@ -1443,7 +1443,7 @@ export async function getTutoringEnrollmentAttendance(enrollmentId: string): Pro
   if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
 
   const bookings = await prisma.tutoringBooking.findMany({
-    where: { enrollmentId },
+    where: { enrollmentId, attendance: { isNot: null } },
     select: {
       id: true,
       date: true,

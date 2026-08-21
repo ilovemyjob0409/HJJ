@@ -1548,10 +1548,12 @@ describe('getTutoringEnrollmentAttendance', () => {
     return { window, enrollment };
   }
 
-  it('returns student/program names and all bookings newest first, including cancelled and unmarked ones', async () => {
+  it('returns only bookings with attendance records newest first, excluding unmarked and cancelled bookings', async () => {
     const { window, enrollment } = await setup();
     const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
     await saveTutoringAttendance('marker-1', [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
+    const absent = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 17)) });
+    await saveTutoringAttendance('marker-1', [{ bookingId: absent.id, status: 'ABSENT' }]);
     const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 10)) });
     await adminCancelBooking(cancelled.id);
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
@@ -1560,20 +1562,29 @@ describe('getTutoringEnrollmentAttendance', () => {
     expect(result.studentName).toBe('小明');
     expect(result.programName).toBe('英文個別輔導');
     expect(result.records.map((r) => r.date)).toEqual([
-      new Date(Date.UTC(2099, 0, 2)),
-      new Date(Date.UTC(2020, 0, 10)),
+      new Date(Date.UTC(2020, 0, 17)),
       new Date(Date.UTC(2020, 0, 3)),
     ]);
-    expect(result.records[0]).toMatchObject({ bookingStatus: 'BOOKED', attendanceStatus: null });
-    expect(result.records[1]).toMatchObject({ bookingStatus: 'CANCELLED', attendanceStatus: null });
-    expect(result.records[2]).toMatchObject({
+    expect(result.records[0]).toMatchObject({ attendanceStatus: 'ABSENT', bookingStatus: 'BOOKED', checkInTime: null });
+    expect(result.records[1]).toMatchObject({
       attendanceStatus: 'PRESENT',
       bookingStatus: 'BOOKED',
       checkInTime: '17:00',
       checkOutTime: '19:00',
       isMakeup: false,
     });
-    expect(typeof result.records[2].id).toBe('string');
+    expect(typeof result.records[1].id).toBe('string');
+  });
+
+  it('keeps a legacy cancelled-late booking that has an attendance record', async () => {
+    const { window, enrollment } = await setup();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
+    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
+    await prisma.tutoringBooking.update({ where: { id: booking.id }, data: { status: 'CANCELLED_LATE' } });
+
+    const result = await getTutoringEnrollmentAttendance(enrollment.id);
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]).toMatchObject({ attendanceStatus: 'PRESENT', bookingStatus: 'CANCELLED_LATE' });
   });
 
   it('throws ENROLLMENT_NOT_FOUND for a missing enrollment', async () => {
