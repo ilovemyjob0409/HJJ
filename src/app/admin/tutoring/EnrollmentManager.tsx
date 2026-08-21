@@ -263,6 +263,10 @@ export default function EnrollmentManager() {
     { header: '簽退', value: (r: AttendanceRecord) => r.checkOutTime ?? '' },
   ];
 
+  // 彈窗內容一律用清單裡的最新資料：editingEnrollment 是點列當下的快照，
+  // 彈窗內預約／儲存覆寫後 load() 只會刷新 enrollments，快照不會跟著動。
+  const editingRow = editingEnrollment ? (enrollments.find((e) => e.id === editingEnrollment.id) ?? editingEnrollment) : null;
+
   return (
     <>
       <div className="mb-2 mt-6 flex items-center gap-3">
@@ -398,57 +402,68 @@ export default function EnrollmentManager() {
         />
       </Card>
       <Modal
-        open={editingEnrollment !== null}
+        open={editingRow !== null}
         onClose={() => setEditingEnrollment(null)}
-        title={`${editingEnrollment?.studentName ?? ''}・${editingEnrollment?.programName ?? ''}`}
-        maxWidthClassName="max-w-2xl"
+        title={`${editingRow?.studentName ?? ''}・${editingRow?.programName ?? ''}`}
+        maxWidthClassName="max-w-4xl"
       >
-        {editingEnrollment && (
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="mb-1 text-xs font-medium text-inkMuted">每月堂數覆寫</p>
-              <div className="flex items-center gap-1">
-                <Input
-                  type="number"
-                  min={0}
-                  placeholder="預設"
-                  value={quotaOverride[editingEnrollment.id] ?? ''}
-                  onChange={(e) => setQuotaOverride((prev) => ({ ...prev, [editingEnrollment.id]: e.target.value }))}
-                  className="w-20 py-1 text-sm"
-                />
-                <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => saveQuotaOverride(editingEnrollment)}>
-                  儲存
+        {editingRow && (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="flex flex-col gap-3">
+              <div className="rounded-lg bg-stripe p-3">
+                <p className="text-xs font-medium text-inkMuted">本月狀態</p>
+                <p className="mt-1 text-lg font-bold text-ink">
+                  已計次 {editingRow.locked}／{editingRow.monthlyQuota} 堂
+                </p>
+                <p className="text-xs text-inkMuted">（已預約 {editingRow.upcoming} 堂）</p>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-inkMuted">每月堂數覆寫</p>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="預設"
+                    value={quotaOverride[editingRow.id] ?? ''}
+                    onChange={(e) => setQuotaOverride((prev) => ({ ...prev, [editingRow.id]: e.target.value }))}
+                    className="w-20 py-1 text-sm"
+                  />
+                  <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => saveQuotaOverride(editingRow)}>
+                    儲存
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-col gap-2">
+                {editingRow.active ? (
+                  <Button onClick={() => setBookingTarget(editingRow)}>預約</Button>
+                ) : (
+                  <p className="text-xs text-inkMuted">已停用，請先啟用才能預約</p>
+                )}
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (await toggleActive(editingRow)) setEditingEnrollment(null);
+                  }}
+                >
+                  {editingRow.active ? '停用' : '啟用'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (await removeEnrollment(editingRow)) setEditingEnrollment(null);
+                  }}
+                >
+                  移除
                 </Button>
               </div>
             </div>
-            {editingEnrollment.active ? (
-              <Button onClick={() => setBookingTarget(editingEnrollment)}>預約</Button>
-            ) : (
-              <p className="text-xs text-inkMuted">已停用，請先啟用才能預約</p>
-            )}
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                if (await toggleActive(editingEnrollment)) setEditingEnrollment(null);
-              }}
-            >
-              {editingEnrollment.active ? '停用' : '啟用'}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                if (await removeEnrollment(editingEnrollment)) setEditingEnrollment(null);
-              }}
-            >
-              移除
-            </Button>
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-xs font-medium text-inkMuted">出缺勤紀錄</p>
                 <ExportExcelButton
                   rows={attendanceRecords ?? []}
                   columns={attendanceExportColumns}
-                  filename={`個別輔導出缺勤_${editingEnrollment.studentName}_${editingEnrollment.programName}`}
+                  filename={`個別輔導出缺勤_${editingRow.studentName}_${editingRow.programName}`}
                   className="px-2 py-1 text-xs"
                 />
               </div>
