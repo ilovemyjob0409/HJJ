@@ -299,15 +299,16 @@ export default async function GuidePage() {
           </Step>
           <Step no="3" title="「已約」的日期，點一下就能取消" img="m32b-tutoring-booked-cancel.png" imgAlt="點已約日期出現取消確認">
             <b className="text-ink">橘色「已約」</b>是您已經預約的日期。臨時有事不用找紀錄表——直接點那一天，確認後就取消了，
-            <b className="text-ink">不論是不是當天才取消都不會計入次數</b>，紀錄會留一筆「已取消」，取消後可以再從月曆挑別天重約。
+            <b className="text-ink">不論是不是當天才取消都不會計入次數</b>，取消後可以再從月曆挑別天重約。
             <Dialog>確定要取消 2026/8/21（五）的預約嗎？</Dialog>
           </Step>
-          <Step no="4" title="我的預約紀錄" img="m33-tutoring-booking-list.png" imgAlt="我的預約紀錄表格">
-            這裡列出所有預約與狀態：<b className="text-ink">已預約</b>是排定的、<b className="text-ink">已取消</b>是您自己取消的（不計次）。
-            若當天沒到又沒先取消，老師點名會標記缺席，才會計入次數，事後可以按<b className="text-ink">申請補課</b>另約時間，待行政核准。
+          <Step no="4" title="我的出缺勤紀錄" img="m33-tutoring-booking-list.png" imgAlt="我的出缺勤紀錄表格">
+            月曆下方的表格是您的上課足跡：每堂課列出老師點名的<b className="text-ink">狀態</b>（出席、遲到⋯）和當天的
+            <b className="text-ink">簽到、簽退</b>時間。若當天沒到又沒先取消，會留一筆<b className="text-ink">未到課</b>，
+            系統也會推播提醒您改約其他日期（見第 11 章）。還沒上的預約不會列在這裡——請直接看月曆上的「已約」。
           </Step>
           <Tip title="本月次數怎麼算？">
-            每月 1 號重新歸零，「已計次」是已經上課或缺席未到的堂數；自己取消（不論當天與否）一律不計次。申請補課核准後不會重複計次。若快到月底還有很多堂沒約，系統會推播通知提醒您（見第
+            每月 1 號重新歸零，「已計次」是實際到場上課的堂數；自己取消（不論當天與否）一律不計次。若快到月底還有很多堂沒約，系統會推播通知提醒您（見第
             11 章）。
           </Tip>
         </Chapter>
