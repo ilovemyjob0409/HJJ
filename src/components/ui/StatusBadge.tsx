@@ -12,7 +12,8 @@ export type KnownStatus =
   | 'NOT_REGISTERED'
   | 'BOOKED'
   | 'CANCELLED'
-  | 'CANCELLED_LATE';
+  | 'CANCELLED_LATE'
+  | 'NO_SHOW';
 
 interface StatusConfig {
   label: string;
@@ -38,6 +39,8 @@ const STATUS_CONFIG: Record<KnownStatus, StatusConfig> = {
   // 提前取消 → 不計次；中性灰顯示（跟「當天取消」的紅色區隔）
   CANCELLED: { label: '已取消', bg: 'bg-borderSubtle', text: 'text-inkMuted' },
   CANCELLED_LATE: { label: '當天取消', bg: 'bg-rejectedBg', text: 'text-rejected' },
+  // 預約了沒出現（過期、未取消、未點名）——非 DB 狀態，由出缺勤畫面推導
+  NO_SHOW: { label: '未到課', bg: 'bg-rejectedBg', text: 'text-rejected' },
 };
 
 export function getStatusBadgeConfig(status: string): StatusConfig {

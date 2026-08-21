@@ -1548,12 +1548,14 @@ describe('getTutoringEnrollmentAttendance', () => {
     return { window, enrollment };
   }
 
-  it('returns only bookings with attendance records newest first, excluding unmarked and cancelled bookings', async () => {
+  it('returns marked bookings and past no-shows newest first, excluding cancelled and future bookings', async () => {
     const { window, enrollment } = await setup();
     const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
     await saveTutoringAttendance('marker-1', [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
     const absent = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 17)) });
     await saveTutoringAttendance('marker-1', [{ bookingId: absent.id, status: 'ABSENT' }]);
+    // 預約了沒出現（過期、未取消、未點名）＝未到課，要列入出缺勤
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 24)) });
     const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 10)) });
     await adminCancelBooking(cancelled.id);
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
@@ -1562,18 +1564,31 @@ describe('getTutoringEnrollmentAttendance', () => {
     expect(result.studentName).toBe('小明');
     expect(result.programName).toBe('英文個別輔導');
     expect(result.records.map((r) => r.date)).toEqual([
+      new Date(Date.UTC(2020, 0, 24)),
       new Date(Date.UTC(2020, 0, 17)),
       new Date(Date.UTC(2020, 0, 3)),
     ]);
-    expect(result.records[0]).toMatchObject({ attendanceStatus: 'ABSENT', bookingStatus: 'BOOKED', checkInTime: null });
-    expect(result.records[1]).toMatchObject({
+    expect(result.records[0]).toMatchObject({ attendanceStatus: null, bookingStatus: 'BOOKED', checkInTime: null });
+    expect(result.records[1]).toMatchObject({ attendanceStatus: 'ABSENT', bookingStatus: 'BOOKED', checkInTime: null });
+    expect(result.records[2]).toMatchObject({
       attendanceStatus: 'PRESENT',
       bookingStatus: 'BOOKED',
       checkInTime: '17:00',
       checkOutTime: '19:00',
       isMakeup: false,
     });
-    expect(typeof result.records[1].id).toBe('string');
+    expect(typeof result.records[2].id).toBe('string');
+  });
+
+  it("does not treat today's unmarked booking as a no-show (Taipei day boundary)", async () => {
+    const { window, enrollment } = await setup();
+    // now＝UTC 2020-06-18 22:00 → 台北 2020-06-19 06:00，「今天」是 6/19（週五，配合時段 weekday:5）
+    const now = new Date(Date.UTC(2020, 5, 18, 22, 0));
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 5, 19)) });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 5, 12)) });
+
+    const result = await getTutoringEnrollmentAttendance(enrollment.id, now);
+    expect(result.records.map((r) => r.date)).toEqual([new Date(Date.UTC(2020, 5, 12))]);
   });
 
   it('keeps a legacy cancelled-late booking that has an attendance record', async () => {

@@ -1432,18 +1432,29 @@ export interface TutoringEnrollmentAttendanceResult {
   records: TutoringEnrollmentAttendanceRecord[];
 }
 
-// 單一報名（學生 × 課程）的出缺勤：只含有點名紀錄的 booking（純預約、未點名的
-// 取消都不列），依日期新→舊。record 形狀比照 getTutoringWindowAttendanceOverview，
-// 多帶 booking id 當列 key（同日可能有「取消後重約」兩筆，日期不唯一）。
-export async function getTutoringEnrollmentAttendance(enrollmentId: string): Promise<TutoringEnrollmentAttendanceResult> {
+// 單一報名（學生 × 課程）的出缺勤：含有點名紀錄的 booking＋「未到課」（過期、
+// 未取消、未點名，同 sendMissedSessionReminders 的定義；今天的還不算）。未來
+// 預約、未點名的取消都不列。依日期新→舊。record 形狀比照
+// getTutoringWindowAttendanceOverview，多帶 booking id 當列 key（同日可能有
+// 「取消後重約」兩筆，日期不唯一）。
+export async function getTutoringEnrollmentAttendance(enrollmentId: string, now: Date = new Date()): Promise<TutoringEnrollmentAttendanceResult> {
   const enrollment = await prisma.tutoringEnrollment.findUnique({
     where: { id: enrollmentId },
     select: { student: { select: NAME_SELECT }, program: { select: { name: true } } },
   });
   if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
 
+  const [ty, tm, td] = taipeiDateKey(now).split('-').map(Number);
+  const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
+
   const bookings = await prisma.tutoringBooking.findMany({
-    where: { enrollmentId, attendance: { isNot: null } },
+    where: {
+      enrollmentId,
+      OR: [
+        { attendance: { isNot: null } },
+        { status: 'BOOKED', attendance: null, date: { lt: todayUtc } },
+      ],
+    },
     select: {
       id: true,
       date: true,

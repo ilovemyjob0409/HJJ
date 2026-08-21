@@ -17,6 +17,9 @@ describe('getStatusBadgeConfig', () => {
   it('maps ASSIGNED to 已指派', () => {
     expect(getStatusBadgeConfig('ASSIGNED').label).toBe('已指派');
   });
+  it('maps NO_SHOW to 未到課', () => {
+    expect(getStatusBadgeConfig('NO_SHOW').label).toBe('未到課');
+  });
   it('falls back to the raw value for an unknown status', () => {
     expect(getStatusBadgeConfig('WEIRD').label).toBe('WEIRD');
   });
