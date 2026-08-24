@@ -22,15 +22,15 @@ const TAIPEI_TIME_FMT = new Intl.DateTimeFormat('zh-TW', {
 const TAIPEI_WEEKDAY_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', weekday: 'short' });
 const WEEKDAY_MAP: Record<string, string> = { Sun: '日', Mon: '一', Tue: '二', Wed: '三', Thu: '四', Fri: '五', Sat: '六' };
 
-// 通知時間顯示：M/D（週N） HH:mm，固定台北時區（DB 存 UTC timestamp）
+// 通知時間顯示：M/D（週N） HH:mm，固定台北時區（DB 存 UTC timestamp）。
+// 用 formatToParts 組字串——zh-TW 的 format() 在日期與時間之間插的是
+// U+2009 窄空格，不能用一般空白 split。
 function formatNotificationTime(createdAt: string): string {
   const d = new Date(createdAt);
-  const formatted = TAIPEI_TIME_FMT.format(d); // 例：8/24 14:30
-  const spaceIndex = formatted.indexOf(' ');
-  const datePart = spaceIndex === -1 ? formatted : formatted.slice(0, spaceIndex);
-  const timePart = spaceIndex === -1 ? '' : formatted.slice(spaceIndex + 1);
+  const parts = TAIPEI_TIME_FMT.formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
   const weekday = WEEKDAY_MAP[TAIPEI_WEEKDAY_FMT.format(d)] ?? '';
-  return `${datePart}（${weekday}）${timePart}`.trim();
+  return `${get('month')}/${get('day')}（${weekday}）${get('hour')}:${get('minute')}`;
 }
 
 export default function NotificationBell() {
