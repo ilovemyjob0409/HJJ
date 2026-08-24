@@ -65,7 +65,8 @@ markAllRead(userId): Promise<void>                 // updateMany readAt=null →
 
 - `makeupRequestService.ts`（補課送審→行政、核准/駁回/撤銷→家長、一對一→老師）
 - `tutoringBookingService.ts`（預約/取消→老師、超額送審→行政、審核結果→學生、缺席提醒、額度提醒）
-- 其他 service 內的推播點（請假、代課、弈廳等，依 grep 結果全數遷移，不得遺漏）
+- 其他 service 內的推播點（請假、代課、集點、簽到/簽退、低堂數提醒等，依 grep 結果全數遷移，不得遺漏）
+- 遷移同時**移除 `hasPushSubscription` 前置檢查**（個輔額度提醒、個輔缺席提醒、班級低堂數、弈廳堂票低堂數）：收件夾讓沒訂閱推播的人也收得到通知，「沒訂閱就跳過、不燒一次性旗標」的保護不再需要，旗標照常燒掉。
 
 ## API
 
