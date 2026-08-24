@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { signIn, signOut } from 'next-auth/react';
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Logo from './Logo';
+import NotificationBell from './NotificationBell';
 import ThemeToggle from './ThemeToggle';
 import { useToast } from './Toast';
 
@@ -212,6 +213,7 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
               )}
             </div>
           )}
+          <NotificationBell />
           <ThemeToggle />
           <button onClick={() => signOut()} className="cursor-pointer text-xs text-inkMuted hover:text-ink sm:text-sm">
             登出
