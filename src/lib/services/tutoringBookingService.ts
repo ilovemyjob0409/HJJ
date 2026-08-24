@@ -170,7 +170,9 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
   // 收費規範：未到場不扣堂——取消一律不計次，保留紀錄（狀態 CANCELLED）
   // 讓學生的預約紀錄看得到這筆取消。
   await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
-  await notifyStaffBookingChange(bookingId, 'CANCELLED');
+  // 老師只收過「確定成立」的預約通知——取消「待審中」的預約不用通知老師
+  //（他從未被告知這筆預約存在）。
+  if (booking.status === 'BOOKED') await notifyStaffBookingChange(bookingId, 'CANCELLED');
 }
 
 // 行政取消：與學生取消同語意，一律不計次（收費規範沒有「計次取消」——
