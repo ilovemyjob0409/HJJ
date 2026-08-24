@@ -9,7 +9,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from '@/lib/services/teacherService';
 import { createStudent } from '@/lib/services/studentService';
 import { createProgram, createWindow, createEnrollment } from '@/lib/services/tutoringProgramService';
-import { createBooking } from '@/lib/services/tutoringBookingService';
+import { createBooking, taipeiDateKey } from '@/lib/services/tutoringBookingService';
 
 beforeEach(() => {
   sessionMock.mockReset();
@@ -18,6 +18,13 @@ beforeEach(() => {
 const asAdmin = () => sessionMock.mockResolvedValue({ user: { id: 'admin-1', role: 'ADMIN' } });
 const asStudent = () => sessionMock.mockResolvedValue({ user: { id: 'stu-1', role: 'STUDENT' } });
 
+// 下個月的第一個星期五（永遠在未來，配合 weekday 5 的測試窗口；不寫死日期避免過期）
+function nextMonthFirstFriday(): Date {
+  const [y, m] = taipeiDateKey(new Date()).split('-').map(Number);
+  const first = new Date(Date.UTC(y, m, 1));
+  return new Date(Date.UTC(y, m, 1 + ((5 - first.getUTCDay() + 7) % 7)));
+}
+
 // 額度 0 → 學生流程第一筆就是 PENDING_ADMIN
 async function setupPendingBooking() {
   const teacher = await createTeacher({ name: '林老師', email: `patch-route-t-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
@@ -25,8 +32,7 @@ async function setupPendingBooking() {
   const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
   const student = await createStudent({ name: '小明', email: `patch-route-s-${Date.now()}@example.com`, password: 'x' });
   const enrollment = await createEnrollment({ studentId: student.id, programId: program.id, monthlyQuota: 0 });
-  // 2027-01-01 是星期五，未來日期
-  const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2027-01-01'), quotaReview: true });
+  const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: nextMonthFirstFriday(), quotaReview: true });
   return booking;
 }
 

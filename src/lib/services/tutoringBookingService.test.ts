@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { utcDateKey, daysRemainingInTaipeiMonth } from './tutoringBookingService';
+import { utcDateKey, taipeiDateKey, daysRemainingInTaipeiMonth } from './tutoringBookingService';
 import { prisma } from '@/lib/db';
 import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 import { createTeacher } from './teacherService';
@@ -45,11 +45,17 @@ async function setupProgramWithEnrollment(capacity = 8) {
 // 2026-08-07 is a Friday (weekday 5), matching the fixture window above.
 const FRIDAY = new Date('2026-08-07');
 
-// 2027-01-01 是星期五，且 2027 年 1 月的五個星期五都在未來、同一個月份，
-// 額度閘門測試需要「同月多個未來日期」才能驗證 upcoming 計數。
-const FUTURE_FRIDAYS = ['2027-01-01', '2027-01-08', '2027-01-15', '2027-01-22', '2027-01-29'].map(
-  (d) => new Date(d)
-);
+// 「下個月」的四個星期五：額度閘門測試需要「同月、皆在未來」的多個日期。
+// 用下個月推導而不是寫死日期，fixture 不會隨真實日期過期（下個月的任何一天
+// 永遠在未來、且同屬一個月份）。日期一律用 Date.UTC，不用本地建構子。
+function nextMonthFridays(): Date[] {
+  const [y, m] = taipeiDateKey(new Date()).split('-').map(Number);
+  // taipeiDateKey 的月份是 1-based；Date.UTC 的月參數 0-based，直接傳 m 即為下個月
+  const firstOfNextMonth = new Date(Date.UTC(y, m, 1));
+  const offset = (5 - firstOfNextMonth.getUTCDay() + 7) % 7;
+  return [0, 1, 2, 3].map((i) => new Date(Date.UTC(y, m, 1 + offset + i * 7)));
+}
+const FUTURE_FRIDAYS = nextMonthFridays();
 
 async function setupWithQuota(monthlyQuota: number) {
   const ctx = await setupProgramWithEnrollment();
@@ -391,7 +397,7 @@ describe('getMonthlyQuotaStatus', () => {
     const { window, enrollment } = await setupWithQuota(1);
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[1], quotaReview: true });
-    const status = await getMonthlyQuotaStatus(enrollment.id, '2027-01');
+    const status = await getMonthlyQuotaStatus(enrollment.id, utcDateKey(FUTURE_FRIDAYS[0]).slice(0, 7));
     expect(status).toMatchObject({ locked: 0, upcoming: 1, pendingOverQuota: 1, quota: 1 });
   });
 });
@@ -782,6 +788,13 @@ describe('listPendingReviewBookings', () => {
     expect(rows[1].seq).toBe(2);
     expect(rows[0].quota).toBe(0);
     expect(rows[0].monthUsage).toHaveLength(3);
+    const bookingMonth = utcDateKey(FUTURE_FRIDAYS[0]).slice(0, 7);
+    const shift = (monthKey: string, delta: number) => {
+      const [yy, mm] = monthKey.split('-').map(Number);
+      const d = new Date(Date.UTC(yy, mm - 1 + delta, 1));
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    };
+    expect(rows[0].monthUsage.map((u) => u.monthKey)).toEqual([bookingMonth, shift(bookingMonth, -1), shift(bookingMonth, -2)]);
   });
 
   it('過期的待審（舊制補課遺留）不列', async () => {

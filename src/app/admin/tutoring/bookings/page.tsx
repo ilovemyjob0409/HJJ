@@ -133,11 +133,13 @@ export default function AdminTutoringBookingsPage() {
     });
     if (!res.ok) {
       showToast(`${label}失敗，請重新整理後再試`);
+      loadPending();
       return;
     }
     showToast(`已${label}`);
     loadPending();
     loadCounts();
+    if (selectedDate) loadDay(selectedDate);
   }
 
   const columns: Column<OverviewRow>[] = [

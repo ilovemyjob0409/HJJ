@@ -115,7 +115,9 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: st
     )
   );
   if (booking.status === 'PENDING_ADMIN' && input.quotaReview) await notifyAdminsReviewNeeded(booking.id);
-  if (input.notifyStaff) await notifyStaffBookingChange(booking.id, 'BOOKED');
+  // 老師只收「確定成立」的預約通知：超額待審在核准前不會出現在點名名單，
+  // 建立當下不通知老師，核准時（reviewBooking）才補發。
+  if (input.notifyStaff && booking.status === 'BOOKED') await notifyStaffBookingChange(booking.id, 'BOOKED');
   return { id: booking.id, status: booking.status as 'BOOKED' | 'PENDING_ADMIN' };
 }
 
@@ -196,6 +198,9 @@ async function reviewBooking(bookingId: string, to: 'BOOKED' | 'REJECTED'): Prom
     throw new Error(exists ? 'NOT_PENDING' : 'BOOKING_NOT_FOUND');
   }
   await notifyStudentReviewResult(bookingId, to);
+  // 核准後預約正式成立、會出現在點名名單，這時才通知時段老師（駁回不通知，
+  // 與行政取消的慣例一致）。
+  if (to === 'BOOKED') await notifyStaffBookingChange(bookingId, 'BOOKED');
 }
 
 export function approveBooking(bookingId: string): Promise<void> {
@@ -695,8 +700,8 @@ export async function sendMonthlyQuotaReminders(): Promise<{ notified: number }>
   let notified = 0;
   for (const e of enrollments) {
     if (!(await hasPushSubscription(e.student.user.id))) continue;
-    const { locked, upcoming, quota } = await getMonthlyQuotaStatus(e.id, monthKey);
-    if (locked + upcoming >= quota) continue;
+    const { locked, upcoming, quota, pendingOverQuota } = await getMonthlyQuotaStatus(e.id, monthKey);
+    if (locked + upcoming + pendingOverQuota >= quota) continue;
     await pushToUser(e.student.user.id, {
       title: '個別輔導額度提醒',
       body: `${e.student.user.name} 本月「${e.program.name}」還剩 ${quota - locked - upcoming} 堂未預約，記得安排上課時間`,
