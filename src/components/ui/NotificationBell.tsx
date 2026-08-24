@@ -17,7 +17,9 @@ const TAIPEI_TIME_FMT = new Intl.DateTimeFormat('zh-TW', {
   day: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
-  hour12: false,
+  // 明確指定 h23：Safari 對 hour12: false 可能落在 h24（午夜顯示 24:05），
+  // 正式站使用者主要用 Safari，這裡不能只靠引擎預設。
+  hourCycle: 'h23',
 });
 const TAIPEI_WEEKDAY_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', weekday: 'short' });
 const WEEKDAY_MAP: Record<string, string> = { Sun: '日', Mon: '一', Tue: '二', Wed: '三', Thu: '四', Fri: '五', Sat: '六' };
