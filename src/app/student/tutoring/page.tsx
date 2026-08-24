@@ -17,6 +17,7 @@ interface Enrollment {
   monthlyQuota: number;
   locked: number;
   upcoming: number;
+  pendingOverQuota: number;
 }
 
 interface BookingRow {
@@ -35,6 +36,7 @@ export default function StudentTutoringPage() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>('');
   const [attendanceRows, setAttendanceRows] = useState<BookingRow[]>([]);
+  const [selectedCount, setSelectedCount] = useState(0);
 
   async function loadEnrollments() {
     const res = await fetch('/api/tutoring-enrollments/me');
@@ -103,6 +105,8 @@ export default function StudentTutoringPage() {
                 locked={selectedEnrollment.locked}
                 upcoming={selectedEnrollment.upcoming}
                 quota={selectedEnrollment.monthlyQuota}
+                pendingOverQuota={selectedEnrollment.pendingOverQuota}
+                selectedCount={selectedCount}
               />
             </Card>
           )}
@@ -113,6 +117,7 @@ export default function StudentTutoringPage() {
               <TutoringBookingCalendar
                 key={selectedEnrollment.id}
                 enrollmentId={selectedEnrollment.id}
+                onSelectionChange={setSelectedCount}
                 onBooked={() => {
                   loadAttendance();
                   loadEnrollments();

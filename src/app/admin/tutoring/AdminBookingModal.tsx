@@ -10,7 +10,8 @@ interface QuotaStatus {
   locked: number;
   upcoming: number;
   quota: number;
-  // MAKEUP／PENDING_ADMIN 僅出現在歷史資料（收費規範已無補課概念）
+  pendingOverQuota: number;
+  // MAKEUP 僅出現在歷史資料；PENDING_ADMIN＝超額送審中的預約
   upcomingBookings: { id: string; date: string; kind: 'REGULAR' | 'MAKEUP'; status: 'BOOKED' | 'PENDING_ADMIN' }[];
 }
 
@@ -42,13 +43,14 @@ export default function AdminBookingModal({ enrollment, onClose, onBooked }: Adm
             locked={quotaStatus.locked}
             upcoming={quotaStatus.upcoming}
             quota={quotaStatus.quota}
+            pendingOverQuota={quotaStatus.pendingOverQuota}
             selectedCount={selectedCount}
           />
           {quotaStatus.upcomingBookings.length > 0 && (
             <p className="mt-1.5 text-xs text-inkMuted">
               已約日期：
               {quotaStatus.upcomingBookings
-                .map((b) => `${formatDateWithWeekday(b.date)}${b.kind === 'MAKEUP' ? '（補課）' : ''}${b.status === 'PENDING_ADMIN' ? '（待核准）' : ''}`)
+                .map((b) => `${formatDateWithWeekday(b.date)}${b.kind === 'MAKEUP' ? '（補課）' : ''}${b.status === 'PENDING_ADMIN' ? '（超額待審）' : ''}`)
                 .join('、')}
             </p>
           )}

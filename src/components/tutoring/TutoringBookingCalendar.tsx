@@ -127,8 +127,9 @@ export default function TutoringBookingCalendar({
           {cells.map((cell) => {
             const day = availabilityByDate.get(cell.dateKey);
             const mine = !!day?.myBookingId;
-            // 已約日期只有「已確定的預約」能按掉（歷史遺留的待核准補課不行）
-            const cancellable = mine && day!.myBookingStatus === 'BOOKED';
+            // 已約／待審日期都可按掉取消（PENDING_ADMIN＝超額送審中，一律開放
+            // 本人取消，不分新舊資料；取消不計次）
+            const cancellable = mine;
             const bookable = !mine && !!day && day.remaining > 0;
             const selected = !mine && selectedDates.includes(cell.dateKey);
             return (
@@ -151,7 +152,15 @@ export default function TutoringBookingCalendar({
                 <span>{cell.day}</span>
                 {day && (
                   <span className={`text-[10px] font-normal ${mine ? 'text-pending' : selected ? 'text-brandInk' : 'text-inkMuted'}`}>
-                    {mine ? (day.myBookingCount > 1 ? `已約×${day.myBookingCount}` : '已約') : day.remaining > 0 ? `剩${day.remaining}` : '已滿'}
+                    {mine
+                      ? day.myBookingCount > 1
+                        ? `已約×${day.myBookingCount}`
+                        : day.myBookingStatus === 'PENDING_ADMIN'
+                          ? '待審'
+                          : '已約'
+                      : day.remaining > 0
+                        ? `剩${day.remaining}`
+                        : '已滿'}
                   </span>
                 )}
               </button>
@@ -166,6 +175,7 @@ export default function TutoringBookingCalendar({
     setSubmitting(true);
     try {
       const failed: string[] = [];
+      let pendingCount = 0;
       for (const date of selectedDates) {
         const day = availabilityByDate.get(date);
         if (!day) continue;
@@ -174,12 +184,22 @@ export default function TutoringBookingCalendar({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enrollmentId, windowId: day.windowId, date }),
         });
-        if (!res.ok) failed.push(date);
+        if (!res.ok) {
+          failed.push(date);
+        } else {
+          const created = await res.json();
+          if (created.status === 'PENDING_ADMIN') pendingCount++;
+        }
       }
-      if (failed.length === 0) {
-        showToast(successMessage ?? `已預約 ${selectedDates.length} 天`);
-      } else {
+      const okCount = selectedDates.length - failed.length;
+      if (failed.length > 0) {
         showToast(`${failed.map((d) => formatDateWithWeekday(d, 'zh-TW')).join('、')} 預約失敗（可能已滿或當天已有預約），其餘已預約`);
+      } else if (pendingCount === 0) {
+        showToast(successMessage ?? `已預約 ${okCount} 天`);
+      } else if (pendingCount === okCount) {
+        showToast(`已送審 ${pendingCount} 天（超過本月額度，行政核准後才成立）`);
+      } else {
+        showToast(`已預約 ${okCount - pendingCount} 天，另 ${pendingCount} 天超過本月額度已送行政審核`);
       }
       setSelectedDates([]);
       onBooked();
@@ -194,7 +214,7 @@ export default function TutoringBookingCalendar({
       {renderMonthGrid(calendarYear, calendarMonth)}
 
       {availability.some((d) => d.myBookingId) && (
-        <p className="text-xs text-inkMuted">「已約」為這位學生已預約的日期，點一下即可取消該天預約。</p>
+        <p className="text-xs text-inkMuted">「已約／待審」為這位學生已預約的日期，點一下即可取消該天預約。</p>
       )}
 
       {(
