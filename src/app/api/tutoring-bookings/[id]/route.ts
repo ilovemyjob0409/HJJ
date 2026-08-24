@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { cancelBooking, adminCancelBooking } from '@/lib/services/tutoringBookingService';
+import { cancelBooking, adminCancelBooking, approveBooking, rejectBooking } from '@/lib/services/tutoringBookingService';
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -30,6 +30,27 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     const status = message === 'NOT_OWNER' ? 403 : message === 'BOOKING_NOT_FOUND' ? 404 : 422;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+// 行政審核超額預約：approve → BOOKED、reject → REJECTED。
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session || session.user.role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  const body = await req.json().catch(() => ({}));
+  if (body.action !== 'approve' && body.action !== 'reject') {
+    return NextResponse.json({ error: 'action must be approve or reject' }, { status: 400 });
+  }
+  try {
+    if (body.action === 'approve') await approveBooking(params.id);
+    else await rejectBooking(params.id);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    const status = message === 'BOOKING_NOT_FOUND' ? 404 : message === 'NOT_PENDING' ? 409 : 422;
     return NextResponse.json({ error: message }, { status });
   }
 }

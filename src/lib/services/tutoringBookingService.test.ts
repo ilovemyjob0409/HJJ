@@ -5,7 +5,7 @@ import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
-import { createBooking, cancelBooking, adminCancelBooking } from './tutoringBookingService';
+import { createBooking, cancelBooking, adminCancelBooking, approveBooking, rejectBooking } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listAttendanceForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { sendMissedSessionReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger, listWalkInCandidates } from './tutoringBookingService';
@@ -730,5 +730,39 @@ describe('listMonthlyAttendanceSummary', () => {
     const augustSummary = await listMonthlyAttendanceSummary('2020-08');
     expect(augustSummary).toHaveLength(1);
     expect(augustSummary[0]).toMatchObject({ studentName: '小明', attended: 1, absent: 1 });
+  });
+});
+
+describe('approveBooking / rejectBooking', () => {
+  it('核准：PENDING_ADMIN → BOOKED', async () => {
+    const { window, enrollment } = await setupWithQuota(0);
+    const b = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    expect(b.status).toBe('PENDING_ADMIN');
+    await approveBooking(b.id);
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: b.id } });
+    expect(row.status).toBe('BOOKED');
+  });
+
+  it('駁回：PENDING_ADMIN → REJECTED，同一天可以重新預約', async () => {
+    const { window, enrollment } = await setupWithQuota(0);
+    const b = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    await rejectBooking(b.id);
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: b.id } });
+    expect(row.status).toBe('REJECTED');
+    // REJECTED 不佔同日防呆也不佔名額
+    const again = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    expect(again.status).toBe('PENDING_ADMIN');
+  });
+
+  it('非待審狀態丟 NOT_PENDING（重複審核擋下）', async () => {
+    const { window, enrollment } = await setupWithQuota(0);
+    const b = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    await approveBooking(b.id);
+    await expect(approveBooking(b.id)).rejects.toThrow('NOT_PENDING');
+    await expect(rejectBooking(b.id)).rejects.toThrow('NOT_PENDING');
+  });
+
+  it('不存在的 id 丟 BOOKING_NOT_FOUND', async () => {
+    await expect(approveBooking('no-such-id')).rejects.toThrow('BOOKING_NOT_FOUND');
   });
 });

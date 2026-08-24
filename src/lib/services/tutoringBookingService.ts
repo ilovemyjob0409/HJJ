@@ -184,6 +184,54 @@ export async function adminCancelBooking(bookingId: string): Promise<void> {
   }
 }
 
+// 行政審核超額預約：核准 → BOOKED、駁回 → REJECTED。用條件式 updateMany
+// 避免重複審核的競態（只有 PENDING_ADMIN 能轉出），結果推播通知學生。
+async function reviewBooking(bookingId: string, to: 'BOOKED' | 'REJECTED'): Promise<void> {
+  const result = await prisma.tutoringBooking.updateMany({
+    where: { id: bookingId, status: 'PENDING_ADMIN' },
+    data: { status: to },
+  });
+  if (result.count === 0) {
+    const exists = await prisma.tutoringBooking.findUnique({ where: { id: bookingId }, select: { id: true } });
+    throw new Error(exists ? 'NOT_PENDING' : 'BOOKING_NOT_FOUND');
+  }
+  await notifyStudentReviewResult(bookingId, to);
+}
+
+export function approveBooking(bookingId: string): Promise<void> {
+  return reviewBooking(bookingId, 'BOOKED');
+}
+
+export function rejectBooking(bookingId: string): Promise<void> {
+  return reviewBooking(bookingId, 'REJECTED');
+}
+
+// 審核結果通知學生。失敗只記 log，不影響主流程。
+async function notifyStudentReviewResult(bookingId: string, to: 'BOOKED' | 'REJECTED') {
+  try {
+    const booking = await prisma.tutoringBooking.findUnique({
+      where: { id: bookingId },
+      select: {
+        date: true,
+        window: { select: { program: { select: { name: true } } } },
+        enrollment: { select: { student: { select: { user: { select: { id: true } } } } } },
+      },
+    });
+    if (!booking) return;
+    const dateLabel = formatDateWithWeekday(booking.date, 'zh-TW');
+    const payload =
+      to === 'BOOKED'
+        ? { title: '超額預約已核准', body: `${dateLabel}「${booking.window.program.name}」的預約已核准` }
+        : {
+            title: '超額預約未核准',
+            body: `${dateLabel}「${booking.window.program.name}」的預約未核准，這筆預約不成立，若有疑問請與班主任聯繫`,
+          };
+    await pushToUser(booking.enrollment.student.user.id, { ...payload, url: '/student/tutoring' });
+  } catch (err) {
+    console.error('tutoring review result push failed', err);
+  }
+}
+
 // 學生自行預約／取消時通知該時段老師（含第二老師）。
 // 失敗只記 log，不影響主流程。
 async function notifyStaffBookingChange(bookingId: string, change: 'BOOKED' | 'CANCELLED') {
