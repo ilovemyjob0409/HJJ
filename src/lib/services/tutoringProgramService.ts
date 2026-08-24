@@ -221,6 +221,7 @@ export interface EnrollmentSummary {
   active: boolean;
   locked: number;
   upcoming: number;
+  pendingOverQuota: number;
 }
 
 export async function listEnrollments(studentId?: string): Promise<EnrollmentSummary[]> {
@@ -237,7 +238,7 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
     .slice(0, 7);
   return Promise.all(
     enrollments.map(async (e) => {
-      const { locked, upcoming, quota } = await getMonthlyQuotaStatus(e.id, monthKey);
+      const { locked, upcoming, quota, pendingOverQuota } = await getMonthlyQuotaStatus(e.id, monthKey);
       return {
         id: e.id,
         studentId: e.studentId,
@@ -249,6 +250,7 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
         active: e.active,
         locked,
         upcoming,
+        pendingOverQuota,
       };
     })
   );

@@ -385,6 +385,14 @@ describe('getMonthlyQuotaStatus', () => {
     expect(status.locked).toBe(0);
     expect(status.upcoming).toBe(0);
   });
+
+  it('超額待審（今天以後的 PENDING_ADMIN）另計為 pendingOverQuota', async () => {
+    const { window, enrollment } = await setupWithQuota(1);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[1], quotaReview: true });
+    const status = await getMonthlyQuotaStatus(enrollment.id, '2027-01');
+    expect(status).toMatchObject({ locked: 0, upcoming: 1, pendingOverQuota: 1, quota: 1 });
+  });
 });
 
 describe('listAvailability', () => {
