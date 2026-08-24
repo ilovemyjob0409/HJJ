@@ -54,10 +54,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: st
       async (tx) => {
         const [window, enrollment] = await Promise.all([
           tx.tutoringWindow.findUnique({ where: { id: input.windowId } }),
-          tx.tutoringEnrollment.findUnique({
-            where: { id: input.enrollmentId },
-            include: { program: { select: { defaultMonthlyQuota: true } } },
-          }),
+          tx.tutoringEnrollment.findUnique({ where: { id: input.enrollmentId } }),
         ]);
         if (!window) throw new Error('WINDOW_NOT_FOUND');
         if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
@@ -84,32 +81,20 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: st
           if (booked >= window.capacity) throw new Error('WINDOW_FULL');
         }
 
-        // 每月額度閘門（學生自行預約才啟用）：以預約日期所屬 UTC 月份計，
-        // 「已計次（到場非缺席）＋今天（台北）起的有效預約（BOOKED＋待審）」
-        // 達到額度時，這筆改建成 PENDING_ADMIN 送行政審核。取消與過期未到
-        // 不佔額度——口徑同 getMonthlyQuotaStatus。放在 transaction 內，
+        // 每月額度閘門（學生自行預約才啟用）：以預約日期所屬月份計，
+        // 「已計次＋今天（台北）起的有效預約（BOOKED＋待審）」達到額度時，
+        // 這筆改建成 PENDING_ADMIN 送行政審核。計數直接重用
+        // getMonthlyQuotaStatus（傳入 tx 在同一個 Serializable transaction 內
+        // 查詢），額度口徑永遠與學生端額度條一致；放在 transaction 內，
         // 並發送出多筆時不會同時以「第 quota 堂」的身分通過。
         let needsReview = false;
         if (input.quotaReview && input.kind !== 'MAKEUP') {
-          const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
-          const y = input.date.getUTCFullYear();
-          const m = input.date.getUTCMonth();
-          const monthBookings = await tx.tutoringBooking.findMany({
-            where: {
-              enrollmentId: input.enrollmentId,
-              kind: 'REGULAR',
-              status: { in: ['BOOKED', 'PENDING_ADMIN'] },
-              date: { gte: new Date(Date.UTC(y, m, 1)), lte: new Date(Date.UTC(y, m + 1, 0)) },
-            },
-            select: { date: true, attendance: { select: { status: true } } },
-          });
-          const todayKey = taipeiDateKey(new Date());
-          let used = 0;
-          for (const b of monthBookings) {
-            if (b.attendance && b.attendance.status !== 'ABSENT') used++;
-            else if (utcDateKey(b.date) >= todayKey) used++;
-          }
-          needsReview = used >= quota;
+          const { locked, upcoming, quota, pendingOverQuota } = await getMonthlyQuotaStatus(
+            input.enrollmentId,
+            utcDateKey(input.date).slice(0, 7),
+            tx
+          );
+          needsReview = locked + upcoming + pendingOverQuota >= quota;
         }
 
         return tx.tutoringBooking.create({
@@ -260,9 +245,10 @@ async function notifyAdminsReviewNeeded(bookingId: string) {
 
 export async function getMonthlyQuotaStatus(
   enrollmentId: string,
-  monthKey: string // 'YYYY-MM'
+  monthKey: string, // 'YYYY-MM'
+  db: Prisma.TransactionClient = prisma
 ): Promise<{ locked: number; upcoming: number; quota: number; pendingOverQuota: number }> {
-  const enrollment = await prisma.tutoringEnrollment.findUnique({
+  const enrollment = await db.tutoringEnrollment.findUnique({
     where: { id: enrollmentId },
     include: { program: { select: { defaultMonthlyQuota: true } } },
   });
@@ -273,7 +259,7 @@ export async function getMonthlyQuotaStatus(
   const monthEnd = new Date(Date.UTC(year, month, 0));
   const todayKey = taipeiDateKey(new Date());
 
-  const bookings = await prisma.tutoringBooking.findMany({
+  const bookings = await db.tutoringBooking.findMany({
     where: { enrollmentId, kind: 'REGULAR', date: { gte: monthStart, lte: monthEnd } },
     select: { date: true, status: true, attendance: { select: { status: true } } },
   });
