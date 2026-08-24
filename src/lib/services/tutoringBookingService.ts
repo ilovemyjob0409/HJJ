@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { pushToUser, pushToUsers, pushToAdmins, hasPushSubscription } from './pushService';
+import { notifyUser, notifyUsers, notifyAdmins } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export function utcDateKey(date: Date): string {
@@ -233,7 +233,7 @@ async function notifyStudentReviewResult(bookingId: string, to: 'BOOKED' | 'REJE
             title: '超額預約未核准',
             body: `${dateLabel}「${booking.window.program.name}」的預約未核准，這筆預約不成立，若有疑問請與班主任聯繫`,
           };
-    await pushToUser(booking.enrollment.student.user.id, { ...payload, url: '/student/tutoring' });
+    await notifyUser(booking.enrollment.student.user.id, { ...payload, url: '/student/tutoring' });
   } catch (err) {
     console.error('tutoring review result push failed', err);
   }
@@ -269,7 +269,7 @@ async function notifyStaffBookingChange(bookingId: string, change: 'BOOKED' | 'C
     );
     // 2026-08-20 使用者決定：行政只收「需要審核」的通知，預約異動即時生效
     // 不用審核，所以只通知該時段老師，不再 pushToAdmins。
-    await pushToUsers(teacherUserIds, { ...payload, url: '/teacher' });
+    await notifyUsers(teacherUserIds, { ...payload, url: '/teacher' });
   } catch (err) {
     console.error('tutoring booking push notification failed', err);
   }
@@ -288,7 +288,7 @@ async function notifyAdminsReviewNeeded(bookingId: string) {
       },
     });
     if (!booking) return;
-    await pushToAdmins({
+    await notifyAdmins({
       title: '個別輔導超額預約審核',
       body: `${booking.enrollment.student.user.name} 預約 ${formatDateWithWeekday(booking.date, 'zh-TW')}「${booking.window.program.name}」已超過本月額度，請至系統審核`,
       url: '/admin/tutoring/bookings',
@@ -699,12 +699,12 @@ export async function sendMonthlyQuotaReminders(): Promise<{ notified: number }>
     },
   });
 
+  // 收件夾讓沒訂閱推播的人也收得到，不再以訂閱與否決定要不要發（旗標照燒）
   let notified = 0;
   for (const e of enrollments) {
-    if (!(await hasPushSubscription(e.student.user.id))) continue;
     const { locked, upcoming, quota, pendingOverQuota } = await getMonthlyQuotaStatus(e.id, monthKey);
     if (locked + upcoming + pendingOverQuota >= quota) continue;
-    await pushToUser(e.student.user.id, {
+    await notifyUser(e.student.user.id, {
       title: '個別輔導額度提醒',
       body: `${e.student.user.name} 本月「${e.program.name}」還剩 ${quota - locked - upcoming} 堂未預約，記得安排上課時間`,
       url: '/student/tutoring',
@@ -735,8 +735,7 @@ export async function sendMissedSessionReminders(now: Date = new Date()): Promis
   let notified = 0;
   for (const b of bookings) {
     const userId = b.enrollment.student.user.id;
-    if (!(await hasPushSubscription(userId))) continue;
-    await pushToUser(userId, {
+    await notifyUser(userId, {
       title: '缺席提醒',
       body: `${b.enrollment.student.user.name} 昨日「${b.window.program.name}」未到課，請至系統安排補課時間`,
       url: '/student/tutoring',

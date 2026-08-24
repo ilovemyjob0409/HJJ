@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { pushToUser } from './pushService';
+import { notifyUser } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 // 點名等處的班級歸屬檢查：原班導師，或當天已指派的代課老師，皆可存取。
@@ -70,9 +70,9 @@ export async function assignSubstituteTeacher(id: string, substituteTeacherId: s
       class: { select: { name: true, startTime: true, endTime: true } },
     },
   });
-  // 通知被指派的代課老師（pushToUser 永不 throw，不影響指派）。
+  // 通知被指派的代課老師（notifyUser 永不 throw，不影響指派）。
   if (updated.substituteTeacher) {
-    await pushToUser(updated.substituteTeacher.userId, {
+    await notifyUser(updated.substituteTeacher.userId, {
       title: '代課指派',
       body: `您被指派 ${formatDateWithWeekday(updated.date, 'zh-TW')}「${updated.class.name}」的代課（${updated.class.startTime}-${updated.class.endTime}）`,
       url: '/teacher',

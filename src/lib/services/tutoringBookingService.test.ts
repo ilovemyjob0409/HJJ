@@ -637,10 +637,12 @@ describe('sendMonthlyQuotaReminders', () => {
     expect(second.notified).toBe(0);
   });
 
-  it('skips enrollments without a push subscription', async () => {
+  it('也通知沒有推播訂閱的報名（收件夾保底），旗標照燒', async () => {
     await setupProgramWithEnrollment();
-    const result = await sendMonthlyQuotaReminders();
-    expect(result.notified).toBe(0);
+    const first = await sendMonthlyQuotaReminders();
+    expect(first.notified).toBe(1);
+    const second = await sendMonthlyQuotaReminders();
+    expect(second.notified).toBe(0);
   });
 });
 
@@ -659,13 +661,13 @@ describe('sendMissedSessionReminders', () => {
     expect(result.notified).toBe(1);
   });
 
-  it('does not notify without a push subscription', async () => {
+  it('也通知沒有推播訂閱的學生（收件夾保底）', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
 
     const result = await sendMissedSessionReminders(DAY_AFTER_FRIDAY);
 
-    expect(result.notified).toBe(0);
+    expect(result.notified).toBe(1);
   });
 
   it('does not notify a booking that already has an attendance record', async () => {

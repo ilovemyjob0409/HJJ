@@ -1,7 +1,7 @@
 import { Prisma, PointBucket } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { pushToUser } from './pushService';
+import { notifyUser } from './notificationService';
 
 export const DRAW_COST = 20; // 線下抽獎固定每次消耗
 export const AWARD_MAX = 10; // 老師單次給點上限（防誤按）
@@ -21,7 +21,7 @@ async function notifyPointChange(studentId: string, body: string) {
       select: { user: { select: { id: true } } },
     });
     if (!student) return;
-    await pushToUser(student.user.id, { title: '點數異動', body, url: '/student/points' });
+    await notifyUser(student.user.id, { title: '點數異動', body, url: '/student/points' });
   } catch (err) {
     console.error('point change push notification failed', err);
   }

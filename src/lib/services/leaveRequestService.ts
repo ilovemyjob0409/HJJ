@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import { revokeMakeup } from './makeupRequestService';
-import { pushToAdmins } from './pushService';
+import { notifyAdmins } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export interface CreateLeaveRequestInput {
@@ -33,7 +33,7 @@ async function notifyAdminsNewLeave(studentId: string, className: string, date: 
       select: { user: { select: { name: true } } },
     });
     if (!student) return;
-    await pushToAdmins({
+    await notifyAdmins({
       title: '新請假申請',
       body: `${student.user.name} 已請假：${formatDateWithWeekday(date, 'zh-TW')}「${className}」`,
       url: '/admin',

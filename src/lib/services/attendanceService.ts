@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
-import { pushToUser, hasPushSubscription } from './pushService';
+import { notifyUser } from './notificationService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
@@ -1112,12 +1112,11 @@ function toCandidateOption(c: CheckInCandidate): CheckInCandidateOption {
   };
 }
 
+// 收件夾上線後人人收得到，旗標照燒——不再以有無推播訂閱決定要不要發。
 async function maybeNotifyLowQuota(
   student: { id: string; user: { id: string; name: string } },
   classId: string
 ): Promise<void> {
-  if (!(await hasPushSubscription(student.user.id))) return;
-
   const enrollment = await prisma.classEnrollment.findUnique({ where: { studentId_classId: { studentId: student.id, classId } } });
   if (!enrollment || enrollment.lowQuotaNotifiedAt !== null) return;
 
@@ -1125,7 +1124,7 @@ async function maybeNotifyLowQuota(
   if (remaining === null || remaining > LOW_CLASS_QUOTA_THRESHOLD) return;
 
   await prisma.classEnrollment.update({ where: { id: enrollment.id }, data: { lowQuotaNotifiedAt: new Date() } });
-  await pushToUser(student.user.id, {
+  await notifyUser(student.user.id, {
     title: '堂數提醒',
     body: `${student.user.name} 目前剩餘堂數：${remaining} 堂，請盡快與行政人員聯繫續費`,
     url: '/student',
@@ -1133,7 +1132,8 @@ async function maybeNotifyLowQuota(
 }
 
 // 弈廳堂票低堂數提醒：扣堂後剩餘 ≤ LOW_TICKET_THRESHOLD 且未提醒過才發，
-// 登記購買／正向調整時旗標歸零（goHallTicketService）。失敗不影響點名。
+// 登記購買／正向調整時旗標歸零（goHallTicketService）。收件夾上線後人人
+// 收得到，旗標照燒——不再以有無推播訂閱決定要不要發。失敗不影響點名。
 async function maybeNotifyLowGoHallTickets(studentId: string): Promise<void> {
   try {
     const student = await prisma.student.findUnique({
@@ -1141,11 +1141,10 @@ async function maybeNotifyLowGoHallTickets(studentId: string): Promise<void> {
       select: { id: true, goHallLowQuotaNotifiedAt: true, user: { select: { id: true, name: true } } },
     });
     if (!student || student.goHallLowQuotaNotifiedAt !== null) return;
-    if (!(await hasPushSubscription(student.user.id))) return;
     const remaining = await getTicketBalance(studentId);
     if (remaining > LOW_TICKET_THRESHOLD) return;
     await prisma.student.update({ where: { id: studentId }, data: { goHallLowQuotaNotifiedAt: new Date() } });
-    await pushToUser(student.user.id, {
+    await notifyUser(student.user.id, {
       title: '弈廳堂票提醒',
       body: `${student.user.name} 弈廳堂票剩餘：${remaining} 堂，請盡快與行政人員聯繫續購`,
       url: '/student',
@@ -1163,7 +1162,7 @@ async function notifyAttendanceResult(
 ): Promise<void> {
   try {
     const verb = action === 'CHECKED_IN' ? '簽到' : '簽退';
-    await pushToUser(student.user.id, {
+    await notifyUser(student.user.id, {
       title: `${verb}完成`,
       body: `${student.user.name} 已於 ${timeStr} 完成${verb}（${match.title}）`,
       url: '/student',

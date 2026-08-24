@@ -5,7 +5,7 @@ import { isWithinAvailability, slotsOverlap } from '@/lib/timeSlot';
 import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot';
 import { listTeacherAvailability } from './availabilityService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
-import { pushToUser, pushToAdmins } from './pushService';
+import { notifyUser, notifyAdmins } from './notificationService';
 
 export const GO_SUBJECT = '圍棋';
 export const ONE_ON_ONE_PERIOD_LIMIT = 1;
@@ -108,7 +108,7 @@ async function notifyAdminsNewMakeupRequest(leaveRequestId: string) {
       select: { student: { select: { user: { select: { name: true } } } } },
     });
     if (!leave) return;
-    await pushToAdmins({
+    await notifyAdmins({
       title: '新補課申請',
       body: `${leave.student.user.name} 送出補課申請，請至系統審核`,
       url: '/admin/makeup-requests',
@@ -253,7 +253,7 @@ async function notifyMakeup(makeup: MakeupWithNotifyInfo, kind: 'APPROVED' | 'RE
         : kind === 'REVOKED'
           ? { title: '補課已取消', body: `${student.user.name}的補課已取消：${slot}，如需重新安排請洽行政人員` }
           : { title: '補課申請未通過', body: `${student.user.name}的補課申請未通過，請洽行政人員` };
-    await pushToUser(student.user.id, { ...studentMessage, url: '/student' });
+    await notifyUser(student.user.id, { ...studentMessage, url: '/student' });
 
     // 一對一補課有指定老師：核准＝確定指派、撤銷＝行程取消，都要讓老師知道。
     if (makeup.teacher && kind !== 'REJECTED') {
@@ -261,7 +261,7 @@ async function notifyMakeup(makeup: MakeupWithNotifyInfo, kind: 'APPROVED' | 'RE
         kind === 'APPROVED'
           ? { title: '一對一補課指派', body: `您被指派 ${student.user.name} 的一對一補課：${slot}` }
           : { title: '一對一補課取消', body: `${student.user.name} 的一對一補課已取消：${slot}` };
-      await pushToUser(makeup.teacher.userId, { ...teacherMessage, url: '/teacher' });
+      await notifyUser(makeup.teacher.userId, { ...teacherMessage, url: '/teacher' });
     }
   } catch (err) {
     console.error('makeup push notification failed', err);

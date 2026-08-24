@@ -102,3 +102,30 @@ describe('markRead / markAllRead', () => {
     expect((await listNotifications(user.id)).every((r) => r.readAt !== null)).toBe(true);
   });
 });
+
+import { createTeacher } from './teacherService';
+import { createStudent } from './studentService';
+import { createProgram, createWindow } from './tutoringProgramService';
+import { createBooking, approveBooking } from './tutoringBookingService';
+
+describe('遷移抽查：業務流程寫進收件夾', () => {
+  it('超額預約核准後，學生收件夾出現「超額預約已核准」', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: `notif-mig-t-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    const student = await createStudent({ name: '小明', email: `notif-mig-s-${Date.now()}@example.com`, password: 'x' });
+    const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id, monthlyQuota: 0 } });
+    // 下個月第一個星期五（未來日期、weekday 5）
+    const { taipeiDateKey } = await import('./tutoringBookingService');
+    const [y, m] = taipeiDateKey(new Date()).split('-').map(Number);
+    const first = new Date(Date.UTC(y, m, 1));
+    const friday = new Date(Date.UTC(y, m, 1 + ((5 - first.getUTCDay() + 7) % 7)));
+
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: friday, quotaReview: true });
+    await approveBooking(booking.id);
+
+    const { userId } = await prisma.student.findUniqueOrThrow({ where: { id: student.id }, select: { userId: true } });
+    const rows = await prisma.notification.findMany({ where: { userId } });
+    expect(rows.some((r) => r.title === '超額預約已核准')).toBe(true);
+  });
+});
