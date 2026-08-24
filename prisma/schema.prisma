@@ -100,6 +100,7 @@ model User {
   markedActivityAttendances ActivityAttendance[]
   markedTutoringAttendances TutoringAttendance[]
   pushSubscriptions         PushSubscription[]
+  notifications             Notification[]
 }
 
 model Teacher {
@@ -564,4 +565,18 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@unique([userId, endpoint])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  url       String?
+  readAt    DateTime? // null = 未讀
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
