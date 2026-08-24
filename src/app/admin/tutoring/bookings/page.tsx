@@ -24,6 +24,17 @@ interface OverviewRow {
   status: 'PENDING_ADMIN' | 'BOOKED' | 'CANCELLED' | 'CANCELLED_LATE' | 'REJECTED';
 }
 
+interface PendingRow {
+  id: string;
+  enrollmentId: string;
+  studentName: string;
+  programName: string;
+  date: string;
+  seq: number;
+  quota: number;
+  monthUsage: { monthKey: string; attended: number }[];
+}
+
 interface SummaryRow {
   enrollmentId: string;
   studentName: string;
@@ -59,10 +70,16 @@ export default function AdminTutoringBookingsPage() {
   const [rows, setRows] = useState<OverviewRow[]>([]);
   const [month, setMonth] = useState(todayDateInput().slice(0, 7));
   const [summary, setSummary] = useState<SummaryRow[]>([]);
+  const [pendingRows, setPendingRows] = useState<PendingRow[]>([]);
 
   async function loadCounts() {
     const res = await fetch(`/api/tutoring-bookings/overview?month=${calMonth}`);
     setCounts(await res.json());
+  }
+
+  async function loadPending() {
+    const res = await fetch('/api/tutoring-bookings/pending');
+    if (res.ok) setPendingRows(await res.json());
   }
 
   async function loadDay(date: string) {
@@ -91,12 +108,35 @@ export default function AdminTutoringBookingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month]);
 
+  useEffect(() => {
+    loadPending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 收費規範：取消一律不計次（扣堂只看有無到場），沒有「計次取消」。
   async function cancel(row: OverviewRow) {
     if (!(await confirm('確定要取消這筆預約嗎？（不扣堂）', { danger: true }))) return;
     await fetch(`/api/tutoring-bookings/${row.id}`, { method: 'DELETE' });
     showToast('已取消');
     if (selectedDate) loadDay(selectedDate);
+    loadCounts();
+  }
+
+  async function review(row: PendingRow, action: 'approve' | 'reject') {
+    const label = action === 'approve' ? '核准' : '駁回';
+    const msg = `確定要${label} ${row.studentName} ${formatDateWithWeekday(row.date)} 的超額預約嗎？`;
+    if (!(await confirm(msg, action === 'reject' ? { danger: true } : undefined))) return;
+    const res = await fetch(`/api/tutoring-bookings/${row.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) {
+      showToast(`${label}失敗，請重新整理後再試`);
+      return;
+    }
+    showToast(`已${label}`);
+    loadPending();
     loadCounts();
   }
 
@@ -115,6 +155,30 @@ export default function AdminTutoringBookingsPage() {
         ) : (
           <span className="text-inkMuted">—</span>
         ),
+    },
+  ];
+
+  const pendingColumns: Column<PendingRow>[] = [
+    { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
+    { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
+    { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
+    { header: '這筆是', render: (r) => `當月第 ${r.seq} 堂（額度 ${r.quota}）`, sortValue: (r) => r.seq },
+    {
+      header: '近3個月已計次',
+      render: (r) => r.monthUsage.map((u) => `${Number(u.monthKey.slice(5, 7))}月 ${u.attended} 堂`).join('・'),
+    },
+    {
+      header: '操作',
+      render: (r) => (
+        <div className="flex gap-2">
+          <Button className="px-2 py-1 text-xs" onClick={() => review(r, 'approve')}>
+            核准
+          </Button>
+          <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => review(r, 'reject')}>
+            駁回
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -137,6 +201,11 @@ export default function AdminTutoringBookingsPage() {
         返回個別輔導管理
       </Link>
       <h1 className="mb-4 text-xl font-bold text-ink">個別輔導預約總覽</h1>
+
+      <h2 className="mb-2 font-bold text-ink">超額預約待審核</h2>
+      <Card className="mb-6">
+        <DataTable columns={pendingColumns} rows={pendingRows} keyField={(r) => r.id} emptyText="目前沒有待審核的預約" />
+      </Card>
 
       <Card className="mb-6">
         <div className="mb-3 flex items-center justify-between">
