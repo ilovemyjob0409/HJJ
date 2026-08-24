@@ -7,6 +7,7 @@ import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking, approveBooking, rejectBooking } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listAttendanceForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
+import { listPendingReviewBookings } from './tutoringBookingService';
 import { sendMissedSessionReminders } from './tutoringBookingService';
 import { getTutoringDeductionLedger, listWalkInCandidates } from './tutoringBookingService';
 import { listMonthlyAttendanceSummary, listMonthlyBookingCounts } from './tutoringBookingService';
@@ -764,5 +765,29 @@ describe('approveBooking / rejectBooking', () => {
 
   it('不存在的 id 丟 BOOKING_NOT_FOUND', async () => {
     await expect(approveBooking('no-such-id')).rejects.toThrow('BOOKING_NOT_FOUND');
+  });
+});
+
+describe('listPendingReviewBookings', () => {
+  it('列出今天以後的待審預約，含第幾堂與近3月參考', async () => {
+    const { window, enrollment } = await setupWithQuota(0);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[1], quotaReview: true });
+    // 共用測試 DB 可能有其他報名的待審資料，只驗自己這筆報名的列
+    const rows = (await listPendingReviewBookings()).filter((r) => r.enrollmentId === enrollment.id);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].studentName).toBe('小明');
+    expect(rows[0].programName).toBe('英文個別輔導');
+    expect(rows[0].seq).toBe(1); // 額度 0、沒有已計次與已約 → 這筆核准後是第 1 堂
+    expect(rows[1].seq).toBe(2);
+    expect(rows[0].quota).toBe(0);
+    expect(rows[0].monthUsage).toHaveLength(3);
+  });
+
+  it('過期的待審（舊制補課遺留）不列', async () => {
+    const { window, enrollment } = await setupWithQuota(0);
+    const past = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY, kind: 'MAKEUP' });
+    const rows = await listPendingReviewBookings();
+    expect(rows.find((r) => r.id === past.id)).toBeUndefined();
   });
 });

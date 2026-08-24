@@ -574,6 +574,78 @@ export async function listBookingsOverview(date: Date): Promise<OverviewBookingR
     .sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW'));
 }
 
+function shiftMonthKey(monthKey: string, delta: number): string {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+export interface PendingReviewRow {
+  id: string;
+  enrollmentId: string;
+  studentName: string;
+  programName: string;
+  date: Date;
+  seq: number; // 核准後是當月第幾堂（已計次＋已約＋前面的待審筆數＋1）
+  quota: number;
+  // 近 3 個月（預約當月、上月、前月）已計次堂數，供行政人工判斷是否真有未補的課
+  monthUsage: { monthKey: string; attended: number }[];
+}
+
+// 行政待審佇列：今天（台北）起、狀態 PENDING_ADMIN 的預約，依送出時間排序。
+// 已過期的待審（含舊制補課遺留資料）不列——到場與否已由點名決定，事後審核
+// 無意義。統計以「預約日期所屬月份」為準（目前預約範圍只開放當月，兩者相同）。
+export async function listPendingReviewBookings(now: Date = new Date()): Promise<PendingReviewRow[]> {
+  const [ty, tm, td] = taipeiDateKey(now).split('-').map(Number);
+  const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
+
+  const pending = await prisma.tutoringBooking.findMany({
+    where: { status: 'PENDING_ADMIN', date: { gte: todayUtc } },
+    select: {
+      id: true,
+      enrollmentId: true,
+      date: true,
+      enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
+      window: { select: { program: { select: { name: true } } } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // 同一報名同一月份的統計只查一次；seen 累計先送審的筆數，讓 seq 依序遞增
+  const statsCache = new Map<
+    string,
+    { locked: number; upcoming: number; quota: number; monthUsage: { monthKey: string; attended: number }[]; seen: number }
+  >();
+  const rows: PendingReviewRow[] = [];
+  for (const b of pending) {
+    const monthKey = utcDateKey(b.date).slice(0, 7);
+    const cacheKey = `${b.enrollmentId}:${monthKey}`;
+    let stats = statsCache.get(cacheKey);
+    if (!stats) {
+      const { locked, upcoming, quota } = await getMonthlyQuotaStatus(b.enrollmentId, monthKey);
+      const monthUsage = [{ monthKey, attended: locked }];
+      for (let k = 1; k < 3; k++) {
+        const mk = shiftMonthKey(monthKey, -k);
+        monthUsage.push({ monthKey: mk, attended: (await getMonthlyQuotaStatus(b.enrollmentId, mk)).locked });
+      }
+      stats = { locked, upcoming, quota, monthUsage, seen: 0 };
+      statsCache.set(cacheKey, stats);
+    }
+    stats.seen += 1;
+    rows.push({
+      id: b.id,
+      enrollmentId: b.enrollmentId,
+      studentName: b.enrollment.student.user.name,
+      programName: b.window.program.name,
+      date: b.date,
+      seq: stats.locked + stats.upcoming + stats.seen,
+      quota: stats.quota,
+      monthUsage: stats.monthUsage,
+    });
+  }
+  return rows;
+}
+
 export interface DailyBookingCount {
   date: string; // YYYY-MM-DD
   booked: number;
