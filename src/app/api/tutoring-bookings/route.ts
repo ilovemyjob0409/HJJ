@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       windowId: body.windowId,
       date: new Date(body.date),
       notifyStaff: session.user.role === 'STUDENT',
+      quotaReview: session.user.role === 'STUDENT',
     });
     return NextResponse.json(booking, { status: 201 });
   } catch (err) {

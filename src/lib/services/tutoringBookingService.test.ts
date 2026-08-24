@@ -44,6 +44,18 @@ async function setupProgramWithEnrollment(capacity = 8) {
 // 2026-08-07 is a Friday (weekday 5), matching the fixture window above.
 const FRIDAY = new Date('2026-08-07');
 
+// 2027-01-01 是星期五，且 2027 年 1 月的五個星期五都在未來、同一個月份，
+// 額度閘門測試需要「同月多個未來日期」才能驗證 upcoming 計數。
+const FUTURE_FRIDAYS = ['2027-01-01', '2027-01-08', '2027-01-15', '2027-01-22', '2027-01-29'].map(
+  (d) => new Date(d)
+);
+
+async function setupWithQuota(monthlyQuota: number) {
+  const ctx = await setupProgramWithEnrollment();
+  await prisma.tutoringEnrollment.update({ where: { id: ctx.enrollment.id }, data: { monthlyQuota } });
+  return ctx;
+}
+
 describe('createBooking', () => {
   it('creates a REGULAR booking as BOOKED, carrying the window times', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
@@ -114,6 +126,63 @@ describe('createBooking', () => {
     await expect(
       createBooking({ enrollmentId: otherEnrollment.id, windowId: window.id, date: nextFriday, allowOverCapacity: true })
     ).rejects.toThrow('WINDOW_CLOSED');
+  });
+});
+
+describe('createBooking 每月額度閘門', () => {
+  it('quotaReview：額度內直接 BOOKED，第 quota+1 堂起建成 PENDING_ADMIN', async () => {
+    const { window, enrollment } = await setupWithQuota(2);
+    const b1 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    const b2 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[1], quotaReview: true });
+    const b3 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[2], quotaReview: true });
+    expect(b1.status).toBe('BOOKED');
+    expect(b2.status).toBe('BOOKED');
+    expect(b3.status).toBe('PENDING_ADMIN');
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: b3.id } });
+    expect(row.status).toBe('PENDING_ADMIN');
+    expect(row.kind).toBe('REGULAR');
+  });
+
+  it('既有的 PENDING_ADMIN 也計入門檻（第 10 堂一樣送審）', async () => {
+    const { window, enrollment } = await setupWithQuota(1);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    const b2 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[1], quotaReview: true });
+    const b3 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[2], quotaReview: true });
+    expect(b2.status).toBe('PENDING_ADMIN');
+    expect(b3.status).toBe('PENDING_ADMIN');
+  });
+
+  it('取消的預約釋放額度', async () => {
+    const { window, enrollment } = await setupWithQuota(1);
+    const b1 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0], quotaReview: true });
+    await adminCancelBooking(b1.id);
+    const b2 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[1], quotaReview: true });
+    expect(b2.status).toBe('BOOKED');
+  });
+
+  it('已計次（到場非缺席）計入門檻，過去日期也算', async () => {
+    const { window, enrollment } = await setupWithQuota(1);
+    const marker = await prisma.user.create({
+      data: { email: `quota-marker-${Date.now()}@example.com`, password: 'x', name: 'Marker', role: 'TEACHER' },
+    });
+    const past = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await saveTutoringAttendance(marker.id, [{ bookingId: past.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    // FRIDAY（2026-08-07）已到場＝已計次，同月（2026-08）再約就是第 2 堂 → 送審
+    const b2 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2026-08-14'), quotaReview: true });
+    expect(b2.status).toBe('PENDING_ADMIN');
+  });
+
+  it('過期未到的預約不佔額度', async () => {
+    const { window, enrollment } = await setupWithQuota(1);
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY }); // 過期、無點名
+    const b2 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2026-08-14'), quotaReview: true });
+    expect(b2.status).toBe('BOOKED');
+  });
+
+  it('不帶 quotaReview（行政代排／walk-in）超額照樣直接 BOOKED', async () => {
+    const { window, enrollment } = await setupWithQuota(0);
+    const b1 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0] });
+    expect(b1.status).toBe('BOOKED');
   });
 });
 

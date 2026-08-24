@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { pushToUser, pushToUsers, hasPushSubscription } from './pushService';
+import { pushToUser, pushToUsers, pushToAdmins, hasPushSubscription } from './pushService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export function utcDateKey(date: Date): string {
@@ -38,19 +38,26 @@ export interface CreateBookingInput {
   allowOverCapacity?: boolean;
   // 學生自行預約時通知時段老師；行政代排、點名現場加入不通知。
   notifyStaff?: boolean;
+  // 學生自行預約時啟用「每月額度審核」：本月已計次＋有效預約已達額度時，
+  // 這筆改建成 PENDING_ADMIN 送行政審核（不擋，行政人工判斷）。
+  // 行政代排、點名現場加入不啟用，超額照樣直接成立。
+  quotaReview?: boolean;
 }
 
 // 預約不再選時段：一筆預約＝「這位學生這天會來」，booking 的 startTime/endTime
 // 直接沿用窗口本身的時段（DB 欄位保留，kiosk 掃碼簽到等既有流程仍靠它排序
 // 與顯示）。容量也因此簡化成當天人數上限：BOOKED＋PENDING_ADMIN 的既有預約
 // 數達到 window.capacity 就滿了。
-export async function createBooking(input: CreateBookingInput): Promise<{ id: string }> {
+export async function createBooking(input: CreateBookingInput): Promise<{ id: string; status: 'BOOKED' | 'PENDING_ADMIN' }> {
   const booking = await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
         const [window, enrollment] = await Promise.all([
           tx.tutoringWindow.findUnique({ where: { id: input.windowId } }),
-          tx.tutoringEnrollment.findUnique({ where: { id: input.enrollmentId } }),
+          tx.tutoringEnrollment.findUnique({
+            where: { id: input.enrollmentId },
+            include: { program: { select: { defaultMonthlyQuota: true } } },
+          }),
         ]);
         if (!window) throw new Error('WINDOW_NOT_FOUND');
         if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
@@ -77,6 +84,34 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: st
           if (booked >= window.capacity) throw new Error('WINDOW_FULL');
         }
 
+        // 每月額度閘門（學生自行預約才啟用）：以預約日期所屬 UTC 月份計，
+        // 「已計次（到場非缺席）＋今天（台北）起的有效預約（BOOKED＋待審）」
+        // 達到額度時，這筆改建成 PENDING_ADMIN 送行政審核。取消與過期未到
+        // 不佔額度——口徑同 getMonthlyQuotaStatus。放在 transaction 內，
+        // 並發送出多筆時不會同時以「第 quota 堂」的身分通過。
+        let needsReview = false;
+        if (input.quotaReview && input.kind !== 'MAKEUP') {
+          const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
+          const y = input.date.getUTCFullYear();
+          const m = input.date.getUTCMonth();
+          const monthBookings = await tx.tutoringBooking.findMany({
+            where: {
+              enrollmentId: input.enrollmentId,
+              kind: 'REGULAR',
+              status: { in: ['BOOKED', 'PENDING_ADMIN'] },
+              date: { gte: new Date(Date.UTC(y, m, 1)), lte: new Date(Date.UTC(y, m + 1, 0)) },
+            },
+            select: { date: true, attendance: { select: { status: true } } },
+          });
+          const todayKey = taipeiDateKey(new Date());
+          let used = 0;
+          for (const b of monthBookings) {
+            if (b.attendance && b.attendance.status !== 'ABSENT') used++;
+            else if (utcDateKey(b.date) >= todayKey) used++;
+          }
+          needsReview = used >= quota;
+        }
+
         return tx.tutoringBooking.create({
           data: {
             enrollmentId: input.enrollmentId,
@@ -85,17 +120,18 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: st
             startTime: window.startTime,
             endTime: window.endTime,
             kind: input.kind ?? 'REGULAR',
-            status: input.kind === 'MAKEUP' ? 'PENDING_ADMIN' : 'BOOKED',
+            status: input.kind === 'MAKEUP' || needsReview ? 'PENDING_ADMIN' : 'BOOKED',
             makeupForId: input.makeupForId,
           },
-          select: { id: true },
+          select: { id: true, status: true },
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
   );
+  if (booking.status === 'PENDING_ADMIN' && input.quotaReview) await notifyAdminsReviewNeeded(booking.id);
   if (input.notifyStaff) await notifyStaffBookingChange(booking.id, 'BOOKED');
-  return booking;
+  return { id: booking.id, status: booking.status as 'BOOKED' | 'PENDING_ADMIN' };
 }
 
 export interface WalkInCandidate {
@@ -196,6 +232,29 @@ async function notifyStaffBookingChange(bookingId: string, change: 'BOOKED' | 'C
     await pushToUsers(teacherUserIds, { ...payload, url: '/teacher' });
   } catch (err) {
     console.error('tutoring booking push notification failed', err);
+  }
+}
+
+// 超額預約送審成立時推播行政（2026-08-20 慣例：行政只收「需要審核」的
+// 通知）。失敗只記 log，不影響主流程。
+async function notifyAdminsReviewNeeded(bookingId: string) {
+  try {
+    const booking = await prisma.tutoringBooking.findUnique({
+      where: { id: bookingId },
+      select: {
+        date: true,
+        window: { select: { program: { select: { name: true } } } },
+        enrollment: { select: { student: { select: { user: { select: { name: true } } } } } },
+      },
+    });
+    if (!booking) return;
+    await pushToAdmins({
+      title: '個別輔導超額預約審核',
+      body: `${booking.enrollment.student.user.name} 預約 ${formatDateWithWeekday(booking.date, 'zh-TW')}「${booking.window.program.name}」已超過本月額度，請至系統審核`,
+      url: '/admin/tutoring/bookings',
+    });
+  } catch (err) {
+    console.error('tutoring over-quota review push failed', err);
   }
 }
 
