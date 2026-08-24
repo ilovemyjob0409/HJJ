@@ -73,19 +73,35 @@ export async function deleteSession(id: string) {
 }
 
 export async function registerForSession(sessionId: string, studentId: string) {
-  return runSerializableWithRetry(() => registerForSessionTx(sessionId, studentId));
+  return runSerializableWithRetry(() => registerForSessionTx(sessionId, studentId, { bypassCapacity: false }));
 }
 
-function registerForSessionTx(sessionId: string, studentId: string) {
-  return prisma.$transaction(
-    async (tx) => {
-      const session = await tx.goHallSession.findUniqueOrThrow({ where: { id: sessionId } });
-      const count = await tx.goHallRegistration.count({ where: { sessionId } });
-      if (count >= session.capacity) throw new Error('SESSION_FULL');
-      return tx.goHallRegistration.create({ data: { sessionId, studentId } });
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-  );
+// 行政代報名：可超額（現場彈性加人），但不能報過去的場次。
+export async function adminRegisterForSession(sessionId: string, studentId: string) {
+  const session = await prisma.goHallSession.findUniqueOrThrow({ where: { id: sessionId } });
+  if (isBeforeToday(session.date)) throw new Error('SESSION_EXPIRED');
+  return runSerializableWithRetry(() => registerForSessionTx(sessionId, studentId, { bypassCapacity: true }));
+}
+
+async function registerForSessionTx(sessionId: string, studentId: string, options: { bypassCapacity: boolean }) {
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const session = await tx.goHallSession.findUniqueOrThrow({ where: { id: sessionId } });
+        if (!options.bypassCapacity) {
+          const count = await tx.goHallRegistration.count({ where: { sessionId } });
+          if (count >= session.capacity) throw new Error('SESSION_FULL');
+        }
+        return await tx.goHallRegistration.create({ data: { sessionId, studentId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new Error('ALREADY_REGISTERED');
+    }
+    throw err;
+  }
 }
 
 export async function cancelRegistration(id: string, studentId: string) {

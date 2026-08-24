@@ -12,6 +12,7 @@ import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { previewSessionDates } from '@/lib/goHallDates';
+import { isBeforeToday } from '@/lib/pastDate';
 import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 import { matchesSessionSearch } from './sessionSearch';
 import TicketManager, { QUALIFICATION_LABEL } from './TicketManager';
@@ -38,6 +39,7 @@ interface SessionRow {
 
 interface RosterEntry {
   id: string;
+  studentId: string;
   student: { user: { name: string } };
   qualification?: string | null;
   qualificationPredicted?: boolean;
@@ -45,6 +47,12 @@ interface RosterEntry {
 
 interface SessionDetail extends SessionRow {
   registrations: RosterEntry[];
+}
+
+interface StudentOption {
+  id: string;
+  studentNumber?: string | null;
+  user: { name: string };
 }
 
 function AdminGoHallContent() {
@@ -60,6 +68,10 @@ function AdminGoHallContent() {
   const [previewDates, setPreviewDates] = useState<Date[] | null>(null);
   const [excludedDates, setExcludedDates] = useState<Set<number>>(new Set());
   const [viewing, setViewing] = useState<SessionDetail | null>(null);
+  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [regSearch, setRegSearch] = useState('');
+  const [registering, setRegistering] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [highlightDismissed, setHighlightDismissed] = useState(false);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -125,8 +137,47 @@ function AdminGoHallContent() {
   }
 
   async function openRoster(id: string) {
+    setRegSearch('');
+    setShowRegisterModal(false);
     const res = await fetch(`/api/go-hall-sessions/${id}`);
     setViewing(await res.json());
+    if (students.length === 0) {
+      fetch('/api/students').then((r) => (r.ok ? r.json() : [])).then(setStudents);
+    }
+  }
+
+  async function handleAdminRegister(student: StudentOption) {
+    if (!viewing) return;
+    const isFull = viewing.registrations.length >= viewing.capacity;
+    const message = isFull
+      ? `此場次已額滿（${viewing.registrations.length}/${viewing.capacity}），確定要幫 ${student.user.name} 超額報名嗎？`
+      : `確定幫 ${student.user.name} 報名此場次？`;
+    if (!(await confirm(message))) return;
+    setRegistering(true);
+    try {
+      const res = await fetch('/api/go-hall-registrations', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: viewing.id, studentId: student.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const errorText =
+          data?.error === 'ALREADY_REGISTERED'
+            ? '該學生已報名此場次'
+            : data?.error === 'SESSION_EXPIRED'
+              ? '此場次已過期，無法報名'
+              : `錯誤：${data?.error ?? res.status}`;
+        showToast(errorText);
+        return;
+      }
+      setRegSearch('');
+      showToast('已報名');
+      const detail = await fetch(`/api/go-hall-sessions/${viewing.id}`);
+      setViewing(await detail.json());
+      load();
+    } finally {
+      setRegistering(false);
+    }
   }
 
   async function handleDeleteSession() {
@@ -319,9 +370,52 @@ function AdminGoHallContent() {
                 ))}
               </ul>
             )}
+            {!isBeforeToday(viewing.date) && (
+              <Button type="button" className="w-fit px-3 py-1 text-xs" onClick={() => setShowRegisterModal(true)}>
+                行政代報
+              </Button>
+            )}
             <button type="button" className="mt-2 text-left text-sm text-rejected hover:underline" onClick={handleDeleteSession}>
               刪除此場次
             </button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={showRegisterModal && viewing !== null} onClose={() => setShowRegisterModal(false)} title="行政代報">
+        {viewing && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-inkMuted">
+              {formatDateWithWeekday(viewing.date, 'zh-TW')} {viewing.startTime}-{viewing.endTime} ·{' '}
+              {viewing.registrations.length}/{viewing.capacity}
+            </p>
+            <Input placeholder="搜尋姓名或學號…" value={regSearch} onChange={(e) => setRegSearch(e.target.value)} autoFocus />
+            {(() => {
+              const registeredIds = new Set(viewing.registrations.map((r) => r.studentId));
+              const q = regSearch.trim().toLowerCase();
+              const candidates = students
+                .filter((s) => !registeredIds.has(s.id))
+                .filter((s) => !q || s.user.name.toLowerCase().includes(q) || (s.studentNumber ?? '').toLowerCase().includes(q));
+              if (candidates.length === 0) {
+                return <p className="text-sm text-inkMuted">{q ? '找不到符合的學生' : '沒有可報名的學生'}</p>;
+              }
+              return (
+                <div className="flex max-h-80 flex-col overflow-y-auto rounded-lg border border-borderStrong">
+                  {candidates.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      disabled={registering}
+                      onClick={() => handleAdminRegister(s)}
+                      className="flex items-center justify-between border-b border-borderSubtle px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stripe disabled:opacity-50"
+                    >
+                      <span className="text-ink">{s.user.name}</span>
+                      <span className="text-xs text-inkMuted">{s.studentNumber ?? '-'}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
       </Modal>

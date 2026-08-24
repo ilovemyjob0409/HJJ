@@ -9,6 +9,7 @@ import {
   listOpenSessionsForStudent,
   deleteSession,
   registerForSession,
+  adminRegisterForSession,
   cancelRegistration,
   adminRemoveRegistration,
   listRegistrationsForStudent,
@@ -182,6 +183,60 @@ describe('cancelRegistration', () => {
 
     const remaining = await prisma.goHallRegistration.count();
     expect(remaining).toBe(0);
+  });
+});
+
+describe('adminRegisterForSession', () => {
+  it('registers a student even when the session is already at capacity', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    await createSessions({ dates: [tomorrow], startTime: '14:00', endTime: '16:00', capacity: 1, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, studentA.id);
+
+    const registration = await adminRegisterForSession(session.id, studentB.id);
+    expect(registration.studentId).toBe(studentB.id);
+
+    const count = await prisma.goHallRegistration.count({ where: { sessionId: session.id } });
+    expect(count).toBe(2);
+  });
+
+  it('throws SESSION_EXPIRED for a session dated before today', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    await createSessions({ dates: [yesterday], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+
+    await expect(adminRegisterForSession(session.id, student.id)).rejects.toThrow('SESSION_EXPIRED');
+  });
+
+  it('throws ALREADY_REGISTERED when the student already has a registration', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    await createSessions({ dates: [tomorrow], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+
+    await expect(adminRegisterForSession(session.id, student.id)).rejects.toThrow('ALREADY_REGISTERED');
+  });
+});
+
+describe('registerForSession (duplicate)', () => {
+  it('throws ALREADY_REGISTERED instead of a raw Prisma error', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(session.id, student.id);
+
+    await expect(registerForSession(session.id, student.id)).rejects.toThrow('ALREADY_REGISTERED');
   });
 });
 
