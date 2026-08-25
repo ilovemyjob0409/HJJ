@@ -103,7 +103,7 @@ describe('markRead / markAllRead', () => {
   });
 });
 
-import { createTeacher } from './teacherService';
+import { createTeacher, deleteTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createProgram, createWindow } from './tutoringProgramService';
 import { createBooking, approveBooking } from './tutoringBookingService';
@@ -127,5 +127,15 @@ describe('遷移抽查：業務流程寫進收件夾', () => {
     const { userId } = await prisma.student.findUniqueOrThrow({ where: { id: student.id }, select: { userId: true } });
     const rows = await prisma.notification.findMany({ where: { userId } });
     expect(rows.some((r) => r.title === '超額預約已核准')).toBe(true);
+  });
+});
+
+describe('使用者刪除連動', () => {
+  it('刪除帳號時通知一併刪除（Cascade），不會擋住 user.delete', async () => {
+    const teacher = await createTeacher({ name: '待刪老師', email: `notif-del-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const { userId } = await prisma.teacher.findUniqueOrThrow({ where: { id: teacher.id }, select: { userId: true } });
+    await notifyUser(userId, PAYLOAD);
+    await deleteTeacher(teacher.id);
+    expect(await prisma.notification.count({ where: { userId } })).toBe(0);
   });
 });

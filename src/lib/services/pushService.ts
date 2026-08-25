@@ -33,8 +33,8 @@ export async function removeSubscription(userId: string, endpoint: string): Prom
   await prisma.pushSubscription.deleteMany({ where: { userId, endpoint } });
 }
 
-// 「有沒有開通知」的判斷：低堂數提醒等一次性旗標只在有訂閱時才燒掉，
-// 之後才開通知的人不會錯過提醒。
+// 通知中心上線後，業務層不再以「有沒有訂閱」決定要不要發通知（收件夾人人
+// 收得到，一次性旗標照燒）。此函式保留給訂閱管理與測試使用。
 export async function hasPushSubscription(userId: string): Promise<boolean> {
   return (await prisma.pushSubscription.count({ where: { userId } })) > 0;
 }

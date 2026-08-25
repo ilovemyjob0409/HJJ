@@ -268,7 +268,7 @@ async function notifyStaffBookingChange(bookingId: string, change: 'BOOKED' | 'C
       (id): id is string => Boolean(id)
     );
     // 2026-08-20 使用者決定：行政只收「需要審核」的通知，預約異動即時生效
-    // 不用審核，所以只通知該時段老師，不再 pushToAdmins。
+    // 不用審核，所以只通知該時段老師，不再通知行政。
     await notifyUsers(teacherUserIds, { ...payload, url: '/teacher' });
   } catch (err) {
     console.error('tutoring booking push notification failed', err);

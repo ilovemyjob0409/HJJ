@@ -52,9 +52,9 @@ export default function NotificationBell() {
 
   // 掛載時抓一次；回到分頁時重抓（不輪詢）
   useEffect(() => {
-    load();
+    load().catch(() => {});
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load();
+      if (document.visibilityState === 'visible') load().catch(() => {});
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -79,7 +79,7 @@ export default function NotificationBell() {
 
   function toggle() {
     setOpen((v) => {
-      if (!v) load();
+      if (!v) load().catch(() => {});
       return !v;
     });
   }
@@ -87,7 +87,8 @@ export default function NotificationBell() {
   // 逐則點擊已讀；有 url 就整頁導航（跨區塊導頁要吃到最新資料）
   async function clickRow(row: NotificationRow) {
     if (!row.readAt) {
-      await fetch(`/api/notifications/${row.id}`, { method: 'PATCH' });
+      // 離線或暫時性錯誤不擋跳轉——已讀狀態下次載入會再對齊
+      await fetch(`/api/notifications/${row.id}`, { method: 'PATCH' }).catch(() => {});
     }
     if (row.url) {
       window.location.href = row.url;
@@ -101,7 +102,7 @@ export default function NotificationBell() {
     if (unread === 0 || marking) return;
     setMarking(true);
     try {
-      await fetch('/api/notifications/read-all', { method: 'POST' });
+      await fetch('/api/notifications/read-all', { method: 'POST' }).catch(() => {});
       await load();
     } finally {
       setMarking(false);
