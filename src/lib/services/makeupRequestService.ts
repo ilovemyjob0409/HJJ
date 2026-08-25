@@ -572,3 +572,20 @@ export async function sendMakeupNotFiledReminders(now: Date = new Date()): Promi
   }
   return { notified };
 }
+
+// 情境④：每天一則彙總提醒行政——送出超過 24 小時未審的補課申請＋待確認的
+// 撤銷申請（撤銷不設 24 小時門檻，本來就該儘快處理）。清空就不發，一天最多
+// 一則；逐件通知在送出當下已各推過一次（notifyAdminsNewMakeupRequest）。
+export async function sendPendingMakeupDigest(now: Date = new Date()): Promise<{ notified: boolean }> {
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const [pending, cancels] = await Promise.all([
+    prisma.makeupRequest.count({ where: { status: 'PENDING_ADMIN', createdAt: { lt: dayAgo } } }),
+    prisma.makeupRequest.count({ where: { status: 'APPROVED', cancelRequestedAt: { not: null } } }),
+  ]);
+  if (pending === 0 && cancels === 0) return { notified: false };
+  const parts: string[] = [];
+  if (pending > 0) parts.push(`有 ${pending} 件補課申請待審核`);
+  if (cancels > 0) parts.push(`${pending > 0 ? '另' : ''}有 ${cancels} 件撤銷申請待確認`);
+  await notifyAdmins({ title: '補課待審提醒', body: `${parts.join('，')}，請至系統處理`, url: '/admin/makeup-requests' });
+  return { notified: true };
+}

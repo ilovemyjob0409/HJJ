@@ -24,6 +24,7 @@ import {
   revokeMakeup,
   sendMakeupDayBeforeReminders,
   sendMakeupNotFiledReminders,
+  sendPendingMakeupDigest,
 } from './makeupRequestService';
 import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 
@@ -1144,5 +1145,51 @@ describe('sendMakeupNotFiledReminders（缺課 3 天未申請提醒）', () => {
     });
     await decideMakeupRequest(insertion.id, 'REJECTED');
     expect((await sendMakeupNotFiledReminders(new Date('2026-07-23T00:00:00Z'))).notified).toBe(0);
+  });
+});
+
+describe('sendPendingMakeupDigest（行政待審每日彙總）', () => {
+  it('超過 24 小時的待審＋待確認撤銷 → 一則彙總給每個行政', async () => {
+    const admin = await prisma.user.create({
+      data: { email: `digest-admin-${Date.now()}@example.com`, password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const { student, classB, leave } = await setup();
+    // 待審件：createdAt 改成 25 小時前
+    const pending = await createInsertionMakeupRequest({
+      leaveRequestId: leave.id,
+      targetClassId: classB.id,
+      targetDate: new Date('2026-07-22'),
+    });
+    const now = new Date('2026-07-25T01:00:00Z');
+    await prisma.makeupRequest.update({ where: { id: pending.id }, data: { createdAt: new Date(now.getTime() - 25 * 60 * 60 * 1000) } });
+    // 待確認撤銷件：另一筆已核准補課＋家長申請撤銷
+    const cls2 = await setupSecondLeaveClass(student.id);
+    const leave2 = await createLeaveRequest({ studentId: student.id, classId: cls2.id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
+    const approved = await prisma.makeupRequest.create({
+      data: { leaveRequestId: leave2.id, type: 'INSERTION', status: 'APPROVED', targetClassId: classB.id, targetDate: new Date('2026-07-29') },
+    });
+    await requestMakeupCancellation(approved.id, student.id);
+
+    const result = await sendPendingMakeupDigest(now);
+    expect(result.notified).toBe(true);
+    const rows = await prisma.notification.findMany({ where: { userId: admin.id, title: '補課待審提醒' } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].body).toBe('有 1 件補課申請待審核，另有 1 件撤銷申請待確認，請至系統處理');
+    expect(rows[0].url).toBe('/admin/makeup-requests');
+  });
+
+  it('剛送出（未滿 24 小時）不計；全部為零不發', async () => {
+    const admin = await prisma.user.create({
+      data: { email: `digest-admin2-${Date.now()}@example.com`, password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const { student, classB, leave } = await setup();
+    await createInsertionMakeupRequest({
+      leaveRequestId: leave.id,
+      targetClassId: classB.id,
+      targetDate: new Date('2026-07-22'),
+    }); // createdAt = 現在（測試執行當下），距 now 不到 24h
+    const result = await sendPendingMakeupDigest(new Date());
+    expect(result.notified).toBe(false);
+    expect(await prisma.notification.count({ where: { userId: admin.id, title: '補課待審提醒' } })).toBe(0);
   });
 });
