@@ -235,14 +235,14 @@ export function formatMakeupSlot(m: {
 
 const MAKEUP_NOTIFY_INCLUDE = {
   leaveRequest: { select: { student: { select: { id: true, user: { select: { id: true, name: true } } } } } },
-  targetClass: { select: { name: true, startTime: true, endTime: true } },
+  targetClass: { select: { name: true, startTime: true, endTime: true, teacher: { select: { userId: true } } } },
   teacher: { select: { userId: true } },
 } as const;
 
 type MakeupWithNotifyInfo = Prisma.MakeupRequestGetPayload<{ include: typeof MAKEUP_NOTIFY_INCLUDE }>;
 
-// 推播通知家長；一對一另通知被指派老師。失敗只記 log，不影響主流程
-// （核准／代排／撤銷共用）。
+// 推播通知家長；一對一另通知被指派老師、插班核准/撤銷另通知目標班老師。
+// 失敗只記 log，不影響主流程（核准／代排／撤銷共用）。
 async function notifyMakeup(makeup: MakeupWithNotifyInfo, kind: 'APPROVED' | 'REJECTED' | 'REVOKED') {
   try {
     const student = makeup.leaveRequest.student;
@@ -262,6 +262,17 @@ async function notifyMakeup(makeup: MakeupWithNotifyInfo, kind: 'APPROVED' | 'RE
           ? { title: '一對一補課指派', body: `您被指派 ${student.user.name} 的一對一補課：${slot}` }
           : { title: '一對一補課取消', body: `${student.user.name} 的一對一補課已取消：${slot}` };
       await notifyUser(makeup.teacher.userId, { ...teacherMessage, url: '/teacher' });
+    }
+
+    // 插班補課：核准＝學生會出現在目標班點名名單、撤銷＝不來了，都要讓該班
+    // 老師知道；駁回不通知（老師從未被告知這筆申請存在，只收確定成立/取消
+    // 的通知——與超額審核同一原則）。
+    if (makeup.type === 'INSERTION' && makeup.targetClass && kind !== 'REJECTED') {
+      const classTeacherMessage =
+        kind === 'APPROVED'
+          ? { title: '補課學生加入', body: `補課學生 ${student.user.name} 將加入：${slot}` }
+          : { title: '補課學生取消', body: `補課學生 ${student.user.name} 取消加入：${slot}` };
+      await notifyUser(makeup.targetClass.teacher.userId, { ...classTeacherMessage, url: '/teacher' });
     }
   } catch (err) {
     console.error('makeup push notification failed', err);

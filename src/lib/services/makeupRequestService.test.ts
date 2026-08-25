@@ -1015,3 +1015,44 @@ describe('listOneOnOneSlotOptions', () => {
     expect(options.map((o) => o.available)).toEqual([false, false, false]);
   });
 });
+
+describe('插班補課通知目標班級老師', () => {
+  // 目標班用獨立老師，才能把「目標班老師的通知」跟原班老師/家長的通知分開斷言
+  async function setupInsertionToOtherTeacher() {
+    const base = await setup();
+    const teacherB = await createTeacher({ name: '林老師', email: `ins-tb-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
+    const classC = await createClass({ name: '圍棋C班', subject: '圍棋', level: '初級', teacherId: teacherB.id, weekday: 3, startTime: '19:00', endTime: '21:00' });
+    const makeup = await createInsertionMakeupRequest({
+      leaveRequestId: base.leave.id,
+      targetClassId: classC.id,
+      targetDate: new Date('2026-07-22'),
+    });
+    const { userId: teacherBUserId } = await prisma.teacher.findUniqueOrThrow({ where: { id: teacherB.id }, select: { userId: true } });
+    return { ...base, teacherB, teacherBUserId, classC, makeup };
+  }
+
+  it('核准插班 → 目標班老師收到「補課學生加入」', async () => {
+    const { makeup, teacherBUserId } = await setupInsertionToOtherTeacher();
+    await decideMakeupRequest(makeup.id, 'APPROVED');
+    const rows = await prisma.notification.findMany({ where: { userId: teacherBUserId, title: '補課學生加入' } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].body).toContain('小明');
+    expect(rows[0].body).toContain('圍棋C班');
+    expect(rows[0].url).toBe('/teacher');
+  });
+
+  it('駁回插班 → 目標班老師不收通知', async () => {
+    const { makeup, teacherBUserId } = await setupInsertionToOtherTeacher();
+    await decideMakeupRequest(makeup.id, 'REJECTED');
+    expect(await prisma.notification.count({ where: { userId: teacherBUserId } })).toBe(0);
+  });
+
+  it('撤銷已核准插班 → 目標班老師收到「補課學生取消」', async () => {
+    const { makeup, teacherBUserId } = await setupInsertionToOtherTeacher();
+    await decideMakeupRequest(makeup.id, 'APPROVED');
+    await revokeMakeup(makeup.id);
+    const rows = await prisma.notification.findMany({ where: { userId: teacherBUserId, title: '補課學生取消' } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].body).toContain('圍棋C班');
+  });
+});
