@@ -22,6 +22,8 @@ import {
   requestMakeupCancellation,
   rejectMakeupCancellation,
   revokeMakeup,
+  sendMakeupDayBeforeReminders,
+  sendMakeupNotFiledReminders,
 } from './makeupRequestService';
 import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 
@@ -35,6 +37,14 @@ async function setup() {
   await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: 12 }]);
   const leave = await createLeaveRequest({ studentId: student.id, classId: classA.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
   return { teacher, student, classA, classB, leave };
+}
+
+// 一對一測試列需要第二筆請假；掛在另一個週一班避免與 setup 的請假重複
+async function setupSecondLeaveClass(studentId: string) {
+  const teacher2 = await createTeacher({ name: '王老師', email: `second-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
+  const cls = await createClass({ name: '圍棋D班', subject: '圍棋', level: '初級', teacherId: teacher2.id, weekday: 1, startTime: '17:00', endTime: '19:00' });
+  await enrollStudent(cls.id, studentId);
+  return cls;
 }
 
 describe('formatMakeupSlot', () => {
@@ -1054,5 +1064,85 @@ describe('插班補課通知目標班級老師', () => {
     const rows = await prisma.notification.findMany({ where: { userId: teacherBUserId, title: '補課學生取消' } });
     expect(rows).toHaveLength(1);
     expect(rows[0].body).toContain('圍棋C班');
+  });
+});
+
+describe('sendMakeupDayBeforeReminders（補課前一天提醒家長）', () => {
+  it('明天有已核准的插班與一對一補課 → 家長各收一則「補課提醒」', async () => {
+    const { student, teacher, classB, leave } = await setup();
+    const insertion = await createInsertionMakeupRequest({
+      leaveRequestId: leave.id,
+      targetClassId: classB.id,
+      targetDate: new Date('2026-07-22'),
+    });
+    await decideMakeupRequest(insertion.id, 'APPROVED');
+    // 一對一列直接建資料列（走服務建立需要可補課時段設定，與本測試無關）
+    const leave2 = await createLeaveRequest({ studentId: student.id, classId: (await setupSecondLeaveClass(student.id)).id, date: new Date(Date.UTC(2026, 6, 27)), reason: '事假' });
+    await prisma.makeupRequest.create({
+      data: { leaveRequestId: leave2.id, type: 'ONE_ON_ONE', status: 'APPROVED', teacherId: teacher.id, slotDate: new Date('2026-07-22'), slotStartTime: '15:00', slotEndTime: '15:40' },
+    });
+
+    const result = await sendMakeupDayBeforeReminders(new Date('2026-07-21T00:00:00Z')); // 台北 7/21 → 明天 7/22
+    expect(result.notified).toBe(2);
+    const { userId } = await prisma.student.findUniqueOrThrow({ where: { id: student.id }, select: { userId: true } });
+    const rows = await prisma.notification.findMany({ where: { userId, title: '補課提醒' } });
+    expect(rows).toHaveLength(2);
+    expect(rows.some((r) => r.body.includes('圍棋B班'))).toBe(true);
+    expect(rows.some((r) => r.body.includes('一對一補課'))).toBe(true);
+  });
+
+  it('不是明天／未核准的不提醒', async () => {
+    const { student, classB, leave } = await setup();
+    const insertion = await createInsertionMakeupRequest({
+      leaveRequestId: leave.id,
+      targetClassId: classB.id,
+      targetDate: new Date('2026-07-22'),
+    });
+    // PENDING_ADMIN、日期是後天 → 都是 0
+    expect((await sendMakeupDayBeforeReminders(new Date('2026-07-21T00:00:00Z'))).notified).toBe(0); // 未核准
+    await decideMakeupRequest(insertion.id, 'APPROVED');
+    expect((await sendMakeupDayBeforeReminders(new Date('2026-07-20T00:00:00Z'))).notified).toBe(0); // 後天才補課
+  });
+
+  it('家長已申請撤銷（行政未確認）照提醒——行政確認前補課仍有效', async () => {
+    const { student, classB, leave } = await setup();
+    const insertion = await createInsertionMakeupRequest({
+      leaveRequestId: leave.id,
+      targetClassId: classB.id,
+      targetDate: new Date('2026-07-22'),
+    });
+    await decideMakeupRequest(insertion.id, 'APPROVED');
+    await requestMakeupCancellation(insertion.id, student.id);
+    expect((await sendMakeupDayBeforeReminders(new Date('2026-07-21T00:00:00Z'))).notified).toBe(1);
+  });
+});
+
+describe('sendMakeupNotFiledReminders（缺課 3 天未申請提醒）', () => {
+  it('缺課日恰為 3 天前且沒有補課申請 → 提醒一次', async () => {
+    const { student } = await setup(); // setup 的 leave 在 2026-07-20（一）
+    const result = await sendMakeupNotFiledReminders(new Date('2026-07-23T00:00:00Z')); // 台北 7/23 → 3 天前 = 7/20
+    expect(result.notified).toBe(1);
+    const { userId } = await prisma.student.findUniqueOrThrow({ where: { id: student.id }, select: { userId: true } });
+    const rows = await prisma.notification.findMany({ where: { userId, title: '補課申請提醒' } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].body).toContain('圍棋A班');
+    expect(rows[0].url).toBe('/student/makeup-request');
+  });
+
+  it('2 天前／4 天前都不提醒（只在恰好第 3 天提醒一次）', async () => {
+    await setup();
+    expect((await sendMakeupNotFiledReminders(new Date('2026-07-22T00:00:00Z'))).notified).toBe(0);
+    expect((await sendMakeupNotFiledReminders(new Date('2026-07-24T00:00:00Z'))).notified).toBe(0);
+  });
+
+  it('已有補課申請（含被駁回）不提醒', async () => {
+    const { student, classB, leave } = await setup();
+    const insertion = await createInsertionMakeupRequest({
+      leaveRequestId: leave.id,
+      targetClassId: classB.id,
+      targetDate: new Date('2026-07-22'),
+    });
+    await decideMakeupRequest(insertion.id, 'REJECTED');
+    expect((await sendMakeupNotFiledReminders(new Date('2026-07-23T00:00:00Z'))).notified).toBe(0);
   });
 });

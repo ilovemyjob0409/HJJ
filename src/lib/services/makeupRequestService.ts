@@ -6,6 +6,7 @@ import { oneOnOneEndTime, ONE_ON_ONE_DURATION_MINUTES } from '@/lib/oneOnOneSlot
 import { listTeacherAvailability } from './availabilityService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { notifyUser, notifyAdmins } from './notificationService';
+import { taipeiDateKey } from './tutoringBookingService';
 
 export const GO_SUBJECT = '圍棋';
 export const ONE_ON_ONE_PERIOD_LIMIT = 1;
@@ -515,4 +516,59 @@ export function listInsertionsForTeacherClasses(teacherId: string) {
     },
     orderBy: { targetDate: 'desc' },
   });
+}
+
+// ─── 每日提醒（/api/cron/daily-reminders 呼叫；now 可注入方便測試） ───
+
+// 情境①：明天（台北）有已核准補課的家長提醒。插班看 targetDate、一對一看
+// slotDate。家長申請撤銷但行政未確認的照提醒——行政確認前補課仍有效。
+export async function sendMakeupDayBeforeReminders(now: Date = new Date()): Promise<{ notified: number }> {
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(y, m - 1, d + 1));
+  const makeups = await prisma.makeupRequest.findMany({
+    where: {
+      status: 'APPROVED',
+      OR: [
+        { type: 'INSERTION', targetDate: tomorrow },
+        { type: 'ONE_ON_ONE', slotDate: tomorrow },
+      ],
+    },
+    include: MAKEUP_NOTIFY_INCLUDE,
+  });
+  let notified = 0;
+  for (const makeup of makeups) {
+    const student = makeup.leaveRequest.student;
+    await notifyUser(student.user.id, {
+      title: '補課提醒',
+      body: `${student.user.name} 明天有補課：${formatMakeupSlot(makeup)}，請準時出席`,
+      url: '/student',
+    });
+    notified++;
+  }
+  return { notified };
+}
+
+// 情境②：缺課日（請假日）恰為 3 天前、還沒有任何補課申請的家長提醒。
+// 「恰好第 3 天」的選法天然只提醒一次，不需要已提醒旗標；已有申請（含被
+// 駁回）不提醒——駁回代表行政已裁定，不再催。
+export async function sendMakeupNotFiledReminders(now: Date = new Date()): Promise<{ notified: number }> {
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const threeDaysAgo = new Date(Date.UTC(y, m - 1, d - 3));
+  const leaves = await prisma.leaveRequest.findMany({
+    where: { status: 'APPROVED', date: threeDaysAgo, makeupRequest: { is: null } },
+    include: {
+      student: { select: { user: { select: { id: true, name: true } } } },
+      class: { select: { name: true } },
+    },
+  });
+  let notified = 0;
+  for (const leave of leaves) {
+    await notifyUser(leave.student.user.id, {
+      title: '補課申請提醒',
+      body: `${leave.student.user.name} ${formatDateWithWeekday(leave.date, 'zh-TW')}「${leave.class.name}」缺課尚未申請補課，請至系統安排`,
+      url: '/student/makeup-request',
+    });
+    notified++;
+  }
+  return { notified };
 }
