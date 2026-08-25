@@ -1178,6 +1178,23 @@ describe('sendPendingMakeupDigest（行政待審每日彙總）', () => {
     expect(rows[0].url).toBe('/admin/makeup-requests');
   });
 
+  it('只有撤銷待確認件時，文案沒有「另」字', async () => {
+    const admin = await prisma.user.create({
+      data: { email: `digest-admin3-${Date.now()}@example.com`, password: 'x', name: '行政', role: 'ADMIN' },
+    });
+    const { student, classB, leave } = await setup();
+    const approved = await prisma.makeupRequest.create({
+      data: { leaveRequestId: leave.id, type: 'INSERTION', status: 'APPROVED', targetClassId: classB.id, targetDate: new Date('2026-07-22') },
+    });
+    await requestMakeupCancellation(approved.id, student.id);
+
+    const result = await sendPendingMakeupDigest(new Date());
+    expect(result.notified).toBe(true);
+    const rows = await prisma.notification.findMany({ where: { userId: admin.id, title: '補課待審提醒' } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].body).toBe('有 1 件撤銷申請待確認，請至系統處理');
+  });
+
   it('剛送出（未滿 24 小時）不計；全部為零不發', async () => {
     const admin = await prisma.user.create({
       data: { email: `digest-admin2-${Date.now()}@example.com`, password: 'x', name: '行政', role: 'ADMIN' },
