@@ -14,6 +14,9 @@ export async function deferBestEffort(task: () => Promise<void>): Promise<void> 
     }
     return;
   }
-  const running = task().catch((err) => console.error('deferred background task failed', err));
+  // 用 async IIFE 包住呼叫：task 若「同步」throw 也會變成 rejection 被吃掉，
+  // 與 VITEST 分支的 try/catch 行為一致（這個 helper 是通用件，不能兩個環境
+  // 對同一種錯誤一個吞、一個往外拋）。
+  const running = (async () => task())().catch((err) => console.error('deferred background task failed', err));
   waitUntil(running);
 }
