@@ -298,6 +298,34 @@ async function notifyAdminsReviewNeeded(bookingId: string) {
   }
 }
 
+export interface QuotaBuckets {
+  locked: number;
+  upcoming: number;
+  pendingOverQuota: number;
+}
+
+// 額度分類的唯一事實來源：getMonthlyQuotaStatus 與 listEnrollments 的批次
+// 路徑共用（口徑分家就會重演超額審核前「顯示與閘門不一致」的問題）。
+// 收費規範：「有預約且到場上課才扣堂」——有出席紀錄（且非缺席）才計次。
+// 日期過了但沒到場、沒點名、缺席都不扣堂；當天（含）以後仍有效的預約
+// 顯示為「已預約」，過期未到的預約兩邊都不算。超過額度送審中的
+// PENDING_ADMIN 另計（pendingOverQuota），不佔「剩餘可約」。
+export function classifyQuotaBookings(
+  bookings: { date: Date; status: string; attendance: { status: string } | null }[],
+  todayKey: string
+): QuotaBuckets {
+  let locked = 0;
+  let upcoming = 0;
+  let pendingOverQuota = 0;
+  for (const b of bookings) {
+    if (b.status === 'CANCELLED' || b.status === 'CANCELLED_LATE') continue;
+    if (b.attendance && b.attendance.status !== 'ABSENT') locked++;
+    else if (b.status === 'BOOKED' && utcDateKey(b.date) >= todayKey) upcoming++;
+    else if (b.status === 'PENDING_ADMIN' && utcDateKey(b.date) >= todayKey) pendingOverQuota++;
+  }
+  return { locked, upcoming, pendingOverQuota };
+}
+
 export async function getMonthlyQuotaStatus(
   enrollmentId: string,
   monthKey: string, // 'YYYY-MM'
@@ -319,19 +347,7 @@ export async function getMonthlyQuotaStatus(
     select: { date: true, status: true, attendance: { select: { status: true } } },
   });
 
-  let locked = 0;
-  let upcoming = 0;
-  let pendingOverQuota = 0;
-  for (const b of bookings) {
-    if (b.status === 'CANCELLED' || b.status === 'CANCELLED_LATE') continue;
-    // 收費規範：「有預約且到場上課才扣堂」——有出席紀錄（且非缺席）才計次。
-    // 日期過了但沒到場、沒點名、缺席都不扣堂；當天（含）以後仍有效的預約
-    // 顯示為「已預約」，過期未到的預約兩邊都不算。超過額度送審中的
-    // PENDING_ADMIN 另計（pendingOverQuota），不佔「剩餘可約」。
-    if (b.attendance && b.attendance.status !== 'ABSENT') locked++;
-    else if (b.status === 'BOOKED' && utcDateKey(b.date) >= todayKey) upcoming++;
-    else if (b.status === 'PENDING_ADMIN' && utcDateKey(b.date) >= todayKey) pendingOverQuota++;
-  }
+  const { locked, upcoming, pendingOverQuota } = classifyQuotaBookings(bookings, todayKey);
   return { locked, upcoming, quota, pendingOverQuota };
 }
 

@@ -14,7 +14,8 @@ import {
   deleteWindowClosure,
 } from './tutoringProgramService';
 import { createEnrollment, listEnrollments, updateEnrollment, deleteEnrollment, getWindowInfo, listWindowsForTeacher } from './tutoringProgramService';
-import { createBooking } from './tutoringBookingService';
+import { createBooking, getMonthlyQuotaStatus, taipeiDateKey } from './tutoringBookingService';
+import { saveTutoringAttendance } from './attendanceService';
 
 describe('program CRUD', () => {
   it('creates a program with defaults and lists it back with an empty windows array', async () => {
@@ -260,5 +261,50 @@ describe('listWindowsForTeacher', () => {
     const teacher = await createTeacher({ name: '甜甜圈老師', email: `list-windows-donut-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
     const list = await listWindowsForTeacher(teacher.id);
     expect(list).toEqual([]);
+  });
+});
+
+describe('listEnrollments 批次額度＝逐筆 getMonthlyQuotaStatus（對照）', () => {
+  it('locked／upcoming／pendingOverQuota 三桶都與逐筆計算一致', async () => {
+    // 「台北今天」動態 fixture：今天永遠在當月，三桶都能穩定造出、不會 rot
+    const [ty, tm, td] = taipeiDateKey(new Date()).split('-').map(Number);
+    const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
+    const monthKey = taipeiDateKey(new Date()).slice(0, 7);
+
+    const teacher = await createTeacher({ name: '林老師', email: `batch-quota-t-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: todayUtc.getUTCDay(), startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    const marker = await prisma.user.create({
+      data: { email: `batch-quota-marker-${Date.now()}@example.com`, password: 'x', name: 'Marker', role: 'TEACHER' },
+    });
+
+    // A：今天到場 → locked=1
+    const sa = await createStudent({ name: '甲生', email: `batch-quota-a-${Date.now()}@example.com`, password: 'x' });
+    const ea = await createEnrollment({ studentId: sa.id, programId: program.id });
+    const ba = await createBooking({ enrollmentId: ea.id, windowId: window.id, date: todayUtc });
+    await saveTutoringAttendance(marker.id, [{ bookingId: ba.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+
+    // B：quota 0＋quotaReview → 今天一筆 PENDING_ADMIN → pendingOverQuota=1
+    const sb = await createStudent({ name: '乙生', email: `batch-quota-b-${Date.now()}@example.com`, password: 'x' });
+    const eb = await createEnrollment({ studentId: sb.id, programId: program.id, monthlyQuota: 0 });
+    await createBooking({ enrollmentId: eb.id, windowId: window.id, date: todayUtc, quotaReview: true });
+
+    // C：今天一筆一般預約 → upcoming=1
+    const sc = await createStudent({ name: '丙生', email: `batch-quota-c-${Date.now()}@example.com`, password: 'x' });
+    const ec = await createEnrollment({ studentId: sc.id, programId: program.id });
+    await createBooking({ enrollmentId: ec.id, windowId: window.id, date: todayUtc });
+
+    const rows = (await listEnrollments()).filter((r) => [ea.id, eb.id, ec.id].includes(r.id));
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      const ref = await getMonthlyQuotaStatus(row.id, monthKey);
+      expect({ locked: row.locked, upcoming: row.upcoming, pendingOverQuota: row.pendingOverQuota, quota: row.monthlyQuota })
+        .toEqual({ locked: ref.locked, upcoming: ref.upcoming, pendingOverQuota: ref.pendingOverQuota, quota: ref.quota });
+    }
+    // 三桶各自被造出來（不是全零的空對照）
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(ea.id)!.locked).toBe(1);
+    expect(byId.get(eb.id)!.pendingOverQuota).toBe(1);
+    expect(byId.get(ec.id)!.upcoming).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getMonthlyQuotaStatus, taipeiDateKey } from './tutoringBookingService';
+import { classifyQuotaBookings, taipeiDateKey } from './tutoringBookingService';
 
 // 週課表點個別輔導時段卡的資訊小卡用
 export interface TutoringWindowInfo {
@@ -229,31 +229,47 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
     where: studentId ? { studentId } : {},
     include: {
       student: { select: { user: { select: { name: true } } } },
-      program: { select: { name: true, defaultDurationMinutes: true } },
+      program: { select: { name: true, defaultDurationMinutes: true, defaultMonthlyQuota: true } },
     },
     orderBy: { student: { user: { name: 'asc' } } },
   });
   const monthKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' })
     .format(new Date())
     .slice(0, 7);
-  return Promise.all(
-    enrollments.map(async (e) => {
-      const { locked, upcoming, quota, pendingOverQuota } = await getMonthlyQuotaStatus(e.id, monthKey);
-      return {
-        id: e.id,
-        studentId: e.studentId,
-        studentName: e.student.user.name,
-        programId: e.programId,
-        programName: e.program.name,
-        defaultDurationMinutes: e.program.defaultDurationMinutes,
-        monthlyQuota: quota,
-        active: e.active,
-        locked,
-        upcoming,
-        pendingOverQuota,
-      };
-    })
-  );
+  const [year, month] = monthKey.split('-').map(Number);
+  // 一次撈齊所有報名的當月 REGULAR 預約、JS 端分組分類——查詢量從每筆報名
+  // 2 個降為全部共 1 個（行政個輔頁列全部報名時差最多）。分類口徑共用
+  // classifyQuotaBookings，與 getMonthlyQuotaStatus 永遠一致。
+  const bookings = await prisma.tutoringBooking.findMany({
+    where: {
+      enrollmentId: { in: enrollments.map((e) => e.id) },
+      kind: 'REGULAR',
+      date: { gte: new Date(Date.UTC(year, month - 1, 1)), lte: new Date(Date.UTC(year, month, 0)) },
+    },
+    select: { enrollmentId: true, date: true, status: true, attendance: { select: { status: true } } },
+  });
+  const byEnrollment = new Map<string, typeof bookings>();
+  for (const b of bookings) {
+    if (!byEnrollment.has(b.enrollmentId)) byEnrollment.set(b.enrollmentId, []);
+    byEnrollment.get(b.enrollmentId)!.push(b);
+  }
+  const todayKey = taipeiDateKey(new Date());
+  return enrollments.map((e) => {
+    const { locked, upcoming, pendingOverQuota } = classifyQuotaBookings(byEnrollment.get(e.id) ?? [], todayKey);
+    return {
+      id: e.id,
+      studentId: e.studentId,
+      studentName: e.student.user.name,
+      programId: e.programId,
+      programName: e.program.name,
+      defaultDurationMinutes: e.program.defaultDurationMinutes,
+      monthlyQuota: e.monthlyQuota ?? e.program.defaultMonthlyQuota,
+      active: e.active,
+      locked,
+      upcoming,
+      pendingOverQuota,
+    };
+  });
 }
 
 export interface UpdateEnrollmentInput {
