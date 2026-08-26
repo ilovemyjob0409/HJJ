@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { pushToUsers } from './pushService';
+import { deferBestEffort } from '@/lib/deferBestEffort';
 
 export interface NotifyPayload {
   title: string;
@@ -28,7 +29,9 @@ export async function notifyUsers(userIds: string[], payload: NotifyPayload): Pr
   } catch (err) {
     console.error('notification insert failed', err);
   }
-  await pushToUsers(userIds, payload);
+  // 推播移出請求關鍵路徑：回應不等推播完成（Vercel waitUntil 背景跑完；
+  // 測試環境維持同步）。收件夾已在上面先寫入，鈴鐺即時性不受影響。
+  await deferBestEffort(() => pushToUsers(userIds, payload));
 }
 
 export async function notifyUser(userId: string, payload: NotifyPayload): Promise<void> {
