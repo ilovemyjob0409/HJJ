@@ -1093,7 +1093,7 @@ describe('sendMakeupDayBeforeReminders（補課前一天提醒家長）', () => 
   });
 
   it('不是明天／未核准的不提醒', async () => {
-    const { student, classB, leave } = await setup();
+    const { classB, leave } = await setup();
     const insertion = await createInsertionMakeupRequest({
       leaveRequestId: leave.id,
       targetClassId: classB.id,
@@ -1137,7 +1137,7 @@ describe('sendMakeupNotFiledReminders（缺課 3 天未申請提醒）', () => {
   });
 
   it('已有補課申請（含被駁回）不提醒', async () => {
-    const { student, classB, leave } = await setup();
+    const { classB, leave } = await setup();
     const insertion = await createInsertionMakeupRequest({
       leaveRequestId: leave.id,
       targetClassId: classB.id,
@@ -1199,7 +1199,7 @@ describe('sendPendingMakeupDigest（行政待審每日彙總）', () => {
     const admin = await prisma.user.create({
       data: { email: `digest-admin2-${Date.now()}@example.com`, password: 'x', name: '行政', role: 'ADMIN' },
     });
-    const { student, classB, leave } = await setup();
+    const { classB, leave } = await setup();
     await createInsertionMakeupRequest({
       leaveRequestId: leave.id,
       targetClassId: classB.id,
