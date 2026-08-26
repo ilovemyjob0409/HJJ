@@ -41,8 +41,10 @@ export default function NotificationBell() {
   const [rows, setRows] = useState<NotificationRow[]>([]);
   const [marking, setMarking] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastLoadAtRef = useRef(0);
 
   async function load() {
+    lastLoadAtRef.current = Date.now();
     const res = await fetch('/api/notifications');
     if (!res.ok) return;
     const data = await res.json();
@@ -54,7 +56,11 @@ export default function NotificationBell() {
   useEffect(() => {
     load().catch(() => {});
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load().catch(() => {});
+      if (document.visibilityState !== 'visible') return;
+      // 60 秒內切回分頁不重抓——尖峰時少掉一大票瑣碎查詢；
+      // 打開面板（toggle）仍永遠重抓，即時性不受影響
+      if (Date.now() - lastLoadAtRef.current < 60_000) return;
+      load().catch(() => {});
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
