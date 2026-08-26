@@ -350,7 +350,30 @@ export async function listStudentEnrolledClasses(studentId: string) {
     select: CLASS_BOOKING_SELECT,
     orderBy: { name: 'asc' },
   });
-  return Promise.all(classes.map(async (c) => ({ ...c, quota: await getClassEnrollmentQuota(c.id, studentId) })));
+  const classIds = classes.map((c) => c.id);
+  // 一次撈齊報名列與扣堂數、JS 端組回——查詢量從每班 2 個降為共 2 個。
+  // 扣堂語意同 getClassEnrollmentQuota：請假、未報名不扣。
+  const [enrollments, usedCounts] = await Promise.all([
+    prisma.classEnrollment.findMany({
+      where: { studentId, classId: { in: classIds } },
+      select: { classId: true, totalSessions: true },
+    }),
+    prisma.classAttendance.groupBy({
+      by: ['classId'],
+      where: { studentId, classId: { in: classIds }, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } },
+      _count: { _all: true },
+    }),
+  ]);
+  const totalByClass = new Map(enrollments.map((e) => [e.classId, e.totalSessions]));
+  const usedByClass = new Map(usedCounts.map((g) => [g.classId, g._count._all]));
+  return classes.map((c) => {
+    const totalSessions = totalByClass.get(c.id) ?? null;
+    const usedSessions = usedByClass.get(c.id) ?? 0;
+    return {
+      ...c,
+      quota: { totalSessions, usedSessions, remaining: totalSessions === null ? null : totalSessions - usedSessions },
+    };
+  });
 }
 
 // Soft-deletes: leave-request, substitute-request, and attendance history

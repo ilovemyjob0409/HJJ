@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createLeaveRequest } from './leaveRequestService';
-import { getClassRoster } from './attendanceService';
+import { getClassRoster, getClassEnrollmentQuota } from './attendanceService';
 import {
   createClass,
   listClasses,
@@ -602,5 +602,41 @@ describe('setStudentEnrollments 退班抽離點名', () => {
     expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2020)).toBe(true);
     expect(remaining.some((r) => r.classId === keep.id)).toBe(true);
     expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2030)).toBe(false);
+  });
+});
+
+describe('listStudentEnrolledClasses 批次堂數＝逐班 getClassEnrollmentQuota（對照）', () => {
+  it('有無 totalSessions、含不扣堂點名的班級都一致', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: `batch-cls-t-${Date.now()}@example.com`, password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '批次生', email: `batch-cls-s-${Date.now()}@example.com`, password: 'x' });
+    const marker = await prisma.user.create({
+      data: { email: `batch-cls-marker-${Date.now()}@example.com`, password: 'x', name: 'Marker', role: 'TEACHER' },
+    });
+    const clsA = await createClass({ name: '批次A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    const clsB = await createClass({ name: '批次B班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 4, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(clsA.id, student.id);
+    await enrollStudent(clsB.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: clsA.id } }, data: { totalSessions: 10 } });
+    // A 班：扣堂 2（PRESENT、LATE）＋不扣堂 2（ON_LEAVE、NOT_REGISTERED）
+    const mk = (classId: string, day: number, status: string) =>
+      prisma.classAttendance.create({ data: { classId, studentId: student.id, date: new Date(Date.UTC(2026, 7, day)), status: status as never, markedById: marker.id } });
+    await mk(clsA.id, 4, 'PRESENT');
+    await mk(clsA.id, 11, 'LATE');
+    await mk(clsA.id, 18, 'ON_LEAVE');
+    await mk(clsA.id, 25, 'NOT_REGISTERED');
+    // B 班：無 totalSessions（remaining null）＋1 筆扣堂
+    await mk(clsB.id, 6, 'PRESENT');
+
+    const rows = await listStudentEnrolledClasses(student.id);
+    const mine = rows.filter((r) => [clsA.id, clsB.id].includes(r.id));
+    expect(mine).toHaveLength(2);
+    for (const row of mine) {
+      const ref = await getClassEnrollmentQuota(row.id, student.id);
+      expect(row.quota).toEqual(ref);
+    }
+    const a = mine.find((r) => r.id === clsA.id)!;
+    expect(a.quota).toEqual({ totalSessions: 10, usedSessions: 2, remaining: 8 });
+    const b = mine.find((r) => r.id === clsB.id)!;
+    expect(b.quota).toEqual({ totalSessions: null, usedSessions: 1, remaining: null });
   });
 });
