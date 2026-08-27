@@ -434,9 +434,9 @@ function StudentsContent() {
     {
       header: '操作',
       render: (s) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(s)}>
+        <Button variant="link" onClick={() => openEdit(s)}>
           編輯
-        </button>
+        </Button>
       ),
     },
   ];
@@ -477,9 +477,9 @@ function StudentsContent() {
         <Card className="mb-6 max-w-xl">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增學生</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
+            <Button variant="link" tone="muted" className="text-sm" onClick={() => setShowAddForm(false)}>
               收合
-            </button>
+            </Button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -674,13 +674,13 @@ function StudentsContent() {
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
                           if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
                           return (
-                            <button
-                              type="button"
+                            <Button
+                              variant="link"
                               onClick={() => openRenew(c)}
-                              className="whitespace-nowrap text-xs text-brandDark hover:underline"
+                              className="whitespace-nowrap text-xs"
                             >
                               續報
-                            </button>
+                            </Button>
                           );
                         },
                       },
@@ -702,13 +702,13 @@ function StudentsContent() {
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
                           if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
                           return (
-                            <button
-                              type="button"
+                            <Button
+                              variant="link"
                               onClick={() => openNotRegistered(c)}
-                              className="whitespace-nowrap text-xs text-brandDark hover:underline"
+                              className="whitespace-nowrap text-xs"
                             >
                               調整
-                            </button>
+                            </Button>
                           );
                         },
                       },
@@ -723,9 +723,9 @@ function StudentsContent() {
                               前往管理
                             </Link>
                           ) : (
-                            <button type="button" className="text-xs text-rejected hover:underline" onClick={() => toggleClass(c.id)}>
+                            <Button variant="link" tone="danger" className="text-xs" onClick={() => toggleClass(c.id)}>
                               移除
-                            </button>
+                            </Button>
                           ),
                       },
                     ]}
