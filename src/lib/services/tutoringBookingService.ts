@@ -753,7 +753,7 @@ export async function sendMissedSessionReminders(now: Date = new Date()): Promis
     const userId = b.enrollment.student.user.id;
     await notifyUser(userId, {
       title: '缺席提醒',
-      body: `${b.enrollment.student.user.name} 昨日「${b.window.program.name}」未到課，請至系統安排補課時間`,
+      body: `${b.enrollment.student.user.name} 昨日「${b.window.program.name}」未到課，請至系統重新預約新的上課日期`,
       url: '/student/tutoring',
     });
     notified++;
