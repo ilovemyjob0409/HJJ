@@ -10,9 +10,9 @@ export default async function StudentLayout({ children }: { children: React.Reac
     ? await prisma.student.findUnique({ where: { userId: session.user.id }, select: { id: true } })
     : null;
   // 查不到學生（未登入等，middleware 會導走）時維持預設顯示，不誤藏。
-  const showLeaveNav = student ? await hasActiveClassEnrollment(student.id) : true;
+  const hasClassEnrollment = student ? await hasActiveClassEnrollment(student.id) : true;
   return (
-    <AppShell role="STUDENT" showLeaveNav={showLeaveNav}>
+    <AppShell role="STUDENT" hasClassEnrollment={hasClassEnrollment}>
       {children}
     </AppShell>
   );

@@ -99,8 +99,12 @@ export default async function StudentDashboard() {
         </>
       )}
 
-      <h2 className="mb-2 mt-6 font-bold text-ink">弈廳報名紀錄</h2>
-      <GoHallSummaryTable rows={goHallRows} basePath="/student/go-hall" />
+      {showLeave && (
+        <>
+          <h2 className="mb-2 mt-6 font-bold text-ink">弈廳報名紀錄</h2>
+          <GoHallSummaryTable rows={goHallRows} basePath="/student/go-hall" />
+        </>
+      )}
     </>
   );
 }

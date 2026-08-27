@@ -55,18 +55,18 @@ const HOME_HREF: Record<Role, string> = {
   STUDENT: '/student',
 };
 
-// 請假／補課的入口只對「仍有有效班級報名」的學生顯示——純個別輔導
-// 學生用不到這兩個流程。旗標由 student layout 在伺服器端查好傳入，
-// 避免客戶端先渲染再消失的閃爍。
-const LEAVE_NAV_HREFS = ['/student/leave-request', '/student/makeup-request'];
+// 這些入口只對「仍有有效班級報名」的學生顯示——純個別輔導學生用不到
+// 請假／補課流程，也不參加弈廳。旗標由 student layout 在伺服器端查好
+// 傳入，避免客戶端先渲染再消失的閃爍。
+const CLASS_ONLY_HREFS = ['/student/leave-request', '/student/makeup-request', '/student/go-hall'];
 
 export default function AppShell({
   role,
-  showLeaveNav = true,
+  hasClassEnrollment = true,
   children,
 }: {
   role: Role;
-  showLeaveNav?: boolean;
+  hasClassEnrollment?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -181,7 +181,7 @@ export default function AppShell({
               className="pointer-events-none absolute bottom-0.5 top-0.5 left-0 rounded-full bg-brand opacity-0 shadow-sm transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:bottom-1 sm:top-1"
             />
             {NAV_LINKS[role]
-              .filter((link) => showLeaveNav || !LEAVE_NAV_HREFS.includes(link.href))
+              .filter((link) => hasClassEnrollment || !CLASS_ONLY_HREFS.includes(link.href))
               .map((link) => {
               // Home links use exact match — every route under the role shares their prefix.
               const active = link.exact
