@@ -136,16 +136,6 @@ export default function NotificationBell() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastLoadAtRef = useRef(0);
 
-  // 常態載入只查未讀數（1 個查詢）；50 則清單等打開面板才載——
-  // 鈴鐺是全站每頁都掛的元件，這一刀把它的常態 DB 負載減半。
-  async function loadCount() {
-    lastLoadAtRef.current = Date.now();
-    const res = await fetch('/api/notifications?countOnly=1');
-    if (!res.ok) return;
-    const data = await res.json();
-    setUnread(data.unread);
-  }
-
   async function load() {
     lastLoadAtRef.current = Date.now();
     setLoadingRows(true);
@@ -160,19 +150,9 @@ export default function NotificationBell() {
     }
   }
 
-  // 掛載時抓一次；回到分頁時重抓（不輪詢）
-  useEffect(() => {
-    loadCount().catch(() => {});
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      // 60 秒內切回分頁不重抓——尖峰時少掉一大票瑣碎查詢；
-      // 打開面板（toggle）仍永遠重抓，即時性不受影響
-      if (Date.now() - lastLoadAtRef.current < 60_000) return;
-      loadCount().catch(() => {});
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
+  // 緊急止血（2026-08-27）：暫停自動查詢（掛載時抓一次＋切回分頁重抓），
+  // 疑似造成正式站當機負載，先關閉背景查詢。未讀數僅在手動打開面板時才抓。
+  // 之後若排除鈴鐺是主因，這段可以直接復原。
 
   // 點面板外或按 Esc 關閉
   useEffect(() => {
