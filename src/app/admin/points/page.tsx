@@ -243,9 +243,9 @@ export default function AdminPointsPage() {
     { header: '兌換專用', value: (s: SummaryRow) => s.redeemOnly },
   ];
 
-  // 展開列內容：三個操作卡片（按鈕底部對齊）＋該生點數紀錄
-  function renderExpanded(s: SummaryRow) {
-    if (!data) {
+  // 點數操作彈窗內容：三個操作卡片（按鈕底部對齊）＋該生點數紀錄
+  function renderPointsPanel() {
+    if (!selectedStudent || !data) {
       return (
         <div aria-hidden className="flex flex-col gap-2">
           <div className="skeleton-shimmer h-4 w-1/3 rounded" />
@@ -326,7 +326,7 @@ export default function AdminPointsPage() {
 
         <div>
           <h3 className="mb-2 font-bold text-ink">
-            {s.name} 的點數紀錄
+            {selectedStudent.name} 的點數紀錄
             <span className="ml-2 text-sm font-normal text-inkMuted">
               一般 {data.balances.regular} 點／兌換專用 {data.balances.redeemOnly} 點／合計 {total} 點
             </span>
@@ -401,10 +401,8 @@ export default function AdminPointsPage() {
           maxRows={3}
           loading={summariesLoading}
           emptyText="找不到符合的學生"
-          onRowClick={(s) => setSelectedId((prev) => (prev === s.id ? '' : s.id))}
+          onRowClick={(s) => setSelectedId(s.id)}
           rowClassName={(s) => (checked[s.id] ? 'bg-stripe cursor-pointer' : 'cursor-pointer hover:bg-stripe')}
-          expandedKey={selectedId}
-          renderExpanded={renderExpanded}
         />
 
         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-borderSubtle pt-3">
@@ -420,6 +418,15 @@ export default function AdminPointsPage() {
           </Button>
         </div>
       </Card>
+
+      <Modal
+        open={selectedId !== ''}
+        onClose={() => setSelectedId('')}
+        title={selectedStudent ? `${selectedStudent.name} 的點數操作` : ''}
+        maxWidthClassName="max-w-2xl"
+      >
+        {selectedId !== '' && renderPointsPanel()}
+      </Modal>
 
       <Modal
         open={awardTargets !== null}
