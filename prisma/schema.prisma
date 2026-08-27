@@ -62,38 +62,38 @@ enum PointKind {
 
 enum GoHallQualification {
   SEASON_PASS // 季票
-  TICKET      // 堂票
-  SINGLE      // 單堂（現場收費）
+  TICKET // 堂票
+  SINGLE // 單堂（現場收費）
 }
 
 enum GoHallTicketKind {
-  PURCHASE     // 購買 +N（管理員登記）
-  ATTEND       // 到場扣堂 -1（系統自動，關聯場次）
+  PURCHASE // 購買 +N（管理員登記）
+  ATTEND // 到場扣堂 -1（系統自動，關聯場次）
   ADMIN_ADJUST // 管理員調整 ±N（附原因）
 }
 
 enum TutoringBookingKind {
   REGULAR // 一般預約
-  MAKEUP  // 補課（由某筆計次的 REGULAR 預約衍生）
+  MAKEUP // 補課（由某筆計次的 REGULAR 預約衍生）
 }
 
 enum TutoringBookingStatus {
   PENDING_ADMIN // 補課申請待行政核准（僅 MAKEUP 用）
-  BOOKED        // 已確定（一般預約送出即是；補課核准後轉為此）
-  CANCELLED      // 提前取消，不計次，保留紀錄
+  BOOKED // 已確定（一般預約送出即是；補課核准後轉為此）
+  CANCELLED // 提前取消，不計次，保留紀錄
   CANCELLED_LATE // 當天取消，計次
-  REJECTED      // 補課申請被駁回
+  REJECTED // 補課申請被駁回
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role
-  createdAt DateTime @default(now())
-  teacher   Teacher?
-  student   Student?
+  id                        String               @id @default(cuid())
+  email                     String               @unique
+  password                  String
+  name                      String
+  role                      Role
+  createdAt                 DateTime             @default(now())
+  teacher                   Teacher?
+  student                   Student?
   markedClassAttendances    ClassAttendance[]
   markedOneOnOneAttendances OneOnOneAttendance[]
   markedGoHallAttendances   GoHallAttendance[]
@@ -122,24 +122,24 @@ model Teacher {
 }
 
 model Student {
-  id                    String                 @id @default(cuid())
-  userId                String                 @unique
-  user                  User                   @relation(fields: [userId], references: [id])
-  parentPhone           String?
-  studentNumber         String?                @unique
-  familyGroupId         String?
-  enrollments           ClassEnrollment[]
-  leaveRequests         LeaveRequest[]
-  goHallRegistrations   GoHallRegistration[]
-  activityRegistrations ActivityRegistration[]
-  classAttendances    ClassAttendance[]
-  pointTransactions   PointTransaction[]
-  goHallAttendances   GoHallAttendance[]
-  goHallLowQuotaNotifiedAt DateTime?                 // 弈廳堂票低堂數提醒防重複
+  id                       String                    @id @default(cuid())
+  userId                   String                    @unique
+  user                     User                      @relation(fields: [userId], references: [id])
+  parentPhone              String?
+  studentNumber            String?                   @unique
+  familyGroupId            String?
+  enrollments              ClassEnrollment[]
+  leaveRequests            LeaveRequest[]
+  goHallRegistrations      GoHallRegistration[]
+  activityRegistrations    ActivityRegistration[]
+  classAttendances         ClassAttendance[]
+  pointTransactions        PointTransaction[]
+  goHallAttendances        GoHallAttendance[]
+  goHallLowQuotaNotifiedAt DateTime? // 弈廳堂票低堂數提醒防重複
   goHallTicketTransactions GoHallTicketTransaction[]
   goHallSeasonPasses       GoHallSeasonPass[]
-  activityAttendances ActivityAttendance[]
-  tutoringEnrollments TutoringEnrollment[]
+  activityAttendances      ActivityAttendance[]
+  tutoringEnrollments      TutoringEnrollment[]
 }
 
 model Class {
@@ -161,11 +161,11 @@ model Class {
 }
 
 model ClassEnrollment {
-  id                 String    @id @default(cuid())
+  id                 String             @id @default(cuid())
   studentId          String
   classId            String
-  student            Student   @relation(fields: [studentId], references: [id])
-  class              Class     @relation(fields: [classId], references: [id])
+  student            Student            @relation(fields: [studentId], references: [id])
+  class              Class              @relation(fields: [classId], references: [id])
   totalSessions      Int?
   lowQuotaNotifiedAt DateTime?
   periods            EnrollmentPeriod[]
@@ -204,6 +204,9 @@ model LeaveRequest {
   origin        LeaveOrigin?
   createdAt     DateTime       @default(now())
   makeupRequest MakeupRequest?
+
+  @@index([studentId, date])
+  @@index([classId, date])
 }
 
 model MakeupRequest {
@@ -223,12 +226,14 @@ model MakeupRequest {
   slotStartTime String?
   slotEndTime   String?
 
-  createdAt DateTime @default(now())
+  createdAt          DateTime            @default(now())
   // 家長（學生端）申請撤銷已核准補課的時間戳；行政確認前補課仍有效
   // （點名與額度只看 status，不看此欄）。行政同意撤銷＝刪除整筆補課單。
-  cancelRequestedAt DateTime?
+  cancelRequestedAt  DateTime?
   classAttendance    ClassAttendance?
   oneOnOneAttendance OneOnOneAttendance?
+
+  @@index([status])
 }
 
 model SubstituteRequest {
@@ -243,19 +248,21 @@ model SubstituteRequest {
   substituteTeacher   Teacher?         @relation("SubstituteTeacher", fields: [substituteTeacherId], references: [id])
   status              SubstituteStatus @default(PENDING_ASSIGNMENT)
   createdAt           DateTime         @default(now())
+
+  @@index([originalTeacherId])
 }
 
 model GoHallSession {
-  id            String               @id @default(cuid())
-  date          DateTime
-  startTime     String
-  endTime       String
-  capacity      Int
-  teacherId     String
-  teacher       Teacher              @relation(fields: [teacherId], references: [id])
-  registrations GoHallRegistration[]
-  createdAt     DateTime             @default(now())
-  attendances GoHallAttendance[]
+  id                 String                    @id @default(cuid())
+  date               DateTime
+  startTime          String
+  endTime            String
+  capacity           Int
+  teacherId          String
+  teacher            Teacher                   @relation(fields: [teacherId], references: [id])
+  registrations      GoHallRegistration[]
+  createdAt          DateTime                  @default(now())
+  attendances        GoHallAttendance[]
   ticketTransactions GoHallTicketTransaction[]
 }
 
@@ -275,12 +282,14 @@ model GoHallTicketTransaction {
   id        String           @id @default(cuid())
   studentId String
   student   Student          @relation(fields: [studentId], references: [id])
-  amount    Int              // 正＝加堂、負＝扣堂
+  amount    Int // 正＝加堂、負＝扣堂
   kind      GoHallTicketKind
-  reason    String?          // ADMIN_ADJUST 原因等文字快照
-  sessionId String?          // ATTEND 時關聯場次；場次被刪時保留帳、關聯設 null
+  reason    String? // ADMIN_ADJUST 原因等文字快照
+  sessionId String? // ATTEND 時關聯場次；場次被刪時保留帳、關聯設 null
   session   GoHallSession?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   createdAt DateTime         @default(now())
+
+  @@index([studentId])
 }
 
 // 弈廳季票：一筆一個起訖區間（含頭尾），可多筆並存留購買歷史。
@@ -291,6 +300,8 @@ model GoHallSeasonPass {
   startDate DateTime // 含當日
   endDate   DateTime // 含當日
   createdAt DateTime @default(now())
+
+  @@index([studentId])
 }
 
 model SubjectColor {
@@ -330,7 +341,7 @@ model Activity {
   registrations ActivityRegistration[]
   images        ActivityImage[]
   createdAt     DateTime               @default(now())
-  attendances ActivityAttendance[]
+  attendances   ActivityAttendance[]
 }
 
 model ActivityRegistration {
@@ -353,103 +364,108 @@ model ActivityImage {
 }
 
 model ClassAttendance {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   classId         String
-  class           Class             @relation(fields: [classId], references: [id])
+  class           Class            @relation(fields: [classId], references: [id])
   studentId       String
-  student         Student           @relation(fields: [studentId], references: [id])
+  student         Student          @relation(fields: [studentId], references: [id])
   date            DateTime
   status          AttendanceStatus
   checkInTime     String?
   checkOutTime    String?
-  makeupRequestId String?           @unique
-  makeupRequest   MakeupRequest?    @relation(fields: [makeupRequestId], references: [id])
+  makeupRequestId String?          @unique
+  makeupRequest   MakeupRequest?   @relation(fields: [makeupRequestId], references: [id])
   markedById      String
-  markedBy        User              @relation(fields: [markedById], references: [id])
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  markedBy        User             @relation(fields: [markedById], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@unique([classId, studentId, date])
+  @@index([classId, date])
+  @@index([studentId, date])
 }
 
 model OneOnOneAttendance {
-  id              String            @id @default(cuid())
-  makeupRequestId String            @unique
-  makeupRequest   MakeupRequest     @relation(fields: [makeupRequestId], references: [id])
+  id              String           @id @default(cuid())
+  makeupRequestId String           @unique
+  makeupRequest   MakeupRequest    @relation(fields: [makeupRequestId], references: [id])
   status          AttendanceStatus
   checkInTime     String?
   checkOutTime    String?
   markedById      String
-  markedBy        User              @relation(fields: [markedById], references: [id])
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  markedBy        User             @relation(fields: [markedById], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model GoHallAttendance {
-  id           String            @id @default(cuid())
-  sessionId    String
-  session      GoHallSession     @relation(fields: [sessionId], references: [id])
-  studentId    String
-  student      Student           @relation(fields: [studentId], references: [id])
-  status       AttendanceStatus
+  id            String               @id @default(cuid())
+  sessionId     String
+  session       GoHallSession        @relation(fields: [sessionId], references: [id])
+  studentId     String
+  student       Student              @relation(fields: [studentId], references: [id])
+  status        AttendanceStatus
   qualification GoHallQualification? // 標到場時戳記的當次資格；非到場為 null
-  checkInTime  String?
-  checkOutTime String?
-  markedById   String
-  markedBy     User              @relation(fields: [markedById], references: [id])
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  checkInTime   String?
+  checkOutTime  String?
+  markedById    String
+  markedBy      User                 @relation(fields: [markedById], references: [id])
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   @@unique([sessionId, studentId])
 }
 
 model ActivityAttendance {
-  id           String            @id @default(cuid())
+  id           String           @id @default(cuid())
   activityId   String
-  activity     Activity          @relation(fields: [activityId], references: [id])
+  activity     Activity         @relation(fields: [activityId], references: [id])
   studentId    String
-  student      Student           @relation(fields: [studentId], references: [id])
+  student      Student          @relation(fields: [studentId], references: [id])
   date         DateTime
   status       AttendanceStatus
   checkInTime  String?
   checkOutTime String?
   markedById   String
-  markedBy     User              @relation(fields: [markedById], references: [id])
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  markedBy     User             @relation(fields: [markedById], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   @@unique([activityId, studentId, date])
+  @@index([activityId, date])
 }
 
 model TutoringProgram {
-  id                     String   @id @default(cuid())
+  id                     String               @id @default(cuid())
   name                   String
-  defaultMonthlyQuota    Int      @default(8)
-  defaultDurationMinutes Int      @default(120)
-  active                 Boolean  @default(true)
+  defaultMonthlyQuota    Int                  @default(8)
+  defaultDurationMinutes Int                  @default(120)
+  active                 Boolean              @default(true)
   windows                TutoringWindow[]
   enrollments            TutoringEnrollment[]
 }
 
 model TutoringWindow {
-  id        String   @id @default(cuid())
-  programId String
-  program   TutoringProgram @relation(fields: [programId], references: [id])
-  weekday   Int      // 0-6，同 Class.weekday 慣例（JS getUTCDay()）
-  startTime String   // "16:00"
-  endTime   String   // "21:00"
-  capacity  Int      // 同時在座人數上限
-  teacherId String
-  teacher   Teacher  @relation("TutoringWindowTeacher", fields: [teacherId], references: [id])
-  teacherId2 String?  // 選填的第二位老師：時段長、中途換班用，權限與顯示都與主老師並列
-  teacher2   Teacher? @relation("TutoringWindowTeacher2", fields: [teacherId2], references: [id])
-  active    Boolean  @default(true)
-  closures  TutoringWindowClosure[]
-  bookings  TutoringBooking[]
+  id         String                  @id @default(cuid())
+  programId  String
+  program    TutoringProgram         @relation(fields: [programId], references: [id])
+  weekday    Int // 0-6，同 Class.weekday 慣例（JS getUTCDay()）
+  startTime  String // "16:00"
+  endTime    String // "21:00"
+  capacity   Int // 同時在座人數上限
+  teacherId  String
+  teacher    Teacher                 @relation("TutoringWindowTeacher", fields: [teacherId], references: [id])
+  teacherId2 String? // 選填的第二位老師：時段長、中途換班用，權限與顯示都與主老師並列
+  teacher2   Teacher?                @relation("TutoringWindowTeacher2", fields: [teacherId2], references: [id])
+  active     Boolean                 @default(true)
+  closures   TutoringWindowClosure[]
+  bookings   TutoringBooking[]
+
+  @@index([programId])
 }
 
 model TutoringWindowClosure {
-  id       String   @id @default(cuid())
+  id       String         @id @default(cuid())
   windowId String
   window   TutoringWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
   date     DateTime // UTC 日曆日
@@ -458,48 +474,53 @@ model TutoringWindowClosure {
 }
 
 model TutoringEnrollment {
-  id                     String   @id @default(cuid())
+  id                     String            @id @default(cuid())
   programId              String
-  program                TutoringProgram @relation(fields: [programId], references: [id])
+  program                TutoringProgram   @relation(fields: [programId], references: [id])
   studentId              String
-  student                Student  @relation(fields: [studentId], references: [id])
-  monthlyQuota           Int?     // null＝用課程預設；行政可個別覆寫
-  active                 Boolean  @default(true)
-  lastQuotaReminderMonth String?  // "2026-08"，月中提醒防重複
+  student                Student           @relation(fields: [studentId], references: [id])
+  monthlyQuota           Int? // null＝用課程預設；行政可個別覆寫
+  active                 Boolean           @default(true)
+  lastQuotaReminderMonth String? // "2026-08"，月中提醒防重複
   bookings               TutoringBooking[]
 
   @@unique([programId, studentId])
+  @@index([studentId])
 }
 
 model TutoringBooking {
-  id           String   @id @default(cuid())
+  id           String                @id @default(cuid())
   enrollmentId String
-  enrollment   TutoringEnrollment @relation(fields: [enrollmentId], references: [id])
+  enrollment   TutoringEnrollment    @relation(fields: [enrollmentId], references: [id])
   windowId     String
-  window       TutoringWindow @relation(fields: [windowId], references: [id])
+  window       TutoringWindow        @relation(fields: [windowId], references: [id])
   date         DateTime // UTC 日曆日
-  startTime    String   // 30 分鐘刻度，需落在窗口內
+  startTime    String // 30 分鐘刻度，需落在窗口內
   endTime      String
   kind         TutoringBookingKind   @default(REGULAR)
   status       TutoringBookingStatus @default(BOOKED)
-  makeupForId  String?  @unique
-  makeupFor    TutoringBooking? @relation("MakeupFor", fields: [makeupForId], references: [id])
-  makeupChild  TutoringBooking? @relation("MakeupFor")
-  createdAt    DateTime @default(now())
+  makeupForId  String?               @unique
+  makeupFor    TutoringBooking?      @relation("MakeupFor", fields: [makeupForId], references: [id])
+  makeupChild  TutoringBooking?      @relation("MakeupFor")
+  createdAt    DateTime              @default(now())
   attendance   TutoringAttendance?
+
+  @@index([enrollmentId, date])
+  @@index([windowId, date])
+  @@index([status, date])
 }
 
 model TutoringAttendance {
-  id           String   @id @default(cuid())
-  bookingId    String   @unique
-  booking      TutoringBooking @relation(fields: [bookingId], references: [id])
+  id           String           @id @default(cuid())
+  bookingId    String           @unique
+  booking      TutoringBooking  @relation(fields: [bookingId], references: [id])
   status       AttendanceStatus
   checkInTime  String?
   checkOutTime String?
   markedById   String
-  markedBy     User     @relation(fields: [markedById], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  markedBy     User             @relation(fields: [markedById], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 }
 
 model FaqItem {
@@ -532,6 +553,8 @@ model PointTransaction {
   teacherId String?
   teacher   Teacher?    @relation(fields: [teacherId], references: [id])
   createdAt DateTime    @default(now())
+
+  @@index([studentId])
 }
 
 model PointReason {
