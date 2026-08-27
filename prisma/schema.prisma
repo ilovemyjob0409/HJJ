@@ -474,18 +474,35 @@ model TutoringWindowClosure {
 }
 
 model TutoringEnrollment {
-  id                     String            @id @default(cuid())
+  id                     String                @id @default(cuid())
   programId              String
-  program                TutoringProgram   @relation(fields: [programId], references: [id])
+  program                TutoringProgram       @relation(fields: [programId], references: [id])
   studentId              String
-  student                Student           @relation(fields: [studentId], references: [id])
+  student                Student               @relation(fields: [studentId], references: [id])
   monthlyQuota           Int? // null＝用課程預設；行政可個別覆寫
-  active                 Boolean           @default(true)
+  active                 Boolean               @default(true)
   lastQuotaReminderMonth String? // "2026-08"，月中提醒防重複
   bookings               TutoringBooking[]
+  quotaChanges           TutoringQuotaChange[]
 
   @@unique([programId, studentId])
   @@index([studentId])
+}
+
+// 記錄 monthlyQuota 每次異動的生效時間點，讓「扣堂紀錄」能查回某個月當時
+// 真正生效的額度，而不是拿現在的靜態值回頭套用改寫過去（見
+// getTutoringDeductionLedger 的用法）。effectiveFrom 是 UTC 日曆日，取該月
+// 份 <= 目標月份中最晚一筆即為當月生效額度；完全沒有異動紀錄的報名（多數
+// 既有資料）就回退用目前的靜態值，等同今天的行為。
+model TutoringQuotaChange {
+  id            String             @id @default(cuid())
+  enrollmentId  String
+  enrollment    TutoringEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  monthlyQuota  Int
+  effectiveFrom DateTime // UTC 日曆日
+  createdAt     DateTime           @default(now())
+
+  @@index([enrollmentId, effectiveFrom])
 }
 
 model TutoringBooking {

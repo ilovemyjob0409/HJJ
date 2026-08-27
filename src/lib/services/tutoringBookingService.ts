@@ -507,6 +507,24 @@ export async function getTutoringDeductionLedger(
   if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
   const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
 
+  // 每個月實際生效的額度可能跟現在的靜態值不同（行政事後調整過
+  // monthlyQuota）——按 effectiveFrom 由舊到新找「該月當時生效的額度」，而
+  // 不是拿目前的靜態值回頭套用改寫過去。完全沒有異動紀錄的報名（多數既有
+  // 資料）就回退用目前的靜態值，等同今天的行為。
+  const quotaChanges = await prisma.tutoringQuotaChange.findMany({
+    where: { enrollmentId },
+    orderBy: [{ effectiveFrom: 'asc' }, { createdAt: 'asc' }],
+    select: { monthlyQuota: true, effectiveFrom: true },
+  });
+  const quotaForMonth = (monthKey: string): number => {
+    let result = quota;
+    for (const change of quotaChanges) {
+      if (utcDateKey(change.effectiveFrom).slice(0, 7) > monthKey) break;
+      result = change.monthlyQuota;
+    }
+    return result;
+  };
+
   const bookings = await prisma.tutoringBooking.findMany({
     where: { enrollmentId },
     select: {
@@ -528,6 +546,7 @@ export async function getTutoringDeductionLedger(
 
   const history: TutoringLedgerRow[] = [];
   for (const [monthKey, rows] of Array.from(monthGroups.entries())) {
+    const monthQuota = quotaForMonth(monthKey);
     // 有出席紀錄（非缺席）才扣堂——判斷邏輯跟 getMonthlyQuotaStatus 一致
     const isCounted = (b: (typeof rows)[number]) =>
       b.kind === 'REGULAR' &&
@@ -536,7 +555,7 @@ export async function getTutoringDeductionLedger(
       b.attendance != null &&
       b.attendance.status !== 'ABSENT';
     const countedInMonth = rows.filter(isCounted).length;
-    let runningAfter = quota - countedInMonth;
+    let runningAfter = monthQuota - countedInMonth;
     for (const b of rows) {
       const counted = isCounted(b);
       const remainingAfter = runningAfter;
@@ -552,13 +571,13 @@ export async function getTutoringDeductionLedger(
         remainingAfter,
       });
     }
-    // 處理完這個月所有扣堂後 runningAfter 會加回到 quota 本身——那就是這個月
-    // 核發當下（尚未扣任何一堂）的剩餘堂數。
+    // 處理完這個月所有扣堂後 runningAfter 會加回到 monthQuota 本身——那就是
+    // 這個月核發當下（尚未扣任何一堂）的剩餘堂數。
     history.push({
       id: `grant-${monthKey}`,
       date: new Date(`${monthKey}-01T00:00:00.000Z`),
       kind: 'GRANT',
-      amount: quota,
+      amount: monthQuota,
       status: null,
       checkInTime: null,
       remainingAfter: runningAfter,

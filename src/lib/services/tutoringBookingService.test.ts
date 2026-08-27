@@ -611,6 +611,50 @@ describe('getTutoringDeductionLedger', () => {
   it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
     await expect(getTutoringDeductionLedger('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
   });
+
+  it('uses the quota that was in effect for each month instead of retroactively applying the current value', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(); // program default quota 8
+    const marker = await createMarker();
+    const augBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: augBooking.id, status: 'PRESENT', markedById: marker.id } });
+    const sepBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: sepBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 模擬行政在 9 月把額度從 8 調成 10：目前靜態值已經是 10，但歷史紀錄
+    // 記著「8 月當時是 8」——8 月的帳本不該被新值回頭改寫。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 10 } });
+    await prisma.tutoringQuotaChange.createMany({
+      data: [
+        { enrollmentId: enrollment.id, monthlyQuota: 8, effectiveFrom: new Date(0) },
+        { enrollmentId: enrollment.id, monthlyQuota: 10, effectiveFrom: new Date('2020-09-01') },
+      ],
+    });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(10); // 頂層欄位仍是目前的靜態值，不受影響
+    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.amount, h.remainingAfter])).toEqual([
+      ['2020-09-04', 'DEDUCT', -1, 9],
+      ['2020-09-01', 'GRANT', 10, 10], // 變更生效當月起用新額度 10
+      ['2020-08-07', 'DEDUCT', -1, 7],
+      ['2020-08-01', 'GRANT', 8, 8], // 變更前的月份仍是舊額度 8，沒被改寫
+    ]);
+  });
+
+  it('falls back to the current static quota for every month when there is no recorded quota change history', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    // 直接改資料庫，不經過 updateEnrollment：模擬「這筆報名從沒被行政異動
+    // 過額度」的既有資料——TutoringQuotaChange 完全沒有紀錄。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 11 } });
+    const marker = await createMarker();
+    const augBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: augBooking.id, status: 'PRESENT', markedById: marker.id } });
+    const sepBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: sepBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(11);
+    expect(history.filter((h) => h.kind === 'GRANT').map((h) => h.amount)).toEqual([11, 11]);
+  });
 });
 
 describe('listMonthlyBookingCounts', () => {
