@@ -704,6 +704,29 @@ describe('arrangeLeaveOnly', () => {
 
     expect(await prisma.leaveRequest.count({ where: { date: new Date(Date.UTC(2026, 7, 3)) } })).toBe(0);
   });
+
+  it('allows only one of two concurrent requests for the same student/class/date to succeed', async () => {
+    const { student, classA } = await setup();
+    const input = {
+      studentId: student.id,
+      classId: classA.id,
+      date: new Date(Date.UTC(2026, 7, 3)),
+      reason: '行政代辦',
+    };
+
+    const results = await Promise.allSettled([arrangeLeaveOnly(input), arrangeLeaveOnly(input)]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.message).toBe('ALREADY_ON_LEAVE');
+
+    const created = await prisma.leaveRequest.count({
+      where: { studentId: student.id, classId: classA.id, date: input.date },
+    });
+    expect(created).toBe(1);
+  });
 });
 
 describe('arrangeOneOnOneMakeup', () => {
