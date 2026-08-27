@@ -17,6 +17,7 @@ import {
   setNotRegisteredDates,
   unenrollStudent,
   listStudentEnrolledClasses,
+  hasActiveClassEnrollment,
   deleteClass,
 } from './classService';
 
@@ -332,6 +333,29 @@ describe('listStudentEnrolledClasses', () => {
     expect(result[0].quota.totalSessions).toBe(12);
     expect(result[0].quota.usedSessions).toBe(0);
     expect(result[0].quota.remaining).toBe(12);
+  });
+});
+
+describe('hasActiveClassEnrollment', () => {
+  it('is true with an active-class enrollment, false without any enrollment', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-hasactive-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-hasactive-ming@example.com', password: 'x' });
+    expect(await hasActiveClassEnrollment(student.id)).toBe(false);
+
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    expect(await hasActiveClassEnrollment(student.id)).toBe(true);
+  });
+
+  it('ignores enrollments whose class has been soft-deleted', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'class-hasactive-del-chen@example.com', password: 'x', subjects: '數學' });
+    const student = await createStudent({ name: '小明', email: 'class-hasactive-del-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await enrollStudent(cls.id, student.id);
+    // 模擬「留下歷史」的軟刪除路徑：班級標記 inactive、報名列保留
+    await prisma.class.update({ where: { id: cls.id }, data: { active: false } });
+
+    expect(await hasActiveClassEnrollment(student.id)).toBe(false);
   });
 });
 

@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService';
 import { listRegistrationsForStudent } from '@/lib/services/goHallService';
-import { listStudentEnrolledClasses } from '@/lib/services/classService';
+import { hasActiveClassEnrollment, listStudentEnrolledClasses } from '@/lib/services/classService';
 import { getMyTickets } from '@/lib/services/goHallTicketService';
 import { getPointBalances } from '@/lib/services/pointService';
 import { listEnrollments } from '@/lib/services/tutoringProgramService';
@@ -22,15 +22,16 @@ export const dynamic = 'force-dynamic';
 export default async function StudentDashboard() {
   const session = await getServerSession(authOptions);
   const student = session ? await prisma.student.findUnique({ where: { userId: session.user.id } }) : null;
-  const [leaves, myRegistrations, myClasses, tickets, tutoringEnrollments] = student
+  const [leaves, myRegistrations, myClasses, tickets, tutoringEnrollments, showLeave] = student
     ? await Promise.all([
         listLeaveRequestsForStudent(student.id),
         listRegistrationsForStudent(student.id),
         listStudentEnrolledClasses(student.id),
         getMyTickets(student.id),
         listEnrollments(student.id),
+        hasActiveClassEnrollment(student.id),
       ])
-    : [[], [], [], { balance: 0, activePassEndDate: null }, []];
+    : [[], [], [], { balance: 0, activePassEndDate: null }, [], false];
   const balances = student ? await getPointBalances(student.id) : { regular: 0, redeemOnly: 0 };
 
   const goHallRows = myRegistrations.map((r) => ({
@@ -74,21 +75,29 @@ export default async function StudentDashboard() {
       </Link>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Link href="/student/leave-request">
-          <Card className="text-ink transition-shadow hover:shadow-md">請假申請與紀錄</Card>
-        </Link>
-        <Link href="/student/makeup-request">
-          <Card className="text-ink transition-shadow hover:shadow-md">申請補課</Card>
-        </Link>
+        {showLeave && (
+          <>
+            <Link href="/student/leave-request">
+              <Card className="text-ink transition-shadow hover:shadow-md">請假申請與紀錄</Card>
+            </Link>
+            <Link href="/student/makeup-request">
+              <Card className="text-ink transition-shadow hover:shadow-md">申請補課</Card>
+            </Link>
+          </>
+        )}
         <Link href="/student/attendance">
           <Card className="text-ink transition-shadow hover:shadow-md">我的出席紀錄</Card>
         </Link>
       </div>
 
-      <h2 className="mb-2 font-bold text-ink">我的請假與插班紀錄</h2>
-      <Card>
-        <LeaveHistoryTable rows={leaves} />
-      </Card>
+      {showLeave && (
+        <>
+          <h2 className="mb-2 font-bold text-ink">我的請假與插班紀錄</h2>
+          <Card>
+            <LeaveHistoryTable rows={leaves} />
+          </Card>
+        </>
+      )}
 
       <h2 className="mb-2 mt-6 font-bold text-ink">弈廳報名紀錄</h2>
       <GoHallSummaryTable rows={goHallRows} basePath="/student/go-hall" />

@@ -344,6 +344,13 @@ export function unenrollStudent(classId: string, studentId: string) {
   return prisma.classEnrollment.delete({ where: { studentId_classId: { studentId, classId } } });
 }
 
+// 是否仍有「有效班級」的報名（班級未被軟刪除）。請假／補課流程都掛在
+// 一般班級上，純個別輔導（或已全數退班）的學生看不到那些入口。
+export async function hasActiveClassEnrollment(studentId: string): Promise<boolean> {
+  const count = await prisma.classEnrollment.count({ where: { studentId, class: { active: true } } });
+  return count > 0;
+}
+
 export async function listStudentEnrolledClasses(studentId: string) {
   const classes = await prisma.class.findMany({
     where: { enrollments: { some: { studentId } } },

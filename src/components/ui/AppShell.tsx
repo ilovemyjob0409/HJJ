@@ -39,7 +39,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/student', label: '首頁', exact: true },
     { href: '/student/leave-request', label: '請假申請' },
     { href: '/student/makeup-request', label: '補課申請' },
-    { href: '/student/tutoring', label: '個別輔導' },
+    { href: '/student/tutoring', label: 'MPM&PLUS' },
     { href: '/student/timetable', label: '週課表' },
     { href: '/student/go-hall', label: '弈廳' },
     { href: '/student/attendance', label: '我的出席紀錄' },
@@ -55,7 +55,20 @@ const HOME_HREF: Record<Role, string> = {
   STUDENT: '/student',
 };
 
-export default function AppShell({ role, children }: { role: Role; children: ReactNode }) {
+// 請假／補課的入口只對「仍有有效班級報名」的學生顯示——純個別輔導
+// 學生用不到這兩個流程。旗標由 student layout 在伺服器端查好傳入，
+// 避免客戶端先渲染再消失的閃爍。
+const LEAVE_NAV_HREFS = ['/student/leave-request', '/student/makeup-request'];
+
+export default function AppShell({
+  role,
+  showLeaveNav = true,
+  children,
+}: {
+  role: Role;
+  showLeaveNav?: boolean;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
   const { showToast } = useToast();
   const [siblings, setSiblings] = useState<{ id: string; name: string }[]>([]);
@@ -167,7 +180,9 @@ export default function AppShell({ role, children }: { role: Role; children: Rea
               ref={indicatorRef}
               className="pointer-events-none absolute bottom-0.5 top-0.5 left-0 rounded-full bg-brand opacity-0 shadow-sm transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:bottom-1 sm:top-1"
             />
-            {NAV_LINKS[role].map((link) => {
+            {NAV_LINKS[role]
+              .filter((link) => showLeaveNav || !LEAVE_NAV_HREFS.includes(link.href))
+              .map((link) => {
               // Home links use exact match — every route under the role shares their prefix.
               const active = link.exact
                 ? pathname === link.href
