@@ -18,6 +18,7 @@ import {
 } from './goHallService';
 import { purchaseTickets, getTicketBalance } from './goHallTicketService';
 import { saveGoHallAttendance } from './attendanceService';
+import { taipeiDateKey } from './tutoringBookingService';
 
 describe('createSessions / listAllSessions', () => {
   it('creates one session per date and lists them soonest-first with a registration count', async () => {
@@ -173,8 +174,10 @@ describe('cancelRegistration', () => {
   it('still allows cancelling a session dated today', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
+    // 台北今天，以日期欄位的實際存法（UTC 午夜代表曆日）建構，而非伺服器
+    // 當地午夜——兩者在正式站（UTC）並不相等。
+    const [ty, tm, td] = taipeiDateKey(new Date()).split('-').map(Number);
+    const todayMidnight = new Date(Date.UTC(ty, tm - 1, td));
     await createSessions({ dates: [todayMidnight], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
     const session = await prisma.goHallSession.findFirstOrThrow();
     const registration = await registerForSession(session.id, student.id);

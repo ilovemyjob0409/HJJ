@@ -199,7 +199,7 @@ export interface EnrollmentInput {
   totalSessions: number | null;
 }
 
-export async function setStudentEnrollments(studentId: string, enrollments: EnrollmentInput[]) {
+export async function setStudentEnrollments(studentId: string, enrollments: EnrollmentInput[], now: Date = new Date()) {
   const current = await prisma.classEnrollment.findMany({ where: { studentId }, select: { classId: true, totalSessions: true } });
   const currentByClassId = new Map(current.map((e) => [e.classId, e.totalSessions]));
   const currentIds = new Set(current.map((e) => e.classId));
@@ -211,8 +211,11 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
 
   // 退班同時抽離該班「今天（含）以後」的點名紀錄：學生端不再看到未來
   // 場次、重新報名時也不會被舊點名灌堂數。過去的出席歷史保留備查。
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // "今天"以台北曆日為準（見 isBeforeToday 註解）：正式站伺服器是 UTC，
+  // 若改用伺服器當地午夜，台北 00:00–07:59 這段會把邊界算早一天，連帶
+  // 把台北昨天「已經記錄」的出席紀錄也一起刪掉。
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const today = new Date(Date.UTC(y, m - 1, d));
 
   await prisma.$transaction([
     ...(toRemove.length > 0

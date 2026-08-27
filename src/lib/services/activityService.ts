@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { createSignedUrls, deleteActivityImages } from '@/lib/storage';
 import { isBeforeToday } from '@/lib/pastDate';
+import { taipeiDateKey } from './tutoringBookingService';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -102,9 +103,11 @@ export async function listActivitiesForTeacher(teacherId: string) {
   return attachCoverUrl(rows);
 }
 
-export async function listOpenActivitiesForStudent() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+export async function listOpenActivitiesForStudent(now: Date = new Date()) {
+  // "今天"以台北曆日為準（見 isBeforeToday 註解）——伺服器是 UTC，台北
+  // 00:00–07:59 這段若用伺服器當地午夜會少算一天，把已結束的活動當成還開放。
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const today = new Date(Date.UTC(y, m - 1, d));
   const rows = await prisma.activity.findMany({
     where: { endDate: { gte: today } },
     select: ACTIVITY_STUDENT_LIST_SELECT,

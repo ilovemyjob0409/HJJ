@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { isBeforeToday } from '@/lib/pastDate';
+import { taipeiDateKey } from './tutoringBookingService';
 import { determineQualification, type GoHallQualificationValue } from './goHallTicketService';
 import { clearGoHallAttendance } from './attendanceService';
 
@@ -55,9 +56,11 @@ export function listSessionsForTeacher(teacherId: string) {
   });
 }
 
-export function listOpenSessionsForStudent() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+export function listOpenSessionsForStudent(now: Date = new Date()) {
+  // "今天"以台北曆日為準（見 isBeforeToday 註解）——伺服器是 UTC，台北
+  // 00:00–07:59 這段若用伺服器當地午夜會少算一天，把已結束的場次當成還開放。
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const today = new Date(Date.UTC(y, m - 1, d));
   return prisma.goHallSession.findMany({
     where: { date: { gte: today } },
     select: SESSION_LIST_SELECT,

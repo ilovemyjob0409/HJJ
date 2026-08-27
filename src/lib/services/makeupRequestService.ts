@@ -469,11 +469,12 @@ export async function listOneOnOneSlotOptions(teacherId: string, slotDate: Date)
   return options.sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
-export function listAssignedOneOnOneForTeacher(teacherId: string) {
+export function listAssignedOneOnOneForTeacher(teacherId: string, now: Date = new Date()) {
   // 老師首頁「被指派」區塊：只列今天（含）以後；PENDING_ADMIN 也列出，
   // 因為時段在建立時就已為老師保留（SLOT_CONFLICT 檢查含 PENDING）。
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // "今天"以台北曆日為準（見 isBeforeToday 註解），不用伺服器當地午夜。
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const today = new Date(Date.UTC(y, m - 1, d));
   return prisma.makeupRequest.findMany({
     where: {
       type: 'ONE_ON_ONE',

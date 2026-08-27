@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { notifyUser } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { taipeiDateKey } from './tutoringBookingService';
 
 // 點名等處的班級歸屬檢查：原班導師，或當天已指派的代課老師，皆可存取。
 export async function teacherCanAccessClass(teacherId: string, classId: string, date: Date): Promise<boolean> {
@@ -84,10 +85,11 @@ export async function assignSubstituteTeacher(id: string, substituteTeacherId: s
 // For the teacher dashboard: substitute duties assigned to this teacher.
 // 學生名單附堂數進度，算法與 listClassesForTeacher 一致（單一批次
 // groupBy 掃所有相關班級，避免逐生查詢；正式站 pg pool max:1）。
-export async function listAssignedSubstituteRequestsForTeacher(teacherId: string) {
-  // 老師首頁「被指派」區塊只列今天（含）以後，沿用全站 upcoming 邊界。
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+export async function listAssignedSubstituteRequestsForTeacher(teacherId: string, now: Date = new Date()) {
+  // 老師首頁「被指派」區塊只列今天（含）以後，沿用全站 upcoming 邊界；
+  // "今天"以台北曆日為準（見 isBeforeToday 註解），不用伺服器當地午夜。
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const today = new Date(Date.UTC(y, m - 1, d));
   const requests = await prisma.substituteRequest.findMany({
     where: { substituteTeacherId: teacherId, date: { gte: today } },
     select: {
