@@ -225,9 +225,9 @@ export default function ArrangeMakeupForm({ onArranged }: { onArranged?: () => v
     <Card className="mb-6 max-w-2xl">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-bold text-ink">代辦請假／補課</h2>
-        <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setExpanded(false)}>
+        <Button variant="link" tone="muted" className="text-sm" onClick={() => setExpanded(false)}>
           收合
-        </button>
+        </Button>
       </div>
 
       <p className="mb-1 text-sm font-medium text-ink">選擇學生</p>

@@ -145,9 +145,9 @@ export default function TeachersPage() {
     {
       header: '操作',
       render: (t) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(t)}>
+        <Button variant="link" onClick={() => openEdit(t)}>
           編輯
-        </button>
+        </Button>
       ),
     },
   ];
@@ -168,9 +168,9 @@ export default function TeachersPage() {
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增老師</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
+            <Button variant="link" tone="muted" className="text-sm" onClick={() => setShowAddForm(false)}>
               收合
-            </button>
+            </Button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Input placeholder="姓名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -220,9 +220,9 @@ export default function TeachersPage() {
           {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit" loading={submitting}>儲存</Button>
         </form>
-        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+        <Button variant="link" tone="danger" className="mt-3 text-sm" onClick={handleDelete}>
           刪除老師
-        </button>
+        </Button>
 
         {editing && (
           <div className="mt-4 border-t border-borderStrong pt-3">

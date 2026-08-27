@@ -151,9 +151,9 @@ export default function AdminMakeupNoticesPage() {
     {
       header: '操作',
       render: (item) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(item)}>
+        <Button variant="link" onClick={() => openEdit(item)}>
           編輯
-        </button>
+        </Button>
       ),
     },
   ];
@@ -168,9 +168,9 @@ export default function AdminMakeupNoticesPage() {
         <Card className="mb-6 max-w-xl">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增須知</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
+            <Button variant="link" tone="muted" className="text-sm" onClick={() => setShowAddForm(false)}>
               收合
-            </button>
+            </Button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Textarea placeholder="須知內容" value={content} onChange={(e) => setContent(e.target.value)} rows={3} required />
@@ -196,9 +196,9 @@ export default function AdminMakeupNoticesPage() {
           <Textarea placeholder="須知內容" value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={3} required />
           <Button type="submit" loading={submitting}>儲存</Button>
         </form>
-        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+        <Button variant="link" tone="danger" className="mt-3 text-sm" onClick={handleDelete}>
           刪除此須知
-        </button>
+        </Button>
       </Modal>
       {ConfirmDialog}
     </>
