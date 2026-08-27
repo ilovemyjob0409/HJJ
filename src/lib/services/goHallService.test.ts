@@ -80,6 +80,18 @@ describe('deleteSession', () => {
     const remaining = await prisma.goHallSession.count();
     expect(remaining).toBe(0);
   });
+
+  it('throws SESSION_HAS_ATTENDANCE and does not delete when the session has attendance history', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'session-delete-block-att-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'session-delete-block-att-ming@example.com', password: 'x' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const session = await prisma.goHallSession.findFirstOrThrow();
+    const marker = await prisma.user.create({ data: { name: '行政', email: 'session-delete-block-att-marker@example.com', password: 'x', role: 'ADMIN' } });
+    await prisma.goHallAttendance.create({ data: { sessionId: session.id, studentId: student.id, status: 'PRESENT', markedById: marker.id } });
+
+    await expect(deleteSession(session.id)).rejects.toThrow('SESSION_HAS_ATTENDANCE');
+    expect(await prisma.goHallSession.findUnique({ where: { id: session.id } })).not.toBeNull();
+  });
 });
 
 describe('registerForSession', () => {

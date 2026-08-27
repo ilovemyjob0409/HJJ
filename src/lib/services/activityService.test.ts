@@ -289,6 +289,21 @@ describe('deleteActivity', () => {
     expect(remainingRegistrations).toBe(0);
     expect(remainingTeacherLinks).toBe(0);
   });
+
+  it('throws ACTIVITY_HAS_ATTENDANCE and does not delete when the activity has attendance history', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'activity-delete-block-att-chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const student = await createStudent({ name: '小明', email: 'activity-delete-block-att-ming@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const marker = await prisma.user.create({ data: { name: '行政', email: 'activity-delete-block-att-marker@example.com', password: 'x', role: 'ADMIN' } });
+    await prisma.activityAttendance.create({
+      data: { activityId: activity.id, studentId: student.id, date: new Date(2026, 7, 1), status: 'PRESENT', markedById: marker.id },
+    });
+
+    await expect(deleteActivity(activity.id)).rejects.toThrow('ACTIVITY_HAS_ATTENDANCE');
+    expect(await prisma.activity.findUnique({ where: { id: activity.id } })).not.toBeNull();
+  });
 });
 
 describe('listRegistrationsForStudent', () => {

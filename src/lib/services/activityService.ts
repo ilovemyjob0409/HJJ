@@ -143,7 +143,14 @@ export async function adminRemoveRegistration(id: string) {
   await prisma.activityRegistration.delete({ where: { id } });
 }
 
+// Blocks deletion when the activity has attendance history — that's a
+// record and must survive. Registrations/teacher assignments/images are
+// current state, not history, so they're cleared as part of the delete.
 export async function deleteActivity(id: string) {
+  const attendanceCount = await prisma.activityAttendance.count({ where: { activityId: id } });
+  if (attendanceCount > 0) {
+    throw new Error('ACTIVITY_HAS_ATTENDANCE');
+  }
   const images = await prisma.activityImage.findMany({ where: { activityId: id }, select: { storagePath: true } });
   await prisma.$transaction([
     prisma.activityImage.deleteMany({ where: { activityId: id } }),

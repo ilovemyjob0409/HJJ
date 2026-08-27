@@ -68,7 +68,16 @@ export function listOpenSessionsForStudent(now: Date = new Date()) {
   });
 }
 
+// Blocks deletion when the session has attendance history — that's a
+// record and must survive (contrast with GoHallTicketTransaction.session,
+// which already uses onDelete: SetNull for exactly this reason).
+// Registrations are current state, not history, so they're cleared as
+// part of the delete.
 export async function deleteSession(id: string) {
+  const attendanceCount = await prisma.goHallAttendance.count({ where: { sessionId: id } });
+  if (attendanceCount > 0) {
+    throw new Error('SESSION_HAS_ATTENDANCE');
+  }
   await prisma.$transaction([
     prisma.goHallRegistration.deleteMany({ where: { sessionId: id } }),
     prisma.goHallSession.delete({ where: { id } }),
