@@ -17,11 +17,16 @@ interface Window {
 export default function AvailabilityPage() {
   const { showToast } = useToast();
   const [windows, setWindows] = useState<Window[]>([]);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
-    const res = await fetch('/api/availability');
-    setWindows(await res.json());
+    try {
+      const res = await fetch('/api/availability');
+      setWindows(await res.json());
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -55,30 +60,36 @@ export default function AvailabilityPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">我的每週可補課時段</h1>
       <Card className="max-w-lg">
-        <div className="flex flex-col gap-2">
-          {windows.map((w, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Select value={w.weekday} onChange={(e) => updateWindow(i, { weekday: Number(e.target.value) })}>
-                {WEEKDAY_LABELS.map((label, idx) => (
-                  <option key={idx} value={idx}>
-                    週{label}
-                  </option>
-                ))}
-              </Select>
-              <Input type="time" value={w.startTime} onChange={(e) => updateWindow(i, { startTime: e.target.value })} />
-              <Input type="time" value={w.endTime} onChange={(e) => updateWindow(i, { endTime: e.target.value })} />
-              <button className="text-rejected" onClick={() => removeWindow(i)}>
-                刪除
-              </button>
+        {loading ? (
+          <p className="text-sm text-inkMuted">載入中…</p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-2">
+              {windows.map((w, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Select value={w.weekday} onChange={(e) => updateWindow(i, { weekday: Number(e.target.value) })}>
+                    {WEEKDAY_LABELS.map((label, idx) => (
+                      <option key={idx} value={idx}>
+                        週{label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input type="time" value={w.startTime} onChange={(e) => updateWindow(i, { startTime: e.target.value })} />
+                  <Input type="time" value={w.endTime} onChange={(e) => updateWindow(i, { endTime: e.target.value })} />
+                  <button className="text-rejected" onClick={() => removeWindow(i)}>
+                    刪除
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <Button variant="secondary" onClick={addWindow}>
-            新增時段
-          </Button>
-          <Button onClick={save} loading={submitting}>儲存</Button>
-        </div>
+            <div className="mt-3 flex gap-2">
+              <Button variant="secondary" onClick={addWindow}>
+                新增時段
+              </Button>
+              <Button onClick={save} loading={submitting}>儲存</Button>
+            </div>
+          </>
+        )}
       </Card>
     </>
   );

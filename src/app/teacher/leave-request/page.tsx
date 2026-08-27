@@ -16,13 +16,17 @@ interface ClassOption {
 
 export default function TeacherLeaveRequestPage() {
   const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
   const [form, setForm] = useState({ classId: '', date: '', reason: '' });
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [weekdayAlert, setWeekdayAlert] = useState<WeekdayAlertInfo | null>(null);
 
   useEffect(() => {
-    fetch('/api/classes').then((r) => r.json()).then(setClasses);
+    fetch('/api/classes')
+      .then((r) => r.json())
+      .then(setClasses)
+      .finally(() => setLoadingClasses(false));
   }, []);
 
   const selectedClass = classes.find((c) => c.id === form.classId) ?? null;
@@ -57,19 +61,23 @@ export default function TeacherLeaveRequestPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">請假/調課申請（代課安排）</h1>
       <Card className="max-w-md">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-          <Select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })} required>
-            <option value="">選擇班級</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}（週{WEEKDAY_LABELS[c.weekday]}）
-              </option>
-            ))}
-          </Select>
-          <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
-          <Input placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
-          <Button type="submit" loading={submitting}>送出</Button>
-        </form>
+        {loadingClasses ? (
+          <p className="text-sm text-inkMuted">載入中…</p>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            <Select value={form.classId} onChange={(e) => setForm({ ...form, classId: e.target.value })} required>
+              <option value="">選擇班級</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}（週{WEEKDAY_LABELS[c.weekday]}）
+                </option>
+              ))}
+            </Select>
+            <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
+            <Input placeholder="原因" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required />
+            <Button type="submit" loading={submitting}>送出</Button>
+          </form>
+        )}
         {message && <p className="mt-4 text-sm text-ink">{message}</p>}
       </Card>
       <WeekdayAlertModal info={weekdayAlert} onClose={() => setWeekdayAlert(null)} />

@@ -34,15 +34,20 @@ interface BookingRow {
 
 export default function StudentTutoringPage() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string>('');
   const [attendanceRows, setAttendanceRows] = useState<BookingRow[]>([]);
   const [selectedCount, setSelectedCount] = useState(0);
 
   async function loadEnrollments() {
-    const res = await fetch('/api/tutoring-enrollments/me');
-    const rows: Enrollment[] = await res.json();
-    setEnrollments(rows);
-    if (rows.length > 0) setSelectedEnrollmentId((prev) => prev || rows[0].id);
+    try {
+      const res = await fetch('/api/tutoring-enrollments/me');
+      const rows: Enrollment[] = await res.json();
+      setEnrollments(rows);
+      if (rows.length > 0) setSelectedEnrollmentId((prev) => prev || rows[0].id);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadAttendance() {
@@ -76,7 +81,11 @@ export default function StudentTutoringPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">個別輔導預約</h1>
 
-      {enrollments.length === 0 ? (
+      {loading ? (
+        <Card>
+          <p className="text-sm text-inkMuted">載入中…</p>
+        </Card>
+      ) : enrollments.length === 0 ? (
         <Card>
           <p className="text-sm text-inkMuted">目前沒有已報名的個別輔導課程</p>
         </Card>
