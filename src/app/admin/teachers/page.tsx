@@ -113,7 +113,7 @@ export default function TeachersPage() {
     const res = await fetch(`/api/teachers/${editing.id}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json();
-      setEditError(data.error === 'TEACHER_HAS_RECORDS' ? '此老師仍有帶班或代課紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
+      setEditError(data.error === 'TEACHER_HAS_RECORDS' ? '此老師仍有帶班、代課、個別輔導、弈廳或活動相關紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
       return;
     }
     setEditing(null);
