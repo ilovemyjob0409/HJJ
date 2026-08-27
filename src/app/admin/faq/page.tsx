@@ -153,9 +153,9 @@ export default function AdminFaqPage() {
     {
       header: '操作',
       render: (item) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(item)}>
+        <Button variant="link" onClick={() => openEdit(item)}>
           編輯
-        </button>
+        </Button>
       ),
     },
   ];
@@ -169,9 +169,9 @@ export default function AdminFaqPage() {
         <Card className="mb-6 max-w-xl">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增問題</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
+            <Button variant="link" tone="muted" className="text-sm" onClick={() => setShowAddForm(false)}>
               收合
-            </button>
+            </Button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Input placeholder="問題" value={form.question} onChange={(e) => setForm({ ...form, question: e.target.value })} required />
@@ -216,9 +216,9 @@ export default function AdminFaqPage() {
           />
           <Button type="submit" loading={submitting}>儲存</Button>
         </form>
-        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+        <Button variant="link" tone="danger" className="mt-3 text-sm" onClick={handleDelete}>
           刪除此問題
-        </button>
+        </Button>
       </Modal>
       {ConfirmDialog}
     </>

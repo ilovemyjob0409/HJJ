@@ -258,9 +258,9 @@ export default function AdminActivitiesPage() {
     {
       header: '操作',
       render: (a) => (
-        <button className="text-brandDark hover:underline" onClick={() => setViewing(a)}>
+        <Button variant="link" onClick={() => setViewing(a)}>
           編輯
-        </button>
+        </Button>
       ),
     },
   ];
@@ -282,9 +282,9 @@ export default function AdminActivitiesPage() {
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增活動</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={closeAddForm}>
+            <Button variant="link" tone="muted" className="text-sm" onClick={closeAddForm}>
               收合
-            </button>
+            </Button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Input placeholder="標題" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
@@ -387,9 +387,9 @@ export default function AdminActivitiesPage() {
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">管理分類</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowCategoryPanel(false)}>
+            <Button variant="link" tone="muted" className="text-sm" onClick={() => setShowCategoryPanel(false)}>
               收合
-            </button>
+            </Button>
           </div>
           {categories.length === 0 ? (
             <p className="mb-3 text-sm text-inkMuted">尚無分類</p>
@@ -398,9 +398,9 @@ export default function AdminActivitiesPage() {
               {categories.map((c) => (
                 <li key={c.id} className="flex items-center justify-between text-sm text-ink">
                   {c.name}
-                  <button type="button" className="text-rejected hover:underline" onClick={() => handleDeleteCategory(c.id)}>
+                  <Button variant="link" tone="danger" onClick={() => handleDeleteCategory(c.id)}>
                     刪除
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -444,9 +444,9 @@ export default function AdminActivitiesPage() {
               </button>
             )}
             footer={
-              <button type="button" className="text-left text-sm text-rejected hover:underline" onClick={handleDeleteActivity}>
+              <Button variant="link" tone="danger" className="text-left text-sm" onClick={handleDeleteActivity}>
                 刪除此活動
-              </button>
+              </Button>
             }
           />
         )}

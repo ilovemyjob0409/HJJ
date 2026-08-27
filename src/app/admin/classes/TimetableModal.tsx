@@ -93,13 +93,14 @@ export default function TimetableModal({ open, onClose, onClassClick, onTutoring
           <div className="mb-3 rounded-lg bg-stripe p-3">
             <div className="mb-1 flex items-center justify-between">
               <span className="text-xs font-bold text-ink">科目顏色</span>
-              <button
-                type="button"
-                className="text-xs text-inkMuted hover:underline"
+              <Button
+                variant="link"
+                tone="muted"
+                className="text-xs"
                 onClick={() => setPanelOpen(false)}
               >
                 收合
-              </button>
+              </Button>
             </div>
             {subjects.map((subject) => (
               <div key={subject} className="flex flex-wrap items-center gap-2 py-1.5 text-sm text-ink">
