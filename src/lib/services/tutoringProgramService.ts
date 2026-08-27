@@ -300,19 +300,26 @@ export async function updateEnrollment(id: string, input: UpdateEnrollmentInput)
     if (input.monthlyQuota === undefined) {
       return await prisma.tutoringEnrollment.update({ where: { id }, data: input });
     }
-    // 有異動 monthlyQuota：先讀舊的生效額度，異動後才知道要不要補寫
-    // TutoringQuotaChange 歷史列（見 getTutoringDeductionLedger 的用法）。
-    const existing = await prisma.tutoringEnrollment.findUniqueOrThrow({
-      where: { id },
-      include: { program: { select: { defaultMonthlyQuota: true } } },
+    // 有異動 monthlyQuota：讀舊的生效額度、更新靜態值、視情況補寫
+    // TutoringQuotaChange 歷史列（見 getTutoringDeductionLedger 的用法）全部包
+    // 在同一個交易裡——這幾步一定要同進退，不然中途掛掉會讓靜態值變了但
+    // 歷史列沒寫，帳本誤判「沒有歷史」而回頭用新值改寫過去月份，正是這個
+    // 功能原本要修的問題。這裡不是跟「其他併發請求」搶讀寫的 check-then-act
+    // 賽跑（不像訂位/額度審核那類），單一交易的原子性就夠，不需要
+    // runSerializableWithRetry 那層。
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.tutoringEnrollment.findUniqueOrThrow({
+        where: { id },
+        include: { program: { select: { defaultMonthlyQuota: true } } },
+      });
+      const oldEffective = existing.monthlyQuota ?? existing.program.defaultMonthlyQuota;
+      const newEffective = input.monthlyQuota ?? existing.program.defaultMonthlyQuota;
+      const updated = await tx.tutoringEnrollment.update({ where: { id }, data: input });
+      if (newEffective !== oldEffective) {
+        await recordQuotaChange(tx, id, oldEffective, newEffective);
+      }
+      return updated;
     });
-    const oldEffective = existing.monthlyQuota ?? existing.program.defaultMonthlyQuota;
-    const newEffective = input.monthlyQuota ?? existing.program.defaultMonthlyQuota;
-    const updated = await prisma.tutoringEnrollment.update({ where: { id }, data: input });
-    if (newEffective !== oldEffective) {
-      await recordQuotaChange(id, oldEffective, newEffective);
-    }
-    return updated;
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       throw new Error('ENROLLMENT_NOT_FOUND');
@@ -324,15 +331,22 @@ export async function updateEnrollment(id: string, input: UpdateEnrollmentInput)
 // 每次真的異動生效額度都補一筆歷史列。第一次異動要先補一筆「舊值」基準列
 // （effectiveFrom 用極早日期蓋住所有既有歷史月份）——不然變更前的月份重新
 // 打開帳本時，找不到任何 <= 該月的紀錄，會誤用新值回填過去。
-async function recordQuotaChange(enrollmentId: string, oldEffective: number, newEffective: number) {
-  const priorChangeCount = await prisma.tutoringQuotaChange.count({ where: { enrollmentId } });
+// 呼叫方一律傳交易內的 tx（見 updateEnrollment），確保 count 讀取與後續
+// create 都在同一個交易裡跟外層的 enrollment.update 綁在一起。
+async function recordQuotaChange(
+  tx: Prisma.TransactionClient,
+  enrollmentId: string,
+  oldEffective: number,
+  newEffective: number
+) {
+  const priorChangeCount = await tx.tutoringQuotaChange.count({ where: { enrollmentId } });
   if (priorChangeCount === 0) {
-    await prisma.tutoringQuotaChange.create({
+    await tx.tutoringQuotaChange.create({
       data: { enrollmentId, monthlyQuota: oldEffective, effectiveFrom: new Date(0) },
     });
   }
   const [ty, tm, td] = taipeiDateKey(new Date()).split('-').map(Number);
-  await prisma.tutoringQuotaChange.create({
+  await tx.tutoringQuotaChange.create({
     data: { enrollmentId, monthlyQuota: newEffective, effectiveFrom: new Date(Date.UTC(ty, tm - 1, td)) },
   });
 }

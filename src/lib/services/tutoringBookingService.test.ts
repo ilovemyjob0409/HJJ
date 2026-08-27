@@ -640,6 +640,36 @@ describe('getTutoringDeductionLedger', () => {
     ]);
   });
 
+  it('documents current month-granularity limitation: a mid-month quota change applies to the WHOLE current month, including days before the change', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(); // program default quota 8
+    const marker = await createMarker();
+    // 8/7：異動額度「之前」發生的一堂，原本照舊額度 8 計算才對
+    const before = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: before.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 模擬行政在 8/15（月中）把額度從 8 調成 10——effectiveFrom 是完整日期，
+    // 但 quotaForMonth 只比對到「月」的粒度（'2020-08' <= '2020-08'），所以
+    // 整個 8 月都套用新額度 10，包含 8/15 之前已經發生的 8/7 那堂。這是
+    // 已知的月粒度限制（quotaForMonth 定義處有註解），不是本次修復目標。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 10 } });
+    await prisma.tutoringQuotaChange.createMany({
+      data: [
+        { enrollmentId: enrollment.id, monthlyQuota: 8, effectiveFrom: new Date(0) },
+        { enrollmentId: enrollment.id, monthlyQuota: 10, effectiveFrom: new Date('2020-08-15') },
+      ],
+    });
+
+    // 8/21：異動額度「之後」發生的一堂
+    const after = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: after.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { history } = await getTutoringDeductionLedger(enrollment.id);
+    const augustGrant = history.find((h) => h.kind === 'GRANT' && utcDateKey(h.date) === '2020-08-01');
+    // 期望值是 10 而非「8/7 用 8、8/21 用 10」的混合結果——這就是要釘選的
+    // 已知行為：整月一律套用月底當時生效的最新額度。
+    expect(augustGrant?.amount).toBe(10);
+  });
+
   it('falls back to the current static quota for every month when there is no recorded quota change history', async () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     // 直接改資料庫，不經過 updateEnrollment：模擬「這筆報名從沒被行政異動

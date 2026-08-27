@@ -516,6 +516,14 @@ export async function getTutoringDeductionLedger(
     orderBy: [{ effectiveFrom: 'asc' }, { createdAt: 'asc' }],
     select: { monthlyQuota: true, effectiveFrom: true },
   });
+  // 已知限制（非 bug）：這裡比對的粒度是「月」（monthKey 只到 YYYY-MM），
+  // 但 recordQuotaChange 寫入的 effectiveFrom 是行政異動當下的完整日期
+  // （幾乎不會剛好是月初）。結果是月中異動額度會套用到「整個當月」，包含
+  // 異動之前已經發生、原本該用舊額度計算的那幾天——本次任務只解決「跨月」
+  // 誤改寫的問題（見 getTutoringDeductionLedger 上方測試），沒有把帳本做成
+  // 日粒度；那是另一個產品決策，需求文件也明確定調此帳本是月粒度。見
+  // tutoringBookingService.test.ts 中 'documents current month-granularity
+  // limitation' 測試對此行為的釘選。
   const quotaForMonth = (monthKey: string): number => {
     let result = quota;
     for (const change of quotaChanges) {
