@@ -13,10 +13,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       await adminCancelBooking(params.id);
       return NextResponse.json({ success: true });
     } catch (err) {
-      if (err instanceof Error && err.message === 'BOOKING_NOT_FOUND') {
-        return NextResponse.json({ error: err.message }, { status: 404 });
-      }
-      throw err;
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      const status = message === 'BOOKING_NOT_FOUND' ? 404 : 422;
+      return NextResponse.json({ error: message }, { status });
     }
   }
   if (session.user.role !== 'STUDENT') {

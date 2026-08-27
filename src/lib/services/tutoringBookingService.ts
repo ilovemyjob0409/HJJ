@@ -53,6 +53,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: st
           tx.tutoringEnrollment.findUnique({ where: { id: input.enrollmentId } }),
         ]);
         if (!window) throw new Error('WINDOW_NOT_FOUND');
+        if (!window.active) throw new Error('WINDOW_INACTIVE');
         if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
         if (!enrollment.active) throw new Error('ENROLLMENT_INACTIVE');
         if (window.programId !== enrollment.programId) throw new Error('PROGRAM_MISMATCH');
@@ -164,23 +165,33 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
   if (booking.enrollment.studentId !== studentId) throw new Error('NOT_OWNER');
 
   // 收費規範：未到場不扣堂——取消一律不計次，保留紀錄（狀態 CANCELLED）
-  // 讓學生的預約紀錄看得到這筆取消。
-  await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
+  // 讓學生的預約紀錄看得到這筆取消。已點名（有出席紀錄）的預約不可取消——
+  // classifyQuotaBookings 直接跳過 CANCELLED，取消一筆已到場的預約會讓額度
+  // 悄悄空出一格，但月結報表（listMonthlyAttendanceSummary）仍照出席紀錄
+  // 認列，兩邊對不起來（同 revokeMakeup 的 MAKEUP_HAS_ATTENDANCE 顧慮）。
+  // 用條件式 updateMany（同 reviewBooking 的寫法）在單一陳述式內完成「檢查
+  // 沒有出席紀錄＋寫入」，避免查完到寫入之間才被點名的競態。
+  const result = await prisma.tutoringBooking.updateMany({
+    where: { id: bookingId, attendance: null },
+    data: { status: 'CANCELLED' },
+  });
+  if (result.count === 0) throw new Error('BOOKING_HAS_ATTENDANCE');
   // 老師只收過「確定成立」的預約通知——取消「待審中」的預約不用通知老師
   //（他從未被告知這筆預約存在）。
   if (booking.status === 'BOOKED') await notifyStaffBookingChange(bookingId, 'CANCELLED');
 }
 
 // 行政取消：與學生取消同語意，一律不計次（收費規範沒有「計次取消」——
-// 扣堂只看有無到場）。CANCELLED_LATE 僅存在於歷史資料，不再產生。
+// 扣堂只看有無到場）。CANCELLED_LATE 僅存在於歷史資料，不再產生。已點名
+// 的預約同樣擋下（見 cancelBooking 的 BOOKING_HAS_ATTENDANCE 說明）。
 export async function adminCancelBooking(bookingId: string): Promise<void> {
-  try {
-    await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-      throw new Error('BOOKING_NOT_FOUND');
-    }
-    throw err;
+  const result = await prisma.tutoringBooking.updateMany({
+    where: { id: bookingId, attendance: null },
+    data: { status: 'CANCELLED' },
+  });
+  if (result.count === 0) {
+    const exists = await prisma.tutoringBooking.findUnique({ where: { id: bookingId }, select: { id: true } });
+    throw new Error(exists ? 'BOOKING_HAS_ATTENDANCE' : 'BOOKING_NOT_FOUND');
   }
 }
 

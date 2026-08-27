@@ -252,6 +252,16 @@ describe('listWalkInCandidates', () => {
       createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('ENROLLMENT_INACTIVE');
   });
+
+  it('rejects booking against a deactivated window (stale windowId held by client)', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    await prisma.tutoringWindow.update({ where: { id: window.id }, data: { active: false } });
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
+    ).rejects.toThrow('WINDOW_INACTIVE');
+    const count = await prisma.tutoringBooking.count({ where: { enrollmentId: enrollment.id } });
+    expect(count).toBe(0);
+  });
 });
 
 describe('cancelBooking', () => {
@@ -301,6 +311,17 @@ describe('cancelBooking', () => {
   it('rejects with BOOKING_NOT_FOUND for a nonexistent booking id', async () => {
     await expect(cancelBooking('nonexistent-booking-id', 'someone')).rejects.toThrow('BOOKING_NOT_FOUND');
   });
+
+  it('rejects cancelling a booking that already has an attendance record (attended but would silently free up quota)', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const marker = await createMarker();
+    const future = new Date(Date.UTC(2099, 0, 2));
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
+    await prisma.tutoringAttendance.create({ data: { bookingId: booking.id, status: 'PRESENT', markedById: marker.id } });
+    await expect(cancelBooking(booking.id, enrollment.studentId)).rejects.toThrow('BOOKING_HAS_ATTENDANCE');
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(row.status).toBe('BOOKED');
+  });
 });
 
 describe('adminCancelBooking', () => {
@@ -309,6 +330,16 @@ describe('adminCancelBooking', () => {
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await adminCancelBooking(booking.id);
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('CANCELLED');
+  });
+
+  it('rejects cancelling a booking that already has an attendance record', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const marker = await createMarker();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await prisma.tutoringAttendance.create({ data: { bookingId: booking.id, status: 'PRESENT', markedById: marker.id } });
+    await expect(adminCancelBooking(booking.id)).rejects.toThrow('BOOKING_HAS_ATTENDANCE');
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(row.status).toBe('BOOKED');
   });
 
   it('rejects with BOOKING_NOT_FOUND for a nonexistent booking id', async () => {

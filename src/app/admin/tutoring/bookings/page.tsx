@@ -114,9 +114,15 @@ export default function AdminTutoringBookingsPage() {
   }, []);
 
   // 收費規範：取消一律不計次（扣堂只看有無到場），沒有「計次取消」。
+  // 已點名的預約後端會擋下（BOOKING_HAS_ATTENDANCE）。
   async function cancel(row: OverviewRow) {
     if (!(await confirm('確定要取消這筆預約嗎？（不扣堂）', { danger: true }))) return;
-    await fetch(`/api/tutoring-bookings/${row.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/tutoring-bookings/${row.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      showToast(data?.error === 'BOOKING_HAS_ATTENDANCE' ? '已點名，無法取消' : '取消失敗，請稍後再試');
+      return;
+    }
     showToast('已取消');
     if (selectedDate) loadDay(selectedDate);
     loadCounts();
