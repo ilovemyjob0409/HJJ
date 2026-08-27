@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createProgram, createWindow } from './tutoringProgramService';
+import { createProgram, createWindow, updateProgram } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking, approveBooking, rejectBooking } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listAttendanceForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { listPendingReviewBookings } from './tutoringBookingService';
@@ -684,6 +684,52 @@ describe('getTutoringDeductionLedger', () => {
     const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
     expect(monthlyQuota).toBe(11);
     expect(history.filter((h) => h.kind === 'GRANT').map((h) => h.amount)).toEqual([11, 11]);
+  });
+
+  it('propagates a program defaultMonthlyQuota change into a null-quota enrollment\'s ledger history (program-default path, not the enrollment-override path)', async () => {
+    const { window, enrollment, program } = await setupProgramWithEnrollment(); // program default quota 8; enrollment.monthlyQuota stays null throughout
+    const marker = await createMarker();
+    const pastBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: pastBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 行政直接改課程的預設額度（8→10），不是改這筆報名的個別覆寫值——
+    // enrollment.monthlyQuota 全程是 null，吃的正是這個預設值，所以這筆報名
+    // 的帳本也該跟著補一筆歷史列，8 月不該被回頭改寫成 10。
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+
+    const futureBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0] });
+    await prisma.tutoringAttendance.create({ data: { bookingId: futureBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(10); // 頂層欄位是目前的課程預設值
+    const augustGrant = history.find((h) => h.kind === 'GRANT' && utcDateKey(h.date) === '2020-08-01');
+    const futureMonthKey = utcDateKey(FUTURE_FRIDAYS[0]).slice(0, 7);
+    const futureGrant = history.find((h) => h.kind === 'GRANT' && utcDateKey(h.date) === `${futureMonthKey}-01`);
+    expect(augustGrant?.amount).toBe(8); // 變更前的月份仍是舊的課程預設值 8，沒被改寫
+    expect(futureGrant?.amount).toBe(10); // 變更生效之後（下個月）用新值 10
+  });
+
+  it('leaves an enrollment with its own monthlyQuota override unaffected by a program defaultMonthlyQuota change (regression: overrides stay insulated)', async () => {
+    const { window, program, enrollment } = await setupProgramWithEnrollment(); // program default quota 8
+    // 直接改資料庫帶自己的覆寫值 11（不經過 updateEnrollment），這筆報名從頭
+    // 到尾都吃這個覆寫值，不吃課程預設，也完全沒有 TutoringQuotaChange 歷史列
+    // ——模擬「這筆報名的覆寫值從沒被 updateEnrollment 異動過」的既有資料。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 11 } });
+    const marker = await createMarker();
+    const pastBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: pastBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 行政改課程的預設額度（8→10）——這筆報名有自己的覆寫值 11，本來就不吃
+    // 課程預設，這次異動不該影響它，也不該幫它多寫任何歷史列。
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+    expect(await prisma.tutoringQuotaChange.count({ where: { enrollmentId: enrollment.id } })).toBe(0);
+
+    const futureBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0] });
+    await prisma.tutoringAttendance.create({ data: { bookingId: futureBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(11); // 覆寫值，跟課程預設的異動無關
+    expect(history.filter((h) => h.kind === 'GRANT').map((h) => h.amount)).toEqual([11, 11]); // 兩個月都還是 11（無歷史列，回退用目前的靜態值）
   });
 });
 

@@ -336,6 +336,54 @@ describe('updateEnrollment quota change history', () => {
   });
 });
 
+describe('updateProgram defaultMonthlyQuota change history', () => {
+  it('records history for every null-quota enrollment under the program on a real default change, but not for an enrollment with its own override', async () => {
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const studentA = await createStudent({ name: '小美', email: 'program-quota-history-a@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'program-quota-history-b@example.com', password: 'x' });
+    const studentC = await createStudent({ name: '小明', email: 'program-quota-history-c@example.com', password: 'x' });
+    const nullQuotaA = await createEnrollment({ studentId: studentA.id, programId: program.id }); // monthlyQuota null → 吃課程預設
+    const nullQuotaB = await createEnrollment({ studentId: studentB.id, programId: program.id }); // monthlyQuota null → 吃課程預設
+    const overridden = await createEnrollment({ studentId: studentC.id, programId: program.id, monthlyQuota: 20 }); // 有自己的覆寫值
+
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+
+    for (const enrollment of [nullQuotaA, nullQuotaB]) {
+      const changes = await prisma.tutoringQuotaChange.findMany({
+        where: { enrollmentId: enrollment.id },
+        orderBy: { effectiveFrom: 'asc' },
+      });
+      expect(changes.map((c) => c.monthlyQuota)).toEqual([8, 10]);
+      expect(changes[0].effectiveFrom).toEqual(new Date(0)); // 舊值基準列蓋住所有既有歷史月份
+    }
+    // 有自己覆寫值的報名不吃課程預設，這次異動不該幫它補任何歷史列
+    expect(await prisma.tutoringQuotaChange.count({ where: { enrollmentId: overridden.id } })).toBe(0);
+  });
+
+  it('does not write history when the update leaves defaultMonthlyQuota unchanged or does not touch it', async () => {
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const student = await createStudent({ name: '小美', email: 'program-quota-history-noop@example.com', password: 'x' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await updateProgram(program.id, { defaultMonthlyQuota: 8 }); // 設成同一個值
+    await updateProgram(program.id, { active: false }); // 不涉及 defaultMonthlyQuota
+
+    expect(await prisma.tutoringQuotaChange.count({ where: { enrollmentId: enrollment.id } })).toBe(0);
+  });
+
+  it('only adds one row (no repeated baseline) for a second real default change', async () => {
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const student = await createStudent({ name: '小美', email: 'program-quota-history-second@example.com', password: 'x' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+    await updateProgram(program.id, { defaultMonthlyQuota: 12 });
+
+    const changes = await prisma.tutoringQuotaChange.findMany({ where: { enrollmentId: enrollment.id } });
+    expect(changes.map((c) => c.monthlyQuota).sort((a, b) => a - b)).toEqual([8, 10, 12]);
+  });
+});
+
 describe('listWindowsForTeacher', () => {
   it('returns only the windows where the teacher is the main or second teacher, with program name', async () => {
     const teacher = await createTeacher({ name: '米奇老師', email: `list-windows-mickey-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
