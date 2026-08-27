@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Textarea from '@/components/ui/Textarea';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -287,11 +288,10 @@ export default function AdminActivitiesPage() {
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Input placeholder="標題" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
-            <textarea
+            <Textarea
               placeholder="描述"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="rounded-lg border border-[#D8C9A8] bg-card px-3 py-2 text-sm text-ink focus:border-brandDark focus:outline-none focus:ring-2 focus:ring-brandDark/25"
               rows={3}
               required
             />

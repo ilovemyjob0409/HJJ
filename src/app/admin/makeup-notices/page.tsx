@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Textarea from '@/components/ui/Textarea';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
@@ -13,9 +14,6 @@ interface NoticeRow {
   content: string;
   sortOrder: number;
 }
-
-const TEXTAREA_CLASS =
-  'rounded-lg border border-[#D8C9A8] bg-card px-3 py-2 text-sm text-ink focus:border-brandDark focus:outline-none focus:ring-2 focus:ring-brandDark/25';
 
 export default function AdminMakeupNoticesPage() {
   const { showToast } = useToast();
@@ -175,14 +173,7 @@ export default function AdminMakeupNoticesPage() {
             </button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-            <textarea
-              placeholder="須知內容"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className={TEXTAREA_CLASS}
-              rows={3}
-              required
-            />
+            <Textarea placeholder="須知內容" value={content} onChange={(e) => setContent(e.target.value)} rows={3} required />
             <Button type="submit" loading={submitting}>新增</Button>
           </form>
         </Card>
@@ -202,14 +193,7 @@ export default function AdminMakeupNoticesPage() {
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯須知">
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
-          <textarea
-            placeholder="須知內容"
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            className={TEXTAREA_CLASS}
-            rows={3}
-            required
-          />
+          <Textarea placeholder="須知內容" value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={3} required />
           <Button type="submit" loading={submitting}>儲存</Button>
         </form>
         <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
