@@ -22,10 +22,6 @@ interface HistoryRow {
 }
 
 export default function PointsHistoryTable({ rows }: { rows: HistoryRow[] }) {
-  if (rows.length === 0) {
-    return <p className="text-sm text-inkMuted">尚無點數紀錄</p>;
-  }
-
   const columns: Column<HistoryRow>[] = [
     { header: '日期', render: (r) => formatDateWithWeekday(r.createdAt), sortValue: (r) => r.createdAt },
     { header: '類型', render: (r) => KIND_LABELS[r.kind] ?? r.kind, sortValue: (r) => r.kind },
@@ -42,5 +38,5 @@ export default function PointsHistoryTable({ rows }: { rows: HistoryRow[] }) {
     { header: '加分老師', render: (r) => r.teacher?.user.name ?? '-', sortValue: (r) => r.teacher?.user.name ?? null },
   ];
 
-  return <CollapsibleDataTable columns={columns} rows={rows} keyField={(r) => r.id} maxRows={3} />;
+  return <CollapsibleDataTable columns={columns} rows={rows} keyField={(r) => r.id} maxRows={3} emptyText="尚無點數紀錄" />;
 }
