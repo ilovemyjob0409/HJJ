@@ -40,27 +40,43 @@ export default function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [rows, setRows] = useState<NotificationRow[]>([]);
   const [marking, setMarking] = useState(false);
+  const [loadingRows, setLoadingRows] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastLoadAtRef = useRef(0);
 
-  async function load() {
+  // 常態載入只查未讀數（1 個查詢）；50 則清單等打開面板才載——
+  // 鈴鐺是全站每頁都掛的元件，這一刀把它的常態 DB 負載減半。
+  async function loadCount() {
     lastLoadAtRef.current = Date.now();
-    const res = await fetch('/api/notifications');
+    const res = await fetch('/api/notifications?countOnly=1');
     if (!res.ok) return;
     const data = await res.json();
     setUnread(data.unread);
-    setRows(data.rows);
+  }
+
+  async function load() {
+    lastLoadAtRef.current = Date.now();
+    setLoadingRows(true);
+    try {
+      const res = await fetch('/api/notifications');
+      if (!res.ok) return;
+      const data = await res.json();
+      setUnread(data.unread);
+      setRows(data.rows);
+    } finally {
+      setLoadingRows(false);
+    }
   }
 
   // 掛載時抓一次；回到分頁時重抓（不輪詢）
   useEffect(() => {
-    load().catch(() => {});
+    loadCount().catch(() => {});
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       // 60 秒內切回分頁不重抓——尖峰時少掉一大票瑣碎查詢；
       // 打開面板（toggle）仍永遠重抓，即時性不受影響
       if (Date.now() - lastLoadAtRef.current < 60_000) return;
-      load().catch(() => {});
+      loadCount().catch(() => {});
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -146,7 +162,7 @@ export default function NotificationBell() {
           </div>
           <div className="max-h-96 overflow-y-auto">
             {rows.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-inkMuted">目前沒有通知</p>
+              <p className="px-3 py-6 text-center text-sm text-inkMuted">{loadingRows ? '載入中…' : '目前沒有通知'}</p>
             ) : (
               rows.map((row) => (
                 <button

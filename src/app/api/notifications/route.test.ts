@@ -21,12 +21,16 @@ async function createUser() {
 }
 
 const asUser = (id: string) => sessionMock.mockResolvedValue({ user: { id, role: 'STUDENT' } });
+
+function getReq(params: Record<string, string> = {}) {
+  return { nextUrl: { searchParams: new URLSearchParams(params) } } as never;
+}
 const asAnon = () => sessionMock.mockResolvedValue(null);
 
 describe('GET /api/notifications', () => {
   it('403：未登入', async () => {
     asAnon();
-    const res = await GET();
+    const res = await GET(getReq());
     expect(res.status).toBe(403);
   });
 
@@ -36,12 +40,23 @@ describe('GET /api/notifications', () => {
     await notifyUser(me.id, { title: '我的', body: 'b', url: '/student' });
     await notifyUser(other.id, { title: '別人的', body: 'b', url: '/student' });
     asUser(me.id);
-    const res = await GET();
+    const res = await GET(getReq());
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.unread).toBe(1);
     expect(data.rows).toHaveLength(1);
     expect(data.rows[0].title).toBe('我的');
+  });
+
+  it('countOnly=1 只回未讀數、不含清單（鈴鐺常態載入用）', async () => {
+    const me = await createUser();
+    await notifyUser(me.id, { title: 't', body: 'b', url: '/student' });
+    asUser(me.id);
+    const res = await GET(getReq({ countOnly: '1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.unread).toBe(1);
+    expect(data.rows).toBeUndefined();
   });
 });
 
