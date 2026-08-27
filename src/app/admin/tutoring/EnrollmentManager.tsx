@@ -279,9 +279,9 @@ export default function EnrollmentManager() {
       <Card className="mb-4">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-sm font-medium text-ink">新增報名</p>
-          <button type="button" className="text-xs text-inkMuted hover:underline" onClick={() => setAddOpen(false)}>
+          <Button variant="link" tone="muted" className="text-xs" onClick={() => setAddOpen(false)}>
             收合
-          </button>
+          </Button>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           {/* 這裡刻意用 div 不用 label：label 會把點擊轉發給第一個表單控件，
