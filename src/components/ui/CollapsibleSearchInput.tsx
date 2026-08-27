@@ -34,7 +34,7 @@ export default function CollapsibleSearchInput({
       }}
       className={`flex h-[38px] w-full items-center overflow-hidden rounded-lg border transition-[max-width,background-color,border-color] duration-300 ease-out ${
         open
-          ? 'max-w-md border-[#D8C9A8] bg-card focus-within:border-brandDark focus-within:ring-2 focus-within:ring-brandDark/25'
+          ? 'max-w-md border-borderInput bg-card focus-within:border-brandDark focus-within:ring-2 focus-within:ring-brandDark/25'
           : 'max-w-[38px] border-transparent bg-transparent'
       }`}
     >

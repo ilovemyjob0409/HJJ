@@ -76,7 +76,7 @@ function TeacherGoHallContent() {
         <CollapsibleDataTable
           columns={columns}
           rows={sessions}
-          maxRows={3}
+          maxRows={highlightId ? undefined : 3}
           loading={loading}
           keyField={(s) => s.id}
           emptyText="目前沒有被指派的弈廳場次"
