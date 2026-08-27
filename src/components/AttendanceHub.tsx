@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
@@ -334,16 +335,16 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
         {opening?.type === 'TUTORING' && walkIn && (
           <div className="mb-3">
             {!walkInOpen ? (
-              <button type="button" className="text-sm text-brandDark hover:underline" onClick={() => setWalkInOpen(true)}>
+              <Button variant="link" className="text-sm" onClick={() => setWalkInOpen(true)}>
                 ＋ 現場加入學生（今日 {walkIn.booked}/{walkIn.capacity}）
-              </button>
+              </Button>
             ) : (
               <div className="rounded-lg border border-borderSubtle p-3">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-sm font-medium text-ink">現場加入（今日 {walkIn.booked}/{walkIn.capacity}）</p>
-                  <button type="button" className="text-xs text-inkMuted hover:underline" onClick={() => setWalkInOpen(false)}>
+                  <Button variant="link" tone="muted" className="text-xs" onClick={() => setWalkInOpen(false)}>
                     收合
-                  </button>
+                  </Button>
                 </div>
                 <Input placeholder="搜尋學生姓名…" value={walkInQuery} onChange={(e) => setWalkInQuery(e.target.value)} />
                 {(() => {

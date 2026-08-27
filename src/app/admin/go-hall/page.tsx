@@ -213,9 +213,9 @@ function AdminGoHallContent() {
     {
       header: '操作',
       render: (s) => (
-        <button className="text-brandDark hover:underline" onClick={() => openRoster(s.id)}>
+        <Button variant="link" onClick={() => openRoster(s.id)}>
           查看名單
-        </button>
+        </Button>
       ),
     },
   ];
@@ -232,16 +232,17 @@ function AdminGoHallContent() {
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">開放弈廳場次</h2>
-            <button
-              type="button"
-              className="text-sm text-inkMuted hover:underline"
+            <Button
+              variant="link"
+              tone="muted"
+              className="text-sm"
               onClick={() => {
                 setShowAddForm(false);
                 setPreviewDates(null);
               }}
             >
               收合
-            </button>
+            </Button>
           </div>
           {!previewDates ? (
             <form onSubmit={handlePreview} className="flex flex-col gap-2">
@@ -363,9 +364,9 @@ function AdminGoHallContent() {
                         {(r.qualificationPredicted ? '預計：' : '') + QUALIFICATION_LABEL[r.qualification]}
                       </span>
                     )}
-                    <button type="button" className="text-rejected hover:underline" onClick={() => handleRemoveRegistration(r.id)}>
+                    <Button variant="link" tone="danger" onClick={() => handleRemoveRegistration(r.id)}>
                       移除
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -375,9 +376,9 @@ function AdminGoHallContent() {
                 行政代報
               </Button>
             )}
-            <button type="button" className="mt-2 text-left text-sm text-rejected hover:underline" onClick={handleDeleteSession}>
+            <Button variant="link" tone="danger" className="mt-2 text-left text-sm" onClick={handleDeleteSession}>
               刪除此場次
-            </button>
+            </Button>
           </div>
         )}
       </Modal>

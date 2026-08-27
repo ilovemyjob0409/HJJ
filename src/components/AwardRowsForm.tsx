@@ -145,9 +145,9 @@ export default function AwardRowsForm({ students, onAwarded }: { students: Award
               )}
             </div>
           ))}
-          <button type="button" onClick={() => addRow(s.id)} className="text-xs text-brandDark hover:underline">
+          <Button variant="link" onClick={() => addRow(s.id)} className="text-xs">
             ＋ 新增一列
-          </button>
+          </Button>
         </div>
       ),
     },

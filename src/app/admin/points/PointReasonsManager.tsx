@@ -147,9 +147,9 @@ export default function PointReasonsManager() {
     {
       header: '操作',
       render: (item) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(item)}>
+        <Button variant="link" onClick={() => openEdit(item)}>
           編輯
-        </button>
+        </Button>
       ),
     },
   ];
@@ -210,9 +210,9 @@ export default function PointReasonsManager() {
           <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} required />
           <Button type="submit" loading={submitting}>儲存</Button>
         </form>
-        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+        <Button variant="link" tone="danger" className="mt-3 text-sm" onClick={handleDelete}>
           刪除此理由
-        </button>
+        </Button>
       </Modal>
       {ConfirmDialog}
     </>

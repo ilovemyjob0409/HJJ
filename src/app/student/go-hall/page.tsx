@@ -174,9 +174,9 @@ function StudentGoHallContent() {
         isBeforeToday(r.session.date) ? (
           <span className="text-inkMuted">已結束</span>
         ) : (
-          <button type="button" className="text-rejected hover:underline" onClick={withStopPropagation(() => handleCancel(r.id))}>
+          <Button variant="link" tone="danger" onClick={withStopPropagation(() => handleCancel(r.id))}>
             取消
-          </button>
+          </Button>
         ),
     },
   ];

@@ -285,9 +285,9 @@ export default function TicketManager() {
                           <span>
                             {formatDateWithWeekday(p.startDate, 'zh-TW')} ～ {formatDateWithWeekday(p.endDate, 'zh-TW')}
                           </span>
-                          <button type="button" className="text-rejected hover:underline" onClick={() => handleDeletePass(p.id)} disabled={busy}>
+                          <Button variant="link" tone="danger" onClick={() => handleDeletePass(p.id)} disabled={busy}>
                             刪除
-                          </button>
+                          </Button>
                         </li>
                       ))}
                     </ul>

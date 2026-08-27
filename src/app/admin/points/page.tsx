@@ -222,15 +222,15 @@ export default function AdminPointsPage() {
     {
       header: '操作',
       render: (s) => (
-        <button
-          className="text-brandDark hover:underline"
+        <Button
+          variant="link"
           onClick={(e) => {
             e.stopPropagation();
             setAwardTargets([{ id: s.id, name: s.name }]);
           }}
         >
           加分
-        </button>
+        </Button>
       ),
     },
   ];
@@ -381,16 +381,15 @@ export default function AdminPointsPage() {
           />
           <ExportExcelButton rows={filtered} columns={summaryExportColumns} filename="學生點數總表" className="ml-auto" />
           <div className="flex gap-3 text-xs">
-            <button
-              type="button"
-              className="text-brandDark hover:underline"
+            <Button
+              variant="link"
               onClick={() => setChecked(Object.fromEntries(filtered.map((s) => [s.id, true])))}
             >
               全選目前篩選（{filtered.length}）
-            </button>
-            <button type="button" className="text-inkMuted hover:underline" onClick={() => setChecked({})}>
+            </Button>
+            <Button variant="link" tone="muted" onClick={() => setChecked({})}>
               清除選取
-            </button>
+            </Button>
           </div>
         </div>
 

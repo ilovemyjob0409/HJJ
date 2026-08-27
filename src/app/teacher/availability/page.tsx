@@ -76,9 +76,9 @@ export default function AvailabilityPage() {
                   </Select>
                   <Input type="time" value={w.startTime} onChange={(e) => updateWindow(i, { startTime: e.target.value })} />
                   <Input type="time" value={w.endTime} onChange={(e) => updateWindow(i, { endTime: e.target.value })} />
-                  <button className="text-rejected" onClick={() => removeWindow(i)}>
+                  <Button variant="link" tone="danger" onClick={() => removeWindow(i)}>
                     刪除
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>
