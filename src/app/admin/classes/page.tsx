@@ -202,9 +202,9 @@ export default function ClassesPage() {
     {
       header: '操作',
       render: (c) => (
-        <button className="text-brandDark hover:underline" onClick={() => openEdit(c)}>
+        <Button variant="link" onClick={() => openEdit(c)}>
           編輯
-        </button>
+        </Button>
       ),
     },
   ];
@@ -228,9 +228,9 @@ export default function ClassesPage() {
         <Card className="mb-6 max-w-md">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold text-ink">新增班級</h2>
-            <button type="button" className="text-sm text-inkMuted hover:underline" onClick={() => setShowAddForm(false)}>
+            <Button variant="link" tone="muted" className="text-sm" onClick={() => setShowAddForm(false)}>
               收合
-            </button>
+            </Button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Input placeholder="班名" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -281,13 +281,13 @@ export default function ClassesPage() {
               </p>
             </div>
           )}
-          <button
-            type="button"
-            className="ml-auto shrink-0 text-sm text-brandDark hover:underline"
+          <Button
+            variant="link"
+            className="ml-auto shrink-0 text-sm"
             onClick={() => setShowEditFields((v) => !v)}
           >
             {showEditFields ? '收合' : '編輯班級資料'}
-          </button>
+          </Button>
         </div>
         {editing && (
           <Link href={`/admin/classes/${editing.id}/attendance`} className="mt-3 block text-sm text-brandDark hover:underline">
@@ -320,9 +320,9 @@ export default function ClassesPage() {
           </form>
         )}
         {editError && <p className="mt-3 text-sm text-rejected">{editError}</p>}
-        <button type="button" className="mt-3 text-sm text-rejected hover:underline" onClick={handleDelete}>
+        <Button variant="link" tone="danger" className="mt-3 text-sm" onClick={handleDelete}>
           刪除班級
-        </button>
+        </Button>
 
         {editing && (
           <div className="mt-4 border-t border-borderStrong pt-3">
@@ -351,16 +351,17 @@ export default function ClassesPage() {
                   {
                     header: '',
                     render: (en: EnrollmentRow) => (
-                      <button
-                        type="button"
-                        className="text-xs text-rejected hover:underline"
+                      <Button
+                        variant="link"
+                        tone="danger"
+                        className="text-xs"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeStudent(en.studentId);
                         }}
                       >
                         移除
-                      </button>
+                      </Button>
                     ),
                   },
                 ]}
