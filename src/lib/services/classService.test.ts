@@ -382,6 +382,13 @@ describe('deleteClass', () => {
 });
 
 describe('addEnrollmentSessions with notRegisteredDates', () => {
+  // 未來日期用 2099 年（週二班，同 weekday 2），讓guard 在任何執行時間都穩定；
+  // 過去日期固定用 2020 年，早於現實中任何測試執行時間，永遠是「過去」。
+  const FUTURE_TUE_1 = new Date('2099-01-06');
+  const FUTURE_TUE_2 = new Date('2099-01-13');
+  const FUTURE_WED = new Date('2099-01-07'); // 錯星期（非過去，單純測 weekday 檢查）
+  const PAST_TUE = new Date('2020-08-11');
+
   async function setupWithMarker() {
     const marker = await prisma.user.create({
       data: { email: 'renew-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
@@ -398,7 +405,7 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
     const { marker, student, cls } = await setupWithMarker();
 
     await addEnrollmentSessions(cls.id, student.id, 8, {
-      notRegisteredDates: [new Date('2026-08-11'), new Date('2026-08-18')], // both Tuesdays
+      notRegisteredDates: [FUTURE_TUE_1, FUTURE_TUE_2],
       markedById: marker.id,
     });
 
@@ -407,7 +414,7 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
     });
     expect(enrollment.totalSessions).toBe(18);
 
-    const roster = await getClassRoster(cls.id, new Date('2026-08-11'));
+    const roster = await getClassRoster(cls.id, FUTURE_TUE_1);
     expect(roster.find((r) => r.studentId === student.id)?.status).toBe('NOT_REGISTERED');
 
     const marked = await prisma.classAttendance.findMany({ where: { studentId: student.id, status: 'NOT_REGISTERED' } });
@@ -419,7 +426,7 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
 
     await expect(
       addEnrollmentSessions(cls.id, student.id, 8, {
-        notRegisteredDates: [new Date('2026-08-12')], // Wednesday
+        notRegisteredDates: [FUTURE_WED],
         markedById: marker.id,
       })
     ).rejects.toThrow('INVALID_DATE');
@@ -432,21 +439,64 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
     expect(await prisma.enrollmentPeriod.count()).toBe(1);
   });
 
-  it('overwrites an existing attendance row for the same date instead of failing', async () => {
+  it('overwrites an existing FUTURE attendance row for the same date, clearing check-in/out times', async () => {
     const { marker, student, cls } = await setupWithMarker();
     await prisma.classAttendance.create({
-      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11'), status: 'PRESENT', markedById: marker.id },
+      data: {
+        classId: cls.id,
+        studentId: student.id,
+        date: FUTURE_TUE_1,
+        status: 'PRESENT',
+        markedById: marker.id,
+        checkInTime: '14:00',
+        checkOutTime: '16:00',
+      },
     });
 
     await addEnrollmentSessions(cls.id, student.id, 8, {
-      notRegisteredDates: [new Date('2026-08-11')],
+      notRegisteredDates: [FUTURE_TUE_1],
       markedById: marker.id,
     });
 
     const row = await prisma.classAttendance.findUniqueOrThrow({
-      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11') } },
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: FUTURE_TUE_1 } },
     });
     expect(row.status).toBe('NOT_REGISTERED');
+    expect(row.checkInTime).toBeNull();
+    expect(row.checkOutTime).toBeNull();
+  });
+
+  it('rejects a PAST date, leaving a real checked-in attendance row untouched', async () => {
+    const { marker, student, cls } = await setupWithMarker();
+    const checkInTime = '14:05';
+    await prisma.classAttendance.create({
+      data: {
+        classId: cls.id,
+        studentId: student.id,
+        date: PAST_TUE,
+        status: 'PRESENT',
+        markedById: marker.id,
+        checkInTime,
+      },
+    });
+
+    await expect(
+      addEnrollmentSessions(cls.id, student.id, 8, {
+        notRegisteredDates: [PAST_TUE],
+        markedById: marker.id,
+      })
+    ).rejects.toThrow('INVALID_DATE');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+    });
+    expect(enrollment.totalSessions).toBe(10); // 交易整筆回滾，堂數也沒被加
+
+    const row = await prisma.classAttendance.findUniqueOrThrow({
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: PAST_TUE } },
+    });
+    expect(row.status).toBe('PRESENT');
+    expect(row.checkInTime).toBe(checkInTime);
   });
 });
 

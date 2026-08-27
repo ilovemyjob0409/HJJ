@@ -278,9 +278,12 @@ export async function addEnrollmentSessions(
   if (dates.length > 0) {
     if (!markedById) throw new Error('MARKER_REQUIRED');
     const cls = await prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { weekday: true } });
+    const todayKey = taipeiDateKey(new Date());
     for (const date of dates) {
       // 日期由 date-only 字串解析為 UTC 午夜，取 UTC 星期幾（同點名慣例）。
       if (date.getUTCDay() !== cls.weekday) throw new Error('INVALID_DATE');
+      // 過去日期不可覆蓋：可能已有真實點名（含簽到時間），同 setNotRegisteredDates 的界線。
+      if (utcDateKey(date) < todayKey) throw new Error('INVALID_DATE');
     }
   }
   await prisma.$transaction([
@@ -289,7 +292,7 @@ export async function addEnrollmentSessions(
     ...dates.map((date) =>
       prisma.classAttendance.upsert({
         where: { classId_studentId_date: { classId, studentId, date } },
-        update: { status: 'NOT_REGISTERED', markedById: markedById! },
+        update: { status: 'NOT_REGISTERED', checkInTime: null, checkOutTime: null, markedById: markedById! },
         create: { classId, studentId, date, status: 'NOT_REGISTERED', markedById: markedById! },
       })
     ),
