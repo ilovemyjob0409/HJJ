@@ -13,6 +13,10 @@
   --stripe: #f9fafb;
   --border-subtle: #f3f4f6;
   --border-strong: #d1d5db;
+  /* Form-control border only; a warmer tan than borderStrong so inputs read
+     as inputs. See dark-theme blocks below for why this collapses to the
+     same value as borderStrong there. */
+  --border-input: #d8c9a8;
   --select-bg: #ffffff;
   --select-text: #3a332b;
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238a7f70' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7l5 5 5-5'/%3E%3C/svg%3E");
@@ -29,6 +33,10 @@
   --stripe: #3d3730;
   --border-subtle: #453e36;
   --border-strong: #5a5147;
+  /* Dark mode's neutrals are already warm-toned, so the light-mode
+     light/warm distinction between borderStrong and borderInput collapses
+     into the same color here rather than adding a new near-duplicate. */
+  --border-input: #5a5147;
   --select-bg: #35302a;
   --select-text: #f0e9df;
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b3a696' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7l5 5 5-5'/%3E%3C/svg%3E");
@@ -46,6 +54,7 @@
     --stripe: #3d3730;
     --border-subtle: #453e36;
     --border-strong: #5a5147;
+    --border-input: #5a5147;
     --select-bg: #35302a;
     --select-text: #f0e9df;
     --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23b3a696' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7l5 5 5-5'/%3E%3C/svg%3E");

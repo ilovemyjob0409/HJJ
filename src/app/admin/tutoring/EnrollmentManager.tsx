@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 import Modal from '@/components/ui/Modal';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
@@ -360,18 +361,14 @@ export default function EnrollmentManager() {
           </div>
           <label className="text-xs text-inkMuted">
             課程
-            <select
-              value={programId}
-              onChange={(e) => setProgramId(e.target.value)}
-              className={`mt-1 block h-9 rounded-lg border border-borderSubtle bg-card px-2 text-sm ${programId ? 'text-ink' : 'text-gray-400'}`}
-            >
+            <Select value={programId} onChange={(e) => setProgramId(e.target.value)} className="mt-1 block">
               <option value="">請選擇</option>
               {programs.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label className="text-xs text-inkMuted">
             每月堂數

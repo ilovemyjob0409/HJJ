@@ -21,6 +21,7 @@ const config: Config = {
         stripe: "var(--stripe)",
         borderSubtle: "var(--border-subtle)",
         borderStrong: "var(--border-strong)",
+        borderInput: "var(--border-input)",
         selectBg: "var(--select-bg)",
         selectText: "var(--select-text)",
         pending: "#F2994A",

@@ -34,20 +34,15 @@ export default function TeacherClassList({ classes }: { classes: TeacherClassSum
 
   return (
     <Card className="mb-6">
-      {classes.length === 0 ? (
-        <p className="text-sm text-inkMuted">尚無帶班班級</p>
-      ) : (
-        <>
-          <DataTable
-            columns={columns}
-            rows={classes}
-            keyField={(r) => r.id}
-            onRowClick={(r) => setViewing(r)}
-            rowClassName={() => 'cursor-pointer hover:bg-stripe'}
-          />
-          <p className="mt-2 text-xs text-inkMuted">點任一列開啟該班學生名單</p>
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        rows={classes}
+        keyField={(r) => r.id}
+        onRowClick={(r) => setViewing(r)}
+        rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+        emptyText="尚無帶班班級"
+      />
+      {classes.length > 0 && <p className="mt-2 text-xs text-inkMuted">點任一列開啟該班學生名單</p>}
       <Modal open={viewing !== null} onClose={() => setViewing(null)} title={`${viewing?.name ?? ''} 學生名單`}>
         {viewing && (
           <>

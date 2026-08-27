@@ -16,20 +16,15 @@ export default function TeacherTutoringWindowList({ windows }: { windows: Teache
 
   return (
     <Card className="mb-6">
-      {windows.length === 0 ? (
-        <p className="text-sm text-inkMuted">目前沒有個別輔導時段</p>
-      ) : (
-        <>
-          <DataTable
-            columns={columns}
-            rows={windows}
-            keyField={(w) => w.id}
-            onRowClick={(w) => router.push(`/teacher/tutoring/windows/${w.id}/attendance`)}
-            rowClassName={() => 'cursor-pointer hover:bg-stripe'}
-          />
-          <p className="mt-2 text-xs text-inkMuted">點任一列查看該時段出缺勤總表</p>
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        rows={windows}
+        keyField={(w) => w.id}
+        onRowClick={(w) => router.push(`/teacher/tutoring/windows/${w.id}/attendance`)}
+        rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+        emptyText="目前沒有個別輔導時段"
+      />
+      {windows.length > 0 && <p className="mt-2 text-xs text-inkMuted">點任一列查看該時段出缺勤總表</p>}
     </Card>
   );
 }

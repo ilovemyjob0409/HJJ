@@ -51,7 +51,14 @@ export default function StudentAttendancePage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">我的出席紀錄</h1>
       <Card>
-        <CollapsibleDataTable columns={columns} rows={rows} loading={loading} keyField={(r) => r.id} maxRows={3} />
+        <CollapsibleDataTable
+          columns={columns}
+          rows={rows}
+          loading={loading}
+          keyField={(r) => r.id}
+          maxRows={3}
+          emptyText="目前沒有出席紀錄"
+        />
       </Card>
     </>
   );

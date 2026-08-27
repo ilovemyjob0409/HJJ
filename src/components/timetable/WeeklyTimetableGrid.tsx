@@ -41,6 +41,7 @@ interface WeeklyTimetableGridProps {
 export default function WeeklyTimetableGrid({ colors, onClassClick, onTutoringClick, onSubjectsChange, posterRef }: WeeklyTimetableGridProps) {
   const [classes, setClasses] = useState<TimetableClass[]>([]);
   const [tutoringSlots, setTutoringSlots] = useState<TutoringSlot[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetch('/api/timetable')
@@ -52,7 +53,8 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onTutoringCl
       .catch(() => {
         setClasses([]);
         setTutoringSlots([]);
-      });
+      })
+      .finally(() => setLoaded(true));
   }, []);
 
   const subjects = useMemo(
@@ -93,7 +95,9 @@ export default function WeeklyTimetableGrid({ colors, onClassClick, onTutoringCl
             const day = byDay[wd];
             return (
             <div key={wd} className="flex min-h-[90px] flex-col gap-1.5 rounded-lg bg-[#FFF6E6] p-1.5">
-              {day.length === 0 ? (
+              {!loaded ? (
+                <div className="skeleton-shimmer mx-auto mt-3 h-3 w-10 rounded" />
+              ) : day.length === 0 ? (
                 <p className="pt-3 text-center text-xs text-[#b89a5c]">無課程</p>
               ) : (
                 day.map((card) => {

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Textarea from '@/components/ui/Textarea';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
@@ -174,11 +175,10 @@ export default function AdminFaqPage() {
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
             <Input placeholder="問題" value={form.question} onChange={(e) => setForm({ ...form, question: e.target.value })} required />
-            <textarea
+            <Textarea
               placeholder="答案"
               value={form.answer}
               onChange={(e) => setForm({ ...form, answer: e.target.value })}
-              className="rounded-lg border border-[#D8C9A8] bg-card px-3 py-2 text-sm text-ink focus:border-brandDark focus:outline-none focus:ring-2 focus:ring-brandDark/25"
               rows={4}
               required
             />
@@ -207,11 +207,10 @@ export default function AdminFaqPage() {
             onChange={(e) => setEditForm({ ...editForm, question: e.target.value })}
             required
           />
-          <textarea
+          <Textarea
             placeholder="答案"
             value={editForm.answer}
             onChange={(e) => setEditForm({ ...editForm, answer: e.target.value })}
-            className="rounded-lg border border-[#D8C9A8] bg-card px-3 py-2 text-sm text-ink focus:border-brandDark focus:outline-none focus:ring-2 focus:ring-brandDark/25"
             rows={4}
             required
           />
