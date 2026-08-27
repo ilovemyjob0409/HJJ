@@ -186,14 +186,10 @@ function StudentGoHallContent() {
       <h1 className="mb-4 text-xl font-bold text-ink">弈廳</h1>
 
       <h2 className="mb-2 font-bold text-ink">弈廳資格</h2>
-      <Card
-        className="mb-6 cursor-pointer transition-shadow hover:shadow-md"
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        className="mb-6 w-full rounded-xl bg-card p-5 text-left shadow-sm transition-shadow hover:shadow-md"
         onClick={() => setTicketHistoryOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') setTicketHistoryOpen(true);
-        }}
       >
         {tickets === null ? (
           <div className="flex flex-col gap-2">
@@ -224,7 +220,7 @@ function StudentGoHallContent() {
             <p className="mt-1 text-xs text-brandDark">查看堂票紀錄 →</p>
           </div>
         )}
-      </Card>
+      </button>
 
       <h2 className="mb-2 font-bold text-ink">開放中的場次</h2>
       <Card className="mb-6">

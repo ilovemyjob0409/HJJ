@@ -17,14 +17,10 @@ export default function GoHallQualificationCard({ tickets }: { tickets: MyTicket
 
   return (
     <>
-      <div
-        className="flex cursor-pointer flex-col gap-2 border-t border-borderSubtle pt-4 transition-opacity hover:opacity-80 sm:border-t-0 sm:pt-0"
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        className="flex w-full flex-col gap-2 border-t border-borderSubtle pt-4 text-left transition-opacity hover:opacity-80 sm:border-t-0 sm:pt-0"
         onClick={() => setHistoryOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') setHistoryOpen(true);
-        }}
       >
         <p className="text-xs font-semibold text-inkMuted">弈廳資格</p>
         {tickets.activePassEndDate ? (
@@ -47,7 +43,7 @@ export default function GoHallQualificationCard({ tickets }: { tickets: MyTicket
           </>
         )}
         <p className="text-xs text-brandDark">查看堂票紀錄 →</p>
-      </div>
+      </button>
       <GoHallTicketHistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </>
   );
