@@ -8,6 +8,10 @@ import { createLeaveRequest } from './leaveRequestService';
 import { createProgram, createEnrollment, updateEnrollment } from './tutoringProgramService';
 import { p2002TargetsField } from '@/lib/prismaErrors';
 import { setSiblings } from './familyService';
+import { createSessions, registerForSession } from './goHallService';
+import { purchaseTickets, addSeasonPass } from './goHallTicketService';
+import { createActivity, createCategory, registerForActivity } from './activityService';
+import { adjustPoints } from './pointService';
 
 describe('createStudent', () => {
   it('creates a User with role STUDENT and a linked Student record', async () => {
@@ -230,6 +234,103 @@ describe('deleteStudent', () => {
     const student = await createStudent({ name: '小華', email: 'student-delete-block-hua@example.com', password: 'secret123' });
     await enrollStudent(cls.id, student.id);
     await createLeaveRequest({ studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '感冒' });
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has class attendance history', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'student-delete-block-attendance-chen@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-attendance-hua@example.com', password: 'secret123' });
+    await enrollStudent(cls.id, student.id);
+    const marker = await prisma.user.create({ data: { name: '行政', email: 'student-delete-block-attendance-marker@example.com', password: 'x', role: 'ADMIN' } });
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-04'), status: 'PRESENT', markedById: marker.id },
+    });
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has a tutoring enrollment', async () => {
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-tutoring-hua@example.com', password: 'secret123' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has a go-hall registration', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'student-delete-block-gh-reg-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-gh-reg-hua@example.com', password: 'secret123' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const gohallSession = await prisma.goHallSession.findFirstOrThrow();
+    await registerForSession(gohallSession.id, student.id);
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has go-hall attendance history', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'student-delete-block-gh-att-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-gh-att-hua@example.com', password: 'secret123' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+    const gohallSession = await prisma.goHallSession.findFirstOrThrow();
+    const marker = await prisma.user.create({ data: { name: '行政', email: 'student-delete-block-gh-att-marker@example.com', password: 'x', role: 'ADMIN' } });
+    await prisma.goHallAttendance.create({ data: { sessionId: gohallSession.id, studentId: student.id, status: 'PRESENT', markedById: marker.id } });
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has a go-hall ticket transaction', async () => {
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-gh-ticket-hua@example.com', password: 'secret123' });
+    await purchaseTickets({ studentId: student.id, sessions: 5 });
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has a go-hall season pass', async () => {
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-gh-pass-hua@example.com', password: 'secret123' });
+    await addSeasonPass({ studentId: student.id, startDate: new Date('2026-08-01'), endDate: new Date('2026-08-31') });
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has an activity registration', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'student-delete-block-act-reg-chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-act-reg-hua@example.com', password: 'secret123' });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
+    const activity = await prisma.activity.findFirstOrThrow();
+    await registerForActivity(activity.id, student.id);
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has activity attendance history', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'student-delete-block-act-att-chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-act-att-hua@example.com', password: 'secret123' });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const marker = await prisma.user.create({ data: { name: '行政', email: 'student-delete-block-act-att-marker@example.com', password: 'x', role: 'ADMIN' } });
+    await prisma.activityAttendance.create({
+      data: { activityId: activity.id, studentId: student.id, date: new Date(2026, 7, 1), status: 'PRESENT', markedById: marker.id },
+    });
+
+    await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
+    expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
+  });
+
+  it('throws STUDENT_HAS_RECORDS and does not delete when the student has a point transaction', async () => {
+    const student = await createStudent({ name: '小華', email: 'student-delete-block-points-hua@example.com', password: 'secret123' });
+    await adjustPoints({ studentId: student.id, bucket: 'REGULAR', amount: 5, reason: '測試加點' });
 
     await expect(deleteStudent(student.id)).rejects.toThrow('STUDENT_HAS_RECORDS');
     expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();

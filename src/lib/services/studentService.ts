@@ -84,14 +84,50 @@ export async function updateStudent(id: string, input: UpdateStudentInput) {
   });
 }
 
-// Blocks deletion when the student has any leave-request history — those
-// are records and must survive. Enrollments are current state, not
-// history, so they're cleared as part of the delete, along with the
+// Blocks deletion when the student has any history in a table with a
+// required FK to Student — leave requests, class attendance, tutoring
+// enrollments, go-hall registrations/attendance/tickets/season-passes,
+// activity registrations/attendance, or point transactions — those are
+// records and must survive. ClassEnrollment is current state, not
+// history, so it's cleared as part of the delete, along with the
 // underlying login account.
 export async function deleteStudent(id: string) {
   const student = await prisma.student.findUniqueOrThrow({ where: { id } });
-  const leaveRequestCount = await prisma.leaveRequest.count({ where: { studentId: id } });
-  if (leaveRequestCount > 0) {
+  const [
+    leaveRequestCount,
+    classAttendanceCount,
+    tutoringEnrollmentCount,
+    goHallRegistrationCount,
+    goHallAttendanceCount,
+    goHallTicketTransactionCount,
+    goHallSeasonPassCount,
+    activityRegistrationCount,
+    activityAttendanceCount,
+    pointTransactionCount,
+  ] = await Promise.all([
+    prisma.leaveRequest.count({ where: { studentId: id } }),
+    prisma.classAttendance.count({ where: { studentId: id } }),
+    prisma.tutoringEnrollment.count({ where: { studentId: id } }),
+    prisma.goHallRegistration.count({ where: { studentId: id } }),
+    prisma.goHallAttendance.count({ where: { studentId: id } }),
+    prisma.goHallTicketTransaction.count({ where: { studentId: id } }),
+    prisma.goHallSeasonPass.count({ where: { studentId: id } }),
+    prisma.activityRegistration.count({ where: { studentId: id } }),
+    prisma.activityAttendance.count({ where: { studentId: id } }),
+    prisma.pointTransaction.count({ where: { studentId: id } }),
+  ]);
+  if (
+    leaveRequestCount > 0 ||
+    classAttendanceCount > 0 ||
+    tutoringEnrollmentCount > 0 ||
+    goHallRegistrationCount > 0 ||
+    goHallAttendanceCount > 0 ||
+    goHallTicketTransactionCount > 0 ||
+    goHallSeasonPassCount > 0 ||
+    activityRegistrationCount > 0 ||
+    activityAttendanceCount > 0 ||
+    pointTransactionCount > 0
+  ) {
     throw new Error('STUDENT_HAS_RECORDS');
   }
 

@@ -403,7 +403,7 @@ function StudentsContent() {
     const res = await fetch(`/api/students/${editing.id}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json();
-      setEditError(data.error === 'STUDENT_HAS_RECORDS' ? '此學生仍有請假紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
+      setEditError(data.error === 'STUDENT_HAS_RECORDS' ? '此學生仍有請假、出缺勤、個別輔導、弈廳、活動或點數相關紀錄，請先處理後再刪除' : `錯誤：${data.error}`);
       return;
     }
     setEditing(null);
