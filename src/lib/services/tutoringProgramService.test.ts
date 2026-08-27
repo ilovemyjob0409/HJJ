@@ -49,6 +49,24 @@ describe('program CRUD', () => {
   it('rejects deleting a nonexistent program with PROGRAM_NOT_FOUND', async () => {
     await expect(deleteProgram('nonexistent-program-id')).rejects.toThrow('PROGRAM_NOT_FOUND');
   });
+
+  it('throws PROGRAM_HAS_RECORDS and does not delete when the program still has a window', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'program-delete-block-window-lin@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+
+    await expect(deleteProgram(program.id)).rejects.toThrow('PROGRAM_HAS_RECORDS');
+    expect(await prisma.tutoringProgram.findUnique({ where: { id: program.id } })).not.toBeNull();
+  });
+
+  it('throws PROGRAM_HAS_RECORDS and does not delete when the program still has an enrollment', async () => {
+    const student = await createStudent({ name: '小明', email: 'program-delete-block-enrollment-ming@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await expect(deleteProgram(program.id)).rejects.toThrow('PROGRAM_HAS_RECORDS');
+    expect(await prisma.tutoringProgram.findUnique({ where: { id: program.id } })).not.toBeNull();
+  });
 });
 
 describe('window CRUD', () => {
@@ -163,6 +181,18 @@ describe('window CRUD', () => {
     await expect(deleteWindow('nonexistent-window-id')).rejects.toThrow('WINDOW_NOT_FOUND');
   });
 
+  it('throws WINDOW_HAS_BOOKINGS and does not delete when the window still has a booking', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'window-delete-block-booking-lin@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    const student = await createStudent({ name: '小明', email: 'window-delete-block-booking-ming@example.com', password: 'x' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) }); // Friday
+
+    await expect(deleteWindow(window.id)).rejects.toThrow('WINDOW_HAS_BOOKINGS');
+    expect(await prisma.tutoringWindow.findUnique({ where: { id: window.id } })).not.toBeNull();
+  });
+
   it('rejects adding a duplicate window closure with CLOSURE_ALREADY_EXISTS', async () => {
     const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
     const program = await createProgram({ name: '英文個別輔導' });
@@ -224,6 +254,18 @@ describe('enrollment CRUD', () => {
 
   it('rejects deleting a nonexistent enrollment with ENROLLMENT_NOT_FOUND', async () => {
     await expect(deleteEnrollment('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
+  it('throws ENROLLMENT_HAS_BOOKINGS and does not delete when the enrollment still has a booking', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'enrollment-delete-block-booking-lin@example.com', password: 'x', subjects: '英文' });
+    const student = await createStudent({ name: '小美', email: 'enrollment-delete-block-booking-mei@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) }); // Friday
+
+    await expect(deleteEnrollment(enrollment.id)).rejects.toThrow('ENROLLMENT_HAS_BOOKINGS');
+    expect(await prisma.tutoringEnrollment.findUnique({ where: { id: enrollment.id } })).not.toBeNull();
   });
 
   it('rejects creating a duplicate enrollment with ALREADY_ENROLLED', async () => {

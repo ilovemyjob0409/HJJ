@@ -71,6 +71,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     if (err instanceof Error && err.message === 'ENROLLMENT_NOT_FOUND') {
       return NextResponse.json({ error: err.message }, { status: 404 });
     }
+    if (err instanceof Error && err.message === 'ENROLLMENT_HAS_BOOKINGS') {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     throw err;
   }
 }

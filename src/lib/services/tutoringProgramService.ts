@@ -89,7 +89,18 @@ export async function updateProgram(id: string, input: UpdateProgramInput) {
   }
 }
 
+// Blocks deletion when the program still has a window or a student
+// enrollment referencing it — both are required references (a window and
+// an enrollment must each belong to a program) and represent real
+// configuration/history that would otherwise be silently orphaned.
 export async function deleteProgram(id: string) {
+  const [windowCount, enrollmentCount] = await Promise.all([
+    prisma.tutoringWindow.count({ where: { programId: id } }),
+    prisma.tutoringEnrollment.count({ where: { programId: id } }),
+  ]);
+  if (windowCount > 0 || enrollmentCount > 0) {
+    throw new Error('PROGRAM_HAS_RECORDS');
+  }
   try {
     return await prisma.tutoringProgram.delete({ where: { id } });
   } catch (err) {
@@ -148,7 +159,14 @@ export async function updateWindow(id: string, input: UpdateWindowInput) {
   }
 }
 
+// Blocks deletion when the window still has bookings referencing it — a
+// booking must belong to a window, and those bookings are the student's
+// history/upcoming appointments and must survive.
 export async function deleteWindow(id: string) {
+  const bookingCount = await prisma.tutoringBooking.count({ where: { windowId: id } });
+  if (bookingCount > 0) {
+    throw new Error('WINDOW_HAS_BOOKINGS');
+  }
   try {
     return await prisma.tutoringWindow.delete({ where: { id } });
   } catch (err) {
@@ -288,7 +306,14 @@ export async function updateEnrollment(id: string, input: UpdateEnrollmentInput)
   }
 }
 
+// Blocks deletion when the enrollment still has bookings referencing it —
+// a booking must belong to an enrollment, and those bookings are the
+// student's history/upcoming appointments and must survive.
 export async function deleteEnrollment(id: string) {
+  const bookingCount = await prisma.tutoringBooking.count({ where: { enrollmentId: id } });
+  if (bookingCount > 0) {
+    throw new Error('ENROLLMENT_HAS_BOOKINGS');
+  }
   try {
     return await prisma.tutoringEnrollment.delete({ where: { id } });
   } catch (err) {
