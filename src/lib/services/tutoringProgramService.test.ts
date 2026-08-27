@@ -282,7 +282,7 @@ describe('listEnrollments 批次額度＝逐筆 getMonthlyQuotaStatus（對照�
     const sa = await createStudent({ name: '甲生', email: `batch-quota-a-${Date.now()}@example.com`, password: 'x' });
     const ea = await createEnrollment({ studentId: sa.id, programId: program.id });
     const ba = await createBooking({ enrollmentId: ea.id, windowId: window.id, date: todayUtc });
-    await saveTutoringAttendance(marker.id, [{ bookingId: ba.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: ba.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
 
     // B：quota 0＋quotaReview → 今天一筆 PENDING_ADMIN → pendingOverQuota=1
     const sb = await createStudent({ name: '乙生', email: `batch-quota-b-${Date.now()}@example.com`, password: 'x' });

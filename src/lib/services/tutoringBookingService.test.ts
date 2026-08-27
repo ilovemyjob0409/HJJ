@@ -173,7 +173,7 @@ describe('createBooking 每月額度閘門', () => {
       data: { email: `quota-marker-${Date.now()}@example.com`, password: 'x', name: 'Marker', role: 'TEACHER' },
     });
     const past = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await saveTutoringAttendance(marker.id, [{ bookingId: past.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: past.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
     // FRIDAY（2026-08-07）已到場＝已計次，同月（2026-08）再約就是第 2 堂 → 送審
     const b2 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2026-08-14'), quotaReview: true });
     expect(b2.status).toBe('PENDING_ADMIN');
@@ -518,7 +518,7 @@ describe('listAttendanceForStudent', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const marker = await createMarker();
     const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await saveTutoringAttendance(marker.id, [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
     // 過期、未取消、未點名＝未到課，要列入
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
     const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
@@ -541,7 +541,7 @@ describe('listAttendanceForStudent', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const marker = await createMarker();
     const legacy = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await saveTutoringAttendance(marker.id, [{ bookingId: legacy.id, status: 'PRESENT' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: legacy.id, status: 'PRESENT' }]);
     await prisma.tutoringBooking.update({ where: { id: legacy.id }, data: { status: 'CANCELLED_LATE' } });
 
     const rows = await listAttendanceForStudent(enrollment.studentId);
@@ -706,7 +706,7 @@ describe('sendMissedSessionReminders', () => {
     await subscribeStudentForTest(student.id);
     const marker = await createMarker();
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await saveTutoringAttendance(marker.id, [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
 
     const result = await sendMissedSessionReminders(DAY_AFTER_FRIDAY);
 

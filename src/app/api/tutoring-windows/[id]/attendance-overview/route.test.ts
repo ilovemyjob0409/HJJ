@@ -68,7 +68,7 @@ describe('GET /api/tutoring-windows/[id]/attendance-overview', () => {
 
     const enrollment = await prisma.tutoringEnrollment.findFirstOrThrow({ where: { studentId: student.id, programId: program.id } });
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-    await saveTutoringAttendance(userId, [{ bookingId: booking.id, status: 'PRESENT' }]);
+    await saveTutoringAttendance(window.id, userId, [{ bookingId: booking.id, status: 'PRESENT' }]);
 
     const res = await GET({} as never, { params: { id: window.id } });
     expect(res.status).toBe(200);

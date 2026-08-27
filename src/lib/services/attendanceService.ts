@@ -533,7 +533,27 @@ export interface SaveTutoringAttendanceInput {
   checkOutTime?: string | null;
 }
 
-export async function saveTutoringAttendance(markedById: string, records: SaveTutoringAttendanceInput[]): Promise<void> {
+// bookingId 是 TutoringAttendance 唯一的辨識鍵（1:1 對應 TutoringBooking），
+// 不像 class/activity/go-hall 出缺勤那樣有「scopeId+studentId」複合鍵能天生
+// 把寫入釘在授權範圍內，所以這裡用顯式查詢驗證每個 bookingId 都屬於呼叫端
+// 已授權的 windowId——任一筆不屬於就整批拒絕（比照 setSiblings 對批次外鍵
+// 的作法：一次查全部、數量對不上就整批噴錯，不做「跳過該筆」的部分成功）。
+async function assertBookingsInWindow(windowId: string, bookingIds: string[]): Promise<void> {
+  const uniqueIds = Array.from(new Set(bookingIds));
+  const scoped = await prisma.tutoringBooking.findMany({
+    where: { id: { in: uniqueIds }, windowId },
+    select: { id: true },
+  });
+  if (scoped.length !== uniqueIds.length) throw new Error('BOOKING_NOT_IN_WINDOW');
+}
+
+export async function saveTutoringAttendance(
+  windowId: string,
+  markedById: string,
+  records: SaveTutoringAttendanceInput[]
+): Promise<void> {
+  if (records.length === 0) return;
+  await assertBookingsInWindow(windowId, records.map((r) => r.bookingId));
   await prisma.$transaction(
     records.map((r) =>
       prisma.tutoringAttendance.upsert({
@@ -545,8 +565,9 @@ export async function saveTutoringAttendance(markedById: string, records: SaveTu
   );
 }
 
-export async function clearTutoringAttendance(bookingIds: string[]): Promise<void> {
+export async function clearTutoringAttendance(windowId: string, bookingIds: string[]): Promise<void> {
   if (bookingIds.length === 0) return;
+  await assertBookingsInWindow(windowId, bookingIds);
   await prisma.tutoringAttendance.deleteMany({ where: { bookingId: { in: bookingIds } } });
 }
 
