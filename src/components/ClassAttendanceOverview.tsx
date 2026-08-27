@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import StatusBadge from '@/components/ui/StatusBadge';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface OverviewMakeup {
@@ -39,6 +40,24 @@ interface OverviewResponse {
   };
   students: OverviewStudent[];
 }
+
+const recordColumns: Column<OverviewRecord>[] = [
+  { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
+  { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
+  {
+    header: '補課狀態',
+    render: (r) =>
+      r.status !== 'ON_LEAVE' ? (
+        <span className="text-inkMuted">—</span>
+      ) : r.makeup === null ? (
+        <span className="text-inkMuted">尚未安排</span>
+      ) : r.makeup.status === 'APPROVED' ? (
+        <span className="text-approved">已核准・{r.makeup.label}</span>
+      ) : (
+        <StatusBadge status={r.makeup.status} />
+      ),
+  },
+];
 
 // 整班出缺勤總表：依學生分組，每個學生區塊預設收合（比照
 // src/app/admin/tutoring/page.tsx 的 <details className="group"> 慣例），
@@ -97,42 +116,9 @@ export default function ClassAttendanceOverview({
                       </span>
                       {pendingCount > 0 && <span className="text-xs text-pending">{pendingCount} 筆待安排補課</span>}
                     </summary>
-                    {s.records.length === 0 ? (
-                      <p className="mt-3 text-sm text-inkMuted">尚無紀錄</p>
-                    ) : (
-                      <div className="mt-3 overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                          <thead>
-                            <tr className="text-xs text-inkMuted">
-                              <th className="pb-2 pr-2 font-normal">日期</th>
-                              <th className="pb-2 pr-2 font-normal">狀態</th>
-                              <th className="pb-2 font-normal">補課狀態</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {s.records.map((r) => (
-                              <tr key={r.date} className="border-t border-borderSubtle">
-                                <td className="py-2 pr-2 text-ink">{formatDateWithWeekday(r.date)}</td>
-                                <td className="py-2 pr-2">
-                                  <StatusBadge status={r.status} />
-                                </td>
-                                <td className="py-2">
-                                  {r.status !== 'ON_LEAVE' ? (
-                                    <span className="text-inkMuted">—</span>
-                                  ) : r.makeup === null ? (
-                                    <span className="text-inkMuted">尚未安排</span>
-                                  ) : r.makeup.status === 'APPROVED' ? (
-                                    <span className="text-approved">已核准・{r.makeup.label}</span>
-                                  ) : (
-                                    <StatusBadge status={r.makeup.status} />
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+                    <div className="mt-3">
+                      <DataTable columns={recordColumns} rows={s.records} keyField={(r) => r.date} emptyText="尚無紀錄" />
+                    </div>
                   </details>
                 </Card>
               );

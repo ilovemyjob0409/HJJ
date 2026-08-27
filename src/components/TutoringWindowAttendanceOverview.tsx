@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import StatusBadge from '@/components/ui/StatusBadge';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
 
 interface OverviewRecord {
@@ -34,6 +35,16 @@ interface OverviewResponse {
   todayKey: string;
   students: OverviewStudent[];
 }
+
+const recordColumns: Column<OverviewRecord & { _key: string }>[] = [
+  { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
+  {
+    header: '狀態',
+    render: (r) => <StatusBadge status={r.attendanceStatus ?? r.bookingStatus} />,
+    sortValue: (r) => r.attendanceStatus ?? r.bookingStatus,
+  },
+  { header: '類型', render: (r) => (r.isMakeup ? '補課' : '—'), sortValue: (r) => (r.isMakeup ? 1 : 0) },
+];
 
 // 個別輔導時段出缺勤總表：依學生分組，每個學生區塊預設收合，比照
 // ClassAttendanceOverview.tsx 的慣例。跟班級版不同的地方：狀態只有一欄
@@ -85,6 +96,7 @@ export default function TutoringWindowAttendanceOverview({
               const pendingCount = s.records.filter(
                 (r) => r.bookingStatus === 'BOOKED' && r.attendanceStatus === null && r.date.slice(0, 10) <= data.todayKey
               ).length;
+              const rows = s.records.map((r, i) => ({ ...r, _key: `${r.date}-${i}` }));
               return (
                 <Card key={s.studentId} className="mb-3">
                   <details className="group">
@@ -95,27 +107,8 @@ export default function TutoringWindowAttendanceOverview({
                       </span>
                       {pendingCount > 0 && <span className="text-xs text-pending">{pendingCount} 筆待點名</span>}
                     </summary>
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead>
-                          <tr className="text-xs text-inkMuted">
-                            <th className="pb-2 pr-2 font-normal">日期</th>
-                            <th className="pb-2 pr-2 font-normal">狀態</th>
-                            <th className="pb-2 font-normal">類型</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {s.records.map((r, i) => (
-                            <tr key={i} className="border-t border-borderSubtle">
-                              <td className="py-2 pr-2 text-ink">{formatDateWithWeekday(r.date)}</td>
-                              <td className="py-2 pr-2">
-                                <StatusBadge status={r.attendanceStatus ?? r.bookingStatus} />
-                              </td>
-                              <td className="py-2 text-inkMuted">{r.isMakeup ? '補課' : '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="mt-3">
+                      <DataTable columns={recordColumns} rows={rows} keyField={(r) => r._key} emptyText="尚無紀錄" />
                     </div>
                   </details>
                 </Card>
