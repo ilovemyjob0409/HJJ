@@ -3,20 +3,16 @@ import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser, notifyUsers, notifyAdmins } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { taipeiDateKey } from '@/lib/taipeiDate';
+
+// 重新匯出：許多檔案已經是用 `import { taipeiDateKey } from
+// '@/lib/services/tutoringBookingService'`，保留這個路徑可用，實作則搬到
+// 零依賴的 @/lib/taipeiDate（見該檔註解：pastDate.ts 等純模組需要它，不能
+// 牽動這支檔案的 db/prisma/web-push 依賴鏈）。
+export { taipeiDateKey };
 
 export function utcDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-const TAIPEI_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Asia/Taipei',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-export function taipeiDateKey(date: Date): string {
-  return TAIPEI_DATE_FMT.format(date);
 }
 
 export function daysRemainingInTaipeiMonth(now: Date): number {

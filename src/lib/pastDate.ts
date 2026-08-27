@@ -1,4 +1,4 @@
-import { taipeiDateKey } from './services/tutoringBookingService';
+import { taipeiDateKey } from './taipeiDate';
 
 // Shared "has this date passed?" rule for registration cancellation, matching
 // the listOpen* boundary (date >= today midnight counts as still open).
