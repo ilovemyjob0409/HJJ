@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
+import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 
@@ -72,9 +73,10 @@ function TeacherGoHallContent() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">被指派的弈廳場次</h1>
       <Card>
-        <DataTable
+        <CollapsibleDataTable
           columns={columns}
           rows={sessions}
+          maxRows={3}
           loading={loading}
           keyField={(s) => s.id}
           emptyText="目前沒有被指派的弈廳場次"
