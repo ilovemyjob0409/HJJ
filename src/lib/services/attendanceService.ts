@@ -5,7 +5,7 @@ import { notifyUser } from './notificationService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
-import { getMonthlyQuotaStatus, taipeiDateKey } from './tutoringBookingService';
+import { getMonthlyQuotaStatus, listAttendanceForStudent, taipeiDateKey } from './tutoringBookingService';
 
 export type AttendanceStatusValue = 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
 
@@ -692,7 +692,8 @@ export interface MyAttendanceRow {
   type: AttendanceSessionType;
   date: Date;
   title: string;
-  status: AttendanceStatusValue;
+  // NO_SHOW 僅出現在個別輔導：預約了但過期未點名（同「我的出缺勤紀錄」）
+  status: AttendanceStatusValue | 'NO_SHOW';
   checkInTime: string | null;
   checkOutTime: string | null;
 }
@@ -721,16 +722,9 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       where: { studentId },
       select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, activity: { select: { title: true } } },
     }),
-    prisma.tutoringAttendance.findMany({
-      where: { booking: { enrollment: { studentId } } },
-      select: {
-        id: true,
-        status: true,
-        checkInTime: true,
-        checkOutTime: true,
-        booking: { select: { date: true, window: { select: { program: { select: { name: true } } } } } },
-      },
-    }),
+    // 個別輔導改走「我的出缺勤紀錄」同一個來源：有點名紀錄的預約
+    // ＋過期未點名的「未到課」，兩張表逐列一致。
+    listAttendanceForStudent(studentId),
   ]);
 
   const rows: MyAttendanceRow[] = [
@@ -773,9 +767,10 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
     ...tutoringRows.map((r) => ({
       id: `tutoring-${r.id}`,
       type: 'TUTORING' as const,
-      date: r.booking.date,
-      title: r.booking.window.program.name,
-      status: r.status as AttendanceStatusValue,
+      date: r.date,
+      title: r.programName,
+      // 沒有點名紀錄的列，取列條件保證是「過期未點名的 BOOKED」＝未到課
+      status: r.attendanceStatus ?? ('NO_SHOW' as const),
       checkInTime: r.checkInTime,
       checkOutTime: r.checkOutTime,
     })),

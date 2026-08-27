@@ -1156,6 +1156,13 @@ describe('listMyAttendance with tutoring bookings', () => {
     const rows = await listMyAttendance(student.id);
     expect(rows.find((r) => r.type === 'TUTORING')).toMatchObject({ status: 'PRESENT', title: '英文個別輔導' });
   });
+
+  it('includes an expired unmarked booking as 未到課（NO_SHOW），同「我的出缺勤紀錄」', async () => {
+    // setupTutoringBooking 的預約日 2026-08-07 已成過去；不點名即應以未到課入列
+    const { student } = await setupTutoringBooking();
+    const rows = await listMyAttendance(student.id);
+    expect(rows.find((r) => r.type === 'TUTORING')).toMatchObject({ status: 'NO_SHOW', title: '英文個別輔導' });
+  });
 });
 
 describe('checkInByStudentNumber with a class AND a tutoring booking on the same day (multi-candidate)', () => {
