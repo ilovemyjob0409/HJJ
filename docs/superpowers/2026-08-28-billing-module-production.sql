@@ -142,7 +142,31 @@ ALTER TABLE "TutoringEnrollment" ADD CONSTRAINT "TutoringEnrollment_feeTierId_fk
   FOREIGN KEY ("feeTierId") REFERENCES "TutoringFeeTier"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- 9) 國定假日種子資料（Task 2 產生後附加於此，source 一律 'NATIONAL'）
--- TODO(Task 2): 附加國定假日 INSERT ... ON CONFLICT ("date") DO NOTHING 語句
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2026-09-25', '中秋節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2026-09-28', '教師節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2026-10-09', '國慶連假', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2026-10-10', '國慶日', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2026-10-25', '光復節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2026-10-26', '光復節補假', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2026-12-25', '行憲紀念日', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-01-01', '元旦', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-02-05', '農曆除夕', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-02-06', '春節初一', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-02-07', '春節初二', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-02-08', '春節初三', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-02-09', '春節補假', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-02-28', '和平紀念日', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-03-01', '和平紀念日補假', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-04-04', '兒童節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-04-05', '清明節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-04-06', '清明連假補假', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-05-01', '勞動節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-06-09', '端午節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-09-15', '中秋節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-10-10', '國慶日', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-10-11', '國慶日補假', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-10-25', '光復節', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
+INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-12-25', '行憲紀念日', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
 
 -- 驗證：應回傳六張新表的列數（BillingSetting 應為 1，其餘應為 0）
 SELECT
