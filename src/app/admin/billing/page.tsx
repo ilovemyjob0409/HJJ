@@ -108,6 +108,7 @@ export default function AdminBillingPage() {
     { header: '種類', render: (r) => KIND_LABEL[r.kind] },
     {
       header: '收費區間',
+      width: 'w-64',
       render: (r) => (
         <span className="whitespace-nowrap">
           {formatDateWithWeekday(r.periodStart)} ～ {formatDateWithWeekday(r.periodEnd)}
@@ -143,6 +144,7 @@ export default function AdminBillingPage() {
     { header: '項目', render: (r) => r.class?.name ?? r.tutoringEnrollment?.program.name ?? '-' },
     {
       header: '區間',
+      width: 'w-64',
       render: (r) => (
         <span className="whitespace-nowrap">
           {formatDateWithWeekday(r.periodStart)} ～ {formatDateWithWeekday(r.periodEnd)}

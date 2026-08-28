@@ -83,8 +83,9 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
   }, [open]);
 
   const canGoStep2 = kind !== null;
-  const canGoStep3 = periodStart !== '' && periodEnd !== '' && periodStart <= periodEnd;
   const selectedCount = kind === 'CLASS' ? selectedClassIds.size : selectedProgramIds.size;
+  const canGoStep3 = selectedCount > 0;
+  const periodValid = periodStart !== '' && periodEnd !== '' && periodStart <= periodEnd;
 
   function toggleClass(id: string) {
     setSelectedClassIds((prev) => {
@@ -116,6 +117,10 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
       showToast('請至少選擇一項');
       return;
     }
+    if (!periodValid) {
+      showToast('請完整填寫收費區間');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch('/api/admin/billing/batches', {
@@ -141,7 +146,7 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
     }
   }
 
-  const title = step === 1 ? '開新批次・選擇種類' : step === 2 ? '開新批次・收費區間' : '開新批次・選擇對象';
+  const title = step === 1 ? '開新批次・選擇種類' : step === 2 ? '開新批次・選擇對象' : '開新批次・收費區間';
 
   return (
     <Modal open={open} onClose={onClose} title={title} maxWidthClassName="max-w-lg">
@@ -172,38 +177,6 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
 
       {step === 2 && kind && (
         <div className="flex flex-col gap-3">
-          {kind === 'TUTORING' && (
-            <div className="flex gap-2">
-              <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => applyMonth(0)}>
-                本月
-              </Button>
-              <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => applyMonth(1)}>
-                下月
-              </Button>
-            </div>
-          )}
-          <label className="flex flex-col gap-1 text-sm text-ink">
-            收費區間起
-            <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1 text-sm text-ink">
-            收費區間訖
-            <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-          </label>
-          {periodStart && periodEnd && periodStart > periodEnd && <p className="text-xs text-rejected">起日不能晚於訖日</p>}
-          <div className="flex justify-between">
-            <Button variant="secondary" onClick={() => setStep(1)}>
-              上一步
-            </Button>
-            <Button disabled={!canGoStep3} onClick={() => setStep(3)}>
-              下一步
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {step === 3 && kind && (
-        <div className="flex flex-col gap-3">
           <p className="text-sm font-medium text-ink">
             {kind === 'CLASS' ? '選擇要開單的班級' : '選擇要開單的課程'}（已選 {selectedCount} 項）
           </p>
@@ -229,10 +202,42 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
             )}
           </div>
           <div className="flex justify-between">
+            <Button variant="secondary" onClick={() => setStep(1)}>
+              上一步
+            </Button>
+            <Button disabled={!canGoStep3} onClick={() => setStep(3)}>
+              下一步
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {step === 3 && kind && (
+        <div className="flex flex-col gap-3">
+          {kind === 'TUTORING' && (
+            <div className="flex gap-2">
+              <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => applyMonth(0)}>
+                本月
+              </Button>
+              <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => applyMonth(1)}>
+                下月
+              </Button>
+            </div>
+          )}
+          <label className="flex flex-col gap-1 text-sm text-ink">
+            收費區間起
+            <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-ink">
+            收費區間訖
+            <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+          </label>
+          {periodStart && periodEnd && periodStart > periodEnd && <p className="text-xs text-rejected">起日不能晚於訖日</p>}
+          <div className="flex justify-between">
             <Button variant="secondary" onClick={() => setStep(2)}>
               上一步
             </Button>
-            <Button loading={submitting} disabled={selectedCount === 0} onClick={handleSubmit}>
+            <Button loading={submitting} disabled={!periodValid} onClick={handleSubmit}>
               建立批次
             </Button>
           </div>

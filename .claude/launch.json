@@ -20,6 +20,13 @@
       "runtimeArgs": ["run", "dev", "--", "-p", "3010"],
       "port": 3010,
       "cwd": "/Users/s.w.kung/Downloads/Wade Claude/HJJ/.claude/worktrees/tutoring-module"
+    },
+    {
+      "name": "billing-module worktree",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3013"],
+      "port": 3013,
+      "cwd": "/Users/s.w.kung/Downloads/Wade Claude/HJJ/.claude/worktrees/billing-module"
     }
   ]
 }
