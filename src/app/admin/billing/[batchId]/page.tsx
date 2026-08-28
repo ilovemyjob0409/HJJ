@@ -14,6 +14,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { getPaidState } from '@/lib/billingCalc';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
+import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
 import PaymentModal from '../PaymentModal';
 import SettleModal from '../SettleModal';
 
@@ -400,35 +401,21 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
         header: '操作',
         render: (b) => {
           const { state } = getPaidState(b.amountDue, b.payments);
+          // 提醒繳費只在系統判定已通知過（notifiedAt 有值）且未繳清時顯示；
+          // 未通知過的走上方整批通知，不在這裡重複一個「通知」項目。
+          const remindItem: ActionMenuItem | null =
+            b.notifiedAt && state !== 'PAID'
+              ? { key: 'remind', label: '提醒繳費', loading: remindingId === b.id, onClick: () => remindBill(b.id) }
+              : null;
           return (
-            <div className="flex flex-wrap items-center justify-center gap-1 whitespace-nowrap">
-              <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(b.id)}>
-                繳款
-              </Button>
-              {/* 提醒繳費只在系統判定已通知過（notifiedAt 有值）且未繳清時顯示；
-                  未通知過的走上方整批通知，不在這裡重複一個「通知」按鈕。 */}
-              {b.notifiedAt && state !== 'PAID' && (
-                <Button
-                  variant="secondary"
-                  className="px-2 py-1 text-xs"
-                  loading={remindingId === b.id}
-                  onClick={() => remindBill(b.id)}
-                >
-                  提醒繳費
-                </Button>
-              )}
-              {!b.settledAsWithdrawal && (
-                <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setSettleBillId(b.id)}>
-                  退班結算
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                className="px-2 py-1 text-xs"
-                onClick={() => setExpandedBillId((prev) => (prev === b.id ? null : b.id))}
-              >
-                {expandedBillId === b.id ? '收合' : '明細'}
-              </Button>
+            <div className="flex justify-center">
+              <ActionMenu
+                items={[
+                  { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(b.id) },
+                  ...(remindItem ? [remindItem] : []),
+                  ...(b.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(b.id) }]),
+                ]}
+              />
             </div>
           );
         },
@@ -478,6 +465,8 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
             columns={finalizedColumns}
             rows={batch.bills}
             keyField={(b) => b.id}
+            onRowClick={(b) => setExpandedBillId((prev) => (prev === b.id ? null : b.id))}
+            rowClassName={() => 'cursor-pointer'}
             expandedKey={expandedBillId}
             renderExpanded={(b) => <BillDetailBlock detail={b.detail} />}
             emptyText="這個批次沒有帳單"
