@@ -20,6 +20,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/admin/classes', label: '班級名單' },
     { href: '/admin/tutoring', label: '個別輔導' },
     { href: '/admin/makeup-requests', label: '請假管理' },
+    { href: '/admin/billing', label: '收費' },
     { href: '/admin/substitute-requests', label: '代課安排' },
     { href: '/admin/go-hall', label: '弈廳' },
     { href: '/admin/activities', label: '活動專區' },
