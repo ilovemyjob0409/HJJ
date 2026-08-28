@@ -326,7 +326,7 @@ export default function ClassesPage() {
               <p className="mb-1 text-sm font-medium text-ink">每堂單價（元）</p>
               <Input
                 type="number"
-                placeholder="留空＝未設定"
+                placeholder="留空＝預設 500 元"
                 value={editForm.feePerSession}
                 onChange={(e) => setEditForm({ ...editForm, feePerSession: e.target.value })}
               />

@@ -208,7 +208,7 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
                     <input type="checkbox" checked={selectedClassIds.has(c.id)} onChange={() => toggleClass(c.id)} />
                     <span>
                       {c.name}（{c.subject}・週{WEEKDAY_LABELS[c.weekday]}・單價{' '}
-                      {c.feePerSession === null ? '未設定' : `${c.feePerSession} 元`}）
+                      {c.feePerSession === null ? '500 元（預設）' : `${c.feePerSession} 元`}）
                     </span>
                   </label>
                 ))

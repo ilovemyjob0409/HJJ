@@ -58,11 +58,11 @@ describe('createClassBatch', () => {
     expect((await getBatchDetail(batchId)).bills[0]).toMatchObject({ deductedSessions: 4, billedSessions: 0, amountDue: 0 });
   });
 
-  it('marks missing unit price with amountDue 0 and null unitPrice', async () => {
+  it('falls back to the default 500 unit price when the class has none set', async () => {
     const { cls } = await setupClassFixture();
     await prisma.class.update({ where: { id: cls.id }, data: { feePerSession: null } });
     const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
-    expect((await getBatchDetail(batchId)).bills[0]).toMatchObject({ unitPrice: null, amountDue: 0 });
+    expect((await getBatchDetail(batchId)).bills[0]).toMatchObject({ unitPrice: 500, amountDue: 2000 });
   });
 
   it('uses feeOverride over class price', async () => {
@@ -199,11 +199,11 @@ describe('finalizeBatch', () => {
 
   it('refuses to finalize with a missing unit price and refuses double finalize', async () => {
     const { cls } = await setupClassFixture();
-    await prisma.class.update({ where: { id: cls.id }, data: { feePerSession: null } });
     const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    // 模擬舊資料：批次建立當下已解析出單價，這裡直接改帳單列，重現定案前單價被清空的舊狀態。
+    await prisma.bill.updateMany({ where: { batchId }, data: { unitPrice: null, amountDue: 0 } });
     await expect(finalizeBatch(batchId, { notifyNow: false })).rejects.toThrow('MISSING_PRICE');
 
-    await prisma.class.update({ where: { id: cls.id }, data: { feePerSession: 500 } });
     await prisma.bill.updateMany({ where: { batchId }, data: { unitPrice: 500, amountDue: 2000 } });
     await finalizeBatch(batchId, { notifyNow: false });
     await expect(finalizeBatch(batchId, { notifyNow: false })).rejects.toThrow('BATCH_FINALIZED');

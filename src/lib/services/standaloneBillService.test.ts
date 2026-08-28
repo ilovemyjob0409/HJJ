@@ -74,6 +74,16 @@ describe('standalone class bill', () => {
     });
     expect(zeroed.amountDue).toBe(0);
   });
+
+  it('falls back to the default 500 unit price when the class has none set', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: `sb-nf-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '王小柔', email: `sb-nf-s-${Date.now()}@example.com`, password: 'x' });
+    const cls = await createClass({ name: '週六班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 6, startTime: '10:00', endTime: '12:00', feePerSession: null });
+    await enrollStudent(cls.id, student.id);
+
+    const preview = await previewStandaloneClassBill({ studentId: student.id, classId: cls.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30) });
+    expect(preview).toMatchObject({ billedSessions: 4, unitPrice: 500, amountDue: 2000 });
+  });
 });
 
 describe('standalone tutoring bill', () => {
