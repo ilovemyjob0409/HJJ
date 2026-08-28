@@ -33,7 +33,7 @@ export async function remindBill(billId: string): Promise<void> {
   if (outstanding <= 0) throw new Error('ALREADY_PAID');
   await notifyUser(bill.student.userId, {
     title: '繳費提醒',
-    body: `${billTargetName(bill)} 尚欠 ${outstanding.toLocaleString('en-US')} 元，再麻煩您撥空繳費，感謝`,
+    body: `${billTargetName(bill)} 待繳 ${outstanding.toLocaleString('en-US')} 元，再麻煩您撥空繳費，感謝`,
     url: '/student/billing',
   });
 }

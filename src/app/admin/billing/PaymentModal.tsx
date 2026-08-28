@@ -107,7 +107,7 @@ export default function PaymentModal({ bill, onClose, onChanged }: PaymentModalP
         {bill && paidState && (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-ink">
-              應繳 {bill.amountDue.toLocaleString('en-US')} 元・已繳 {paidState.paid.toLocaleString('en-US')} 元・尚欠{' '}
+              應繳 {bill.amountDue.toLocaleString('en-US')} 元・已繳 {paidState.paid.toLocaleString('en-US')} 元・待繳{' '}
               <span className={paidState.outstanding > 0 ? 'font-semibold text-rejected' : 'font-semibold text-approved'}>
                 {paidState.outstanding.toLocaleString('en-US')} 元
               </span>
@@ -166,8 +166,8 @@ export default function PaymentModal({ bill, onClose, onChanged }: PaymentModalP
         )}
       </Modal>
 
-      <AlertModal open={overpayOpen} onClose={() => setOverpayOpen(false)} title="超過尚欠金額">
-        {paidState && `這筆帳單尚欠 ${paidState.outstanding.toLocaleString('en-US')} 元，請輸入不超過此金額的繳款。`}
+      <AlertModal open={overpayOpen} onClose={() => setOverpayOpen(false)} title="超過待繳金額">
+        {paidState && `這筆帳單待繳 ${paidState.outstanding.toLocaleString('en-US')} 元，請輸入不超過此金額的繳款。`}
       </AlertModal>
 
       {ConfirmDialog}

@@ -31,7 +31,7 @@ describe('addPayment / deletePayment', () => {
 
     const userId = (await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).userId;
     const notes = await prisma.notification.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
-    expect(notes.some((n) => n.body.includes('尚欠'))).toBe(true); // 第一筆
+    expect(notes.some((n) => n.body.includes('待繳'))).toBe(true); // 第一筆
     expect(notes.some((n) => n.body.includes('已繳清'))).toBe(true); // 第二筆
 
     await deletePayment(payments[1].id);

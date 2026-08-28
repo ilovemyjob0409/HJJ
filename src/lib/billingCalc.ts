@@ -65,7 +65,7 @@ export function buildClassBillDetail(
   return { sessionDates: entries, deduction: deduction && deduction.deducted > 0 ? deduction : null, formula };
 }
 
-// 已繳/尚欠/繳費狀態的唯一算法——billPaymentService、billNotifyService（催繳）、
+// 已繳/待繳/繳費狀態的唯一算法——billPaymentService、billNotifyService（提醒繳費）、
 // 學生端 UI 都從這裡 import，不互相依賴，避免循環 import。
 export function getPaidState(amountDue: number, payments: { amount: number }[]) {
   const paid = payments.reduce((s, p) => s + p.amount, 0);

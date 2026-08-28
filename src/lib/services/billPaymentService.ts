@@ -24,7 +24,7 @@ export async function addPayment(
   await notifyUser(bill.student.userId, {
     title: '繳費入帳通知',
     body: after > 0
-      ? `${billTargetName(bill)} 已收到繳費 ${input.amount.toLocaleString('en-US')} 元，尚欠 ${after.toLocaleString('en-US')} 元`
+      ? `${billTargetName(bill)} 已收到繳費 ${input.amount.toLocaleString('en-US')} 元，待繳 ${after.toLocaleString('en-US')} 元`
       : `${billTargetName(bill)} 已收到繳費 ${input.amount.toLocaleString('en-US')} 元，已繳清，感謝您`,
     url: '/student/billing',
   });

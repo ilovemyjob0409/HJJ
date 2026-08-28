@@ -379,7 +379,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
         sortValue: (b) => getPaidState(b.amountDue, b.payments).paid,
       },
       {
-        header: '尚欠',
+        header: '待繳',
         render: (b) => {
           const { outstanding } = getPaidState(b.amountDue, b.payments);
           return <span className={outstanding > 0 ? 'font-semibold text-rejected' : ''}>{outstanding.toLocaleString('en-US')} 元</span>;
@@ -430,7 +430,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
       { header: '單價', value: (b: BillRow) => b.unitPrice ?? '-' },
       { header: '金額', value: (b: BillRow) => b.amountDue },
       { header: '已繳', value: (b: BillRow) => getPaidState(b.amountDue, b.payments).paid },
-      { header: '尚欠', value: (b: BillRow) => getPaidState(b.amountDue, b.payments).outstanding },
+      { header: '待繳', value: (b: BillRow) => getPaidState(b.amountDue, b.payments).outstanding },
       { header: '繳費狀態', value: (b: BillRow) => PAID_STATE_CONFIG[getPaidState(b.amountDue, b.payments).state].label },
       { header: '通知時間', value: (b: BillRow) => (b.notifiedAt ? formatDateWithWeekday(b.notifiedAt) : '未通知') },
     ];
