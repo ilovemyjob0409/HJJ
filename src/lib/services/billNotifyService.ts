@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { notifyUser } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { getPaidState } from '@/lib/billingCalc';
 
 const BILL_NOTIFY_INCLUDE = {
   student: { select: { userId: true } },
@@ -24,4 +25,15 @@ export async function notifyBills(billIds: string[]): Promise<void> {
     });
     await prisma.bill.update({ where: { id: bill.id }, data: { notifiedAt: now } });
   }
+}
+
+export async function remindBill(billId: string): Promise<void> {
+  const bill = await prisma.bill.findUniqueOrThrow({ where: { id: billId }, include: { ...BILL_NOTIFY_INCLUDE, payments: true } });
+  const { outstanding } = getPaidState(bill.amountDue, bill.payments);
+  if (outstanding <= 0) throw new Error('ALREADY_PAID');
+  await notifyUser(bill.student.userId, {
+    title: '繳費提醒',
+    body: `${billTargetName(bill)} 尚欠 ${outstanding.toLocaleString('en-US')} 元，再麻煩您撥空繳費，感謝`,
+    url: '/student/billing',
+  });
 }
