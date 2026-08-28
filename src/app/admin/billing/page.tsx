@@ -241,11 +241,6 @@ export default function AdminBillingPage() {
                 { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(r.id) },
                 ...(notifyItem ? [notifyItem] : []),
                 ...(r.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(r.id) }]),
-                {
-                  key: 'detail',
-                  label: expandedStandaloneId === r.id ? '收合明細' : '明細',
-                  onClick: () => setExpandedStandaloneId((prev) => (prev === r.id ? null : r.id)),
-                },
               ]}
             />
           </div>
@@ -306,6 +301,8 @@ export default function AdminBillingPage() {
               maxRows={3}
               loading={standaloneLoading}
               emptyText="目前沒有單獨開立的帳單"
+              onRowClick={(r) => setExpandedStandaloneId((prev) => (prev === r.id ? null : r.id))}
+              rowClassName={() => 'cursor-pointer'}
               expandedKey={expandedStandaloneId}
               renderExpanded={(r) => <BillDetailBlock detail={r.detail} />}
             />

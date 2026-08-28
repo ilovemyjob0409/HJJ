@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { withStopPropagation } from './stopPropagation';
 
 export interface ActionMenuItem {
   key: string;
@@ -67,7 +68,7 @@ export default function ActionMenu({ items }: { items: ActionMenuItem[] }) {
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => (open ? setOpen(false) : openMenu())}
+        onClick={withStopPropagation(() => (open ? setOpen(false) : openMenu()))}
         aria-label="更多操作"
         aria-expanded={open}
         className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-inkMuted hover:bg-stripe hover:text-ink"
@@ -91,10 +92,10 @@ export default function ActionMenu({ items }: { items: ActionMenuItem[] }) {
                 key={item.key}
                 type="button"
                 disabled={item.disabled || item.loading}
-                onClick={() => {
+                onClick={withStopPropagation(() => {
                   setOpen(false);
                   item.onClick();
-                }}
+                })}
                 className={`block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-stripe disabled:cursor-default disabled:opacity-50 ${
                   item.tone === 'danger' ? 'text-rejected' : 'text-ink'
                 }`}
