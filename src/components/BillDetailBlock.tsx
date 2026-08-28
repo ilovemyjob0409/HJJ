@@ -40,7 +40,22 @@ export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) 
         </p>
       )}
       <p className="font-bold text-ink">{detail.formula}</p>
-      {detail.netFormula && <p className="mt-1 font-bold text-ink">{detail.netFormula}</p>}
+      {detail.netFormula ? (
+        <p className="mt-1 font-bold text-ink">{detail.netFormula}</p>
+      ) : (
+        // 舊格式相容：netFormula 是後來才加的欄位，優惠項目上線初期建立的帳單只有
+        // discounts 陣列、沒有 netFormula——這裡逐項列出，不能讓舊帳單的優惠資訊憑空消失。
+        detail.discounts &&
+        detail.discounts.length > 0 && (
+          <div className="mt-1">
+            {detail.discounts.map((d, i) => (
+              <p key={i} className="text-rejected">
+                － {d.name} {d.amount.toLocaleString('en-US')} 元
+              </p>
+            ))}
+          </div>
+        )
+      )}
     </div>
   );
 }
