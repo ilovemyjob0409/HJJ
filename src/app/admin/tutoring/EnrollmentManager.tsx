@@ -16,6 +16,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { attendanceDisplayStatus } from '@/lib/attendanceDisplay';
 import AdminBookingModal from './AdminBookingModal';
+import BatchAddSessionsModal from './BatchAddSessionsModal';
 
 interface EnrollmentRow {
   id: string;
@@ -76,6 +77,7 @@ export default function EnrollmentManager() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[] | null>(null);
   const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0); // 彈窗內預約成功後刷新出缺勤表格
   const [addOpen, setAddOpen] = useState(false);
+  const [batchAddOpen, setBatchAddOpen] = useState(false);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>({});
@@ -351,8 +353,11 @@ export default function EnrollmentManager() {
         <CollapsibleSearchInput placeholder="搜尋學生或課程" value={listSearch} onChange={setListSearch} />
       </div>
       {!addOpen ? (
-        <div className="mb-4">
+        <div className="mb-4 flex gap-2">
           <Button onClick={() => setAddOpen(true)}>＋ 新增報名</Button>
+          <Button variant="secondary" onClick={() => setBatchAddOpen(true)}>
+            批量加堂
+          </Button>
         </div>
       ) : (
       <Card className="mb-4">
@@ -597,6 +602,13 @@ export default function EnrollmentManager() {
           </div>
         )}
       </Modal>
+      <BatchAddSessionsModal
+        open={batchAddOpen}
+        enrollments={enrollments.filter((r) => r.active)}
+        feeTiers={feeTiers}
+        onClose={() => setBatchAddOpen(false)}
+        onSaved={load}
+      />
       {bookingTarget && (
         <AdminBookingModal
           enrollment={bookingTarget}
