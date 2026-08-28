@@ -405,7 +405,9 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
               <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(b.id)}>
                 繳款
               </Button>
-              {state !== 'PAID' && (
+              {/* 提醒繳費只在系統判定已通知過（notifiedAt 有值）且未繳清時顯示；
+                  未通知過的走上方整批通知，不在這裡重複一個「通知」按鈕。 */}
+              {b.notifiedAt && state !== 'PAID' && (
                 <Button
                   variant="secondary"
                   className="px-2 py-1 text-xs"

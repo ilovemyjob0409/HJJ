@@ -229,17 +229,9 @@ export default function AdminBillingPage() {
             <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(r.id)}>
               繳款
             </Button>
-            {state !== 'PAID' && (
-              <Button
-                variant="secondary"
-                className="px-2 py-1 text-xs"
-                loading={remindingId === r.id}
-                onClick={() => remindStandaloneBill(r.id)}
-              >
-                提醒繳費
-              </Button>
-            )}
-            {!r.notifiedAt && (
+            {/* 單一按鈕：狀態完全看 notifiedAt——未通知過＝通知；已通知過但未繳清＝提醒繳費；
+                已通知且已繳清＝不顯示。不是「按過」這種前端暫時狀態，是系統實際判定。 */}
+            {!r.notifiedAt ? (
               <Button
                 variant="secondary"
                 className="px-2 py-1 text-xs"
@@ -248,6 +240,17 @@ export default function AdminBillingPage() {
               >
                 通知
               </Button>
+            ) : (
+              state !== 'PAID' && (
+                <Button
+                  variant="secondary"
+                  className="px-2 py-1 text-xs"
+                  loading={remindingId === r.id}
+                  onClick={() => remindStandaloneBill(r.id)}
+                >
+                  提醒繳費
+                </Button>
+              )
             )}
             {!r.settledAsWithdrawal && (
               <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setSettleBillId(r.id)}>
