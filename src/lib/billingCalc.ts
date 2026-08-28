@@ -1,5 +1,8 @@
 // 收費模組計算引擎：純函式、不碰 DB。日期一律 UTC 日曆日。
 
+// 班級每堂單價留空時的預設值（feeOverride ?? feePerSession ?? DEFAULT_FEE_PER_SESSION）。
+export const DEFAULT_FEE_PER_SESSION = 500;
+
 export interface SessionDateEntry {
   dateKey: string; // 'YYYY-MM-DD'
   closed: boolean;

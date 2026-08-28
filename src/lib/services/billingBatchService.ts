@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { listClosedDays } from './closedDayService';
 import { getBillingSetting } from './billingSettingService';
 import {
-  buildClassBillDetail, computeClassSessionDates, computeDeduction, countOpenSessions,
+  buildClassBillDetail, computeClassSessionDates, computeDeduction, countOpenSessions, DEFAULT_FEE_PER_SESSION,
 } from '@/lib/billingCalc';
 import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
@@ -69,16 +69,16 @@ export async function createClassBatch(input: { periodStart: Date; periodEnd: Da
       const remaining = e.totalSessions === null ? null : e.totalSessions - used;
       const deducted = computeDeduction(remaining, setting.deductionCap);
       const billed = Math.max(0, open - deducted);
-      const unitPrice = e.feeOverride ?? cls.feePerSession ?? null;
-      const detail = (unitPrice === null
-        ? { sessionDates: entries, deduction: null, formula: '（請先設定班級單價）' }
-        : buildClassBillDetail(entries, deducted > 0 ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted } : null, billed, unitPrice)) as unknown as Prisma.InputJsonValue;
+      const unitPrice = e.feeOverride ?? cls.feePerSession ?? DEFAULT_FEE_PER_SESSION;
+      const detail = buildClassBillDetail(
+        entries, deducted > 0 ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted } : null, billed, unitPrice
+      ) as unknown as Prisma.InputJsonValue;
       await prisma.bill.create({
         data: {
           batchId: batch.id, studentId: e.studentId, classId: cls.id,
           periodStart: input.periodStart, periodEnd: input.periodEnd,
           sessionsTotal: open, deductedSessions: deducted, billedSessions: billed,
-          unitPrice, amountDue: unitPrice === null ? 0 : billed * unitPrice, detail,
+          unitPrice, amountDue: billed * unitPrice, detail,
         },
       });
     }

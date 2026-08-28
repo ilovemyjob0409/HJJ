@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { listClosedDays } from './closedDayService';
 import { getBillingSetting } from './billingSettingService';
 import {
-  buildClassBillDetail, computeClassSessionDates, computeDeduction, computeTutoringProration, countOpenSessions,
+  buildClassBillDetail, computeClassSessionDates, computeDeduction, computeTutoringProration, countOpenSessions, DEFAULT_FEE_PER_SESSION,
 } from '@/lib/billingCalc';
 import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
@@ -62,8 +62,8 @@ async function computeClassBillCore(studentId: string, classId: string, periodSt
   const remaining = enrollment.totalSessions === null ? null : enrollment.totalSessions - used;
   const deducted = computeDeduction(remaining, setting.deductionCap);
   const billed = Math.max(0, open - deducted);
-  const unitPrice = enrollment.feeOverride ?? cls.feePerSession ?? null;
-  const amountDue = unitPrice === null ? 0 : billed * unitPrice;
+  const unitPrice = enrollment.feeOverride ?? cls.feePerSession ?? DEFAULT_FEE_PER_SESSION;
+  const amountDue = billed * unitPrice;
   const deduction: Deduction = deducted > 0 ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted } : null;
   return { entries, open, deducted, deduction, billed, unitPrice, amountDue };
 }
@@ -79,9 +79,7 @@ export async function previewStandaloneClassBill(input: {
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
   const netFormula = discounts.length > 0 ? buildNetFormula(core.amountDue, discounts, netAmountDue, false) : undefined;
-  const detail = core.unitPrice === null
-    ? { sessionDates: core.entries, deduction: null, discounts, formula: '（請先設定班級單價）' }
-    : { ...buildClassBillDetail(core.entries, core.deduction, core.billed, core.unitPrice), discounts, ...(netFormula ? { netFormula } : {}) };
+  const detail = { ...buildClassBillDetail(core.entries, core.deduction, core.billed, core.unitPrice), discounts, ...(netFormula ? { netFormula } : {}) };
   return {
     sessionsTotal: core.open,
     deductedSessions: core.deducted,
@@ -102,7 +100,6 @@ export async function createStandaloneClassBill(input: {
     computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd),
     resolveDiscounts(input.discountItemIds),
   ]);
-  if (core.unitPrice === null) throw new Error('MISSING_PRICE');
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
 

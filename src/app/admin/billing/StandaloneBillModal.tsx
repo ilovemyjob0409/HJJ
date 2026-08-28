@@ -38,7 +38,7 @@ interface ClassPreview {
   sessionsTotal: number;
   deductedSessions: number;
   billedSessions: number;
-  unitPrice: number | null;
+  unitPrice: number;
   amountDue: number;
   detail: BillDetailJson;
   overlapWarning: string | null;
@@ -53,7 +53,6 @@ interface TutoringPreview {
 
 const ERROR_MESSAGES: Record<string, string> = {
   MISSING_FIELDS: '請完整選擇學生、項目與收費區間',
-  MISSING_PRICE: '該班級尚未設定單價，請先於班級管理設定',
   NO_FEE_TIER: '該報名尚未指定收費級距，請先於個別輔導管理設定',
 };
 
@@ -179,7 +178,7 @@ export default function StandaloneBillModal({
 
   function onBilledSessionsChange(value: string) {
     setBilledSessionsDraft(value);
-    if (!classPreview || classPreview.unitPrice === null) return;
+    if (!classPreview) return;
     const n = Number(value);
     if (Number.isFinite(n)) setAmountDueDraft(String(n * classPreview.unitPrice));
   }
@@ -334,7 +333,6 @@ export default function StandaloneBillModal({
           {classPreview && (
             <div className="flex flex-col gap-2">
               <BillDetailBlock detail={classPreview.detail} />
-              {classPreview.unitPrice === null && <p className="text-sm font-semibold text-rejected">請先設定班級單價，金額需手動輸入</p>}
               <label className="flex flex-col gap-1 text-sm text-ink">
                 計費堂數
                 <Input

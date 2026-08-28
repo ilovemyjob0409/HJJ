@@ -15,6 +15,8 @@ interface BillPayment {
 
 interface Bill {
   id: string;
+  studentName: string;
+  isSelf: boolean;
   targetName: string;
   periodStart: string;
   periodEnd: string;
@@ -58,12 +60,28 @@ function PaymentLines({ payments, className = '' }: { payments: BillPayment[]; c
   );
 }
 
-function PendingBillCard({ bill }: { bill: Bill }) {
+// 學生姓名小標籤：手足帳單合併顯示時標示這筆是誰的（自己＝品牌色、手足＝藍）。
+function StudentNameBadge({ bill }: { bill: Bill }) {
+  return (
+    <span
+      className={`mr-1.5 inline-block rounded-md px-2 py-0.5 align-middle text-xs font-semibold ${
+        bill.isSelf ? 'bg-brand text-brandInk' : 'bg-assignedBg text-assigned'
+      }`}
+    >
+      {bill.studentName}
+    </span>
+  );
+}
+
+function PendingBillCard({ bill, showStudent }: { bill: Bill; showStudent: boolean }) {
   return (
     <Card className="mb-4">
       <div className="mb-1 flex items-start justify-between gap-2">
         <div>
-          <p className="text-base font-bold text-ink">{bill.targetName}</p>
+          <p className="text-base font-bold text-ink">
+            {showStudent && <StudentNameBadge bill={bill} />}
+            {bill.targetName}
+          </p>
           <p className="mt-0.5 text-xs text-inkMuted">
             {formatDateWithWeekday(bill.periodStart)} ～ {formatDateWithWeekday(bill.periodEnd)}
           </p>
@@ -87,6 +105,7 @@ export default function StudentBillingPage() {
   const [loading, setLoading] = useState(true);
   const [paymentInfo, setPaymentInfo] = useState('');
   const [bills, setBills] = useState<Bill[]>([]);
+  const [hasSiblings, setHasSiblings] = useState(false);
   const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +116,7 @@ export default function StudentBillingPage() {
           const data = await res.json();
           setPaymentInfo(data.paymentInfo);
           setBills(data.bills);
+          setHasSiblings(data.hasSiblings);
         }
       } finally {
         setLoading(false);
@@ -108,6 +128,9 @@ export default function StudentBillingPage() {
   const pendingBills = bills.filter((b) => b.state !== 'PAID');
 
   const recordColumns: Column<Bill>[] = [
+    ...(hasSiblings
+      ? [{ header: '學生', render: (b: Bill) => b.studentName, sortValue: (b: Bill) => b.studentName } satisfies Column<Bill>]
+      : []),
     { header: '項目', render: (b) => b.targetName, sortValue: (b) => b.targetName },
     {
       header: '區間',
@@ -160,7 +183,7 @@ export default function StudentBillingPage() {
       ) : (
         <div className="mb-6">
           {pendingBills.map((bill) => (
-            <PendingBillCard key={bill.id} bill={bill} />
+            <PendingBillCard key={bill.id} bill={bill} showStudent={hasSiblings} />
           ))}
         </div>
       )}
