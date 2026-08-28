@@ -50,13 +50,17 @@ export default async function StudentDashboard() {
 
       <h2 className="mb-2 font-bold text-ink">票券管理</h2>
       <Card className="mb-6">
-        <div className="grid gap-5 sm:grid-cols-[1fr_1px_230px]">
+        <div className={showLeave ? 'grid gap-5 sm:grid-cols-[1fr_1px_230px]' : undefined}>
           <div>
             <p className="mb-1 text-xs font-semibold text-inkMuted">課堂</p>
             <ClassesAndTutoringList myClasses={myClasses} activeTutoring={activeTutoring} />
           </div>
-          <div className="hidden bg-borderSubtle sm:block" />
-          <GoHallQualificationCard tickets={tickets} />
+          {showLeave && (
+            <>
+              <div className="hidden bg-borderSubtle sm:block" />
+              <GoHallQualificationCard tickets={tickets} />
+            </>
+          )}
         </div>
       </Card>
 

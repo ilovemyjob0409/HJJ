@@ -11,7 +11,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
 import EnrollmentManager from './EnrollmentManager';
-import TutoringPolicyModal from './TutoringPolicyModal';
+import TutoringPolicyModal from '@/components/tutoring/TutoringPolicyModal';
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
