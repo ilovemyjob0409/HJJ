@@ -6,10 +6,15 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
+import { useToast } from '@/components/ui/Toast';
+import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { getPaidState } from '@/lib/billingCalc';
 import BatchWizardModal from './BatchWizardModal';
 import StandaloneBillModal from './StandaloneBillModal';
+import PaymentModal from './PaymentModal';
+import SettleModal from './SettleModal';
+import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 
 type TabKey = 'batches' | 'closedDays' | 'settings';
 
@@ -40,8 +45,16 @@ interface StandaloneBillRow {
   periodStart: string;
   periodEnd: string;
   amountDue: number;
-  payments: { amount: number }[];
+  detail: BillDetailJson;
+  payments: { id: string; amount: number; paidOn: string; method: 'CASH' | 'TRANSFER'; note: string | null }[];
+  notifiedAt: string | null;
+  settledAsWithdrawal: boolean;
 }
+
+const ERROR_MESSAGES: Record<string, string> = {
+  BILL_NOT_FINALIZED: '這筆帳單非已定案狀態，無法通知',
+  ALREADY_PAID: '這筆帳單已繳清，不需催繳',
+};
 
 // 批次狀態徽章：草稿＝pendingBg／已定案＝approvedBg（本頁與草稿頁各自內嵌一份，
 // 只有這兩處用得到，沒有獨立拆共用檔）。
@@ -71,6 +84,8 @@ function PaidStateBadge({ amountDue, payments }: { amountDue: number; payments: 
 
 export default function AdminBillingPage() {
   const router = useRouter();
+  const { showToast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [tab, setTab] = useState<TabKey>('batches');
   const [batches, setBatches] = useState<BatchRow[]>([]);
   const [batchesLoading, setBatchesLoading] = useState(true);
@@ -78,6 +93,11 @@ export default function AdminBillingPage() {
   const [standaloneLoading, setStandaloneLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [standaloneModalOpen, setStandaloneModalOpen] = useState(false);
+  const [expandedStandaloneId, setExpandedStandaloneId] = useState<string | null>(null);
+  const [paymentBillId, setPaymentBillId] = useState<string | null>(null);
+  const [settleBillId, setSettleBillId] = useState<string | null>(null);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
+  const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
   async function loadBatches() {
     setBatchesLoading(true);
@@ -103,6 +123,42 @@ export default function AdminBillingPage() {
     loadBatches();
     loadStandalone();
   }, []);
+
+  async function remindStandaloneBill(billId: string) {
+    setRemindingId(billId);
+    try {
+      const res = await fetch(`/api/admin/billing/bills/${billId}/remind`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(ERROR_MESSAGES[data.error] ?? '催繳失敗，請稍後再試');
+        return;
+      }
+      showToast('已發送催繳通知');
+    } finally {
+      setRemindingId(null);
+    }
+  }
+
+  async function notifyStandaloneBill(billId: string) {
+    if (!(await confirm('確定要通知這筆帳單的家長嗎？'))) return;
+    setNotifyingId(billId);
+    try {
+      const res = await fetch('/api/admin/billing/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billIds: [billId] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(ERROR_MESSAGES[data.error] ?? '通知失敗，請稍後再試');
+        return;
+      }
+      showToast('已通知');
+      await loadStandalone();
+    } finally {
+      setNotifyingId(null);
+    }
+  }
 
   const batchColumns: Column<BatchRow>[] = [
     { header: '種類', render: (r) => KIND_LABEL[r.kind] },
@@ -154,7 +210,65 @@ export default function AdminBillingPage() {
     },
     { header: '應繳', render: (r) => `${r.amountDue.toLocaleString('en-US')} 元`, sortValue: (r) => r.amountDue },
     { header: '繳費狀態', render: (r) => <PaidStateBadge amountDue={r.amountDue} payments={r.payments} /> },
+    {
+      header: '通知',
+      render: (r) =>
+        r.notifiedAt ? (
+          <span className="text-ink">已通知・{formatDateWithWeekday(r.notifiedAt)}</span>
+        ) : (
+          <span className="text-inkMuted">未通知</span>
+        ),
+      sortValue: (r) => r.notifiedAt,
+    },
+    {
+      header: '操作',
+      render: (r) => {
+        const { state } = getPaidState(r.amountDue, r.payments);
+        return (
+          <div className="flex flex-wrap items-center justify-center gap-1">
+            <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(r.id)}>
+              繳款
+            </Button>
+            {state !== 'PAID' && (
+              <Button
+                variant="secondary"
+                className="px-2 py-1 text-xs"
+                loading={remindingId === r.id}
+                onClick={() => remindStandaloneBill(r.id)}
+              >
+                催繳
+              </Button>
+            )}
+            {!r.notifiedAt && (
+              <Button
+                variant="secondary"
+                className="px-2 py-1 text-xs"
+                loading={notifyingId === r.id}
+                onClick={() => notifyStandaloneBill(r.id)}
+              >
+                通知
+              </Button>
+            )}
+            {!r.settledAsWithdrawal && (
+              <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setSettleBillId(r.id)}>
+                結算
+              </Button>
+            )}
+            <button
+              type="button"
+              onClick={() => setExpandedStandaloneId((prev) => (prev === r.id ? null : r.id))}
+              className="cursor-pointer text-sm font-medium text-brandDark hover:underline"
+            >
+              {expandedStandaloneId === r.id ? '收合' : '明細'}
+            </button>
+          </div>
+        );
+      },
+    },
   ];
+
+  const standalonePaymentBill = standaloneBills.find((r) => r.id === paymentBillId) ?? null;
+  const standaloneSettleBill = standaloneBills.find((r) => r.id === settleBillId) ?? null;
 
   return (
     <>
@@ -205,6 +319,8 @@ export default function AdminBillingPage() {
               maxRows={3}
               loading={standaloneLoading}
               emptyText="目前沒有單獨開立的帳單"
+              expandedKey={expandedStandaloneId}
+              renderExpanded={(r) => <BillDetailBlock detail={r.detail} />}
             />
           </Card>
         </>
@@ -222,6 +338,9 @@ export default function AdminBillingPage() {
           loadStandalone();
         }}
       />
+      <PaymentModal bill={standalonePaymentBill} onClose={() => setPaymentBillId(null)} onChanged={loadStandalone} />
+      <SettleModal bill={standaloneSettleBill} onClose={() => setSettleBillId(null)} onChanged={loadStandalone} />
+      {ConfirmDialog}
     </>
   );
 }

@@ -8,10 +8,14 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { getPaidState } from '@/lib/billingCalc';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
+import PaymentModal from '../PaymentModal';
+import SettleModal from '../SettleModal';
 
 const KIND_LABEL: Record<'CLASS' | 'TUTORING', string> = { CLASS: '圍棋班級', TUTORING: '英數個別輔導' };
 
@@ -38,6 +42,7 @@ interface Payment {
   amount: number;
   paidOn: string;
   method: 'CASH' | 'TRANSFER';
+  note: string | null;
 }
 
 interface BillRow {
@@ -47,11 +52,29 @@ interface BillRow {
   classId: string | null;
   tutoringEnrollment: { program: { name: string }; feeTier: { name: string } | null } | null;
   tutoringEnrollmentId: string | null;
+  periodStart: string;
+  periodEnd: string;
   billedSessions: number | null;
   unitPrice: number | null;
   amountDue: number;
   detail: BillDetailJson;
   payments: Payment[];
+  notifiedAt: string | null;
+  settledAsWithdrawal: boolean;
+}
+
+const PAID_STATE_CONFIG: Record<'UNPAID' | 'PARTIAL' | 'PAID', { label: string; bg: string; text: string }> = {
+  UNPAID: { label: '未繳', bg: 'bg-rejectedBg', text: 'text-rejected' },
+  PARTIAL: { label: '部分繳', bg: 'bg-pendingBg', text: 'text-pending' },
+  PAID: { label: '繳清', bg: 'bg-approvedBg', text: 'text-approved' },
+};
+
+// 跟主頁 admin/billing/page.tsx 的同名元件視覺一致——page.tsx 是 Next.js 特殊路由檔，
+// 不能 export 一般元件供這裡 import，所以跟 BatchStatusBadge 一樣各自內嵌一份。
+function PaidStateBadge({ amountDue, payments }: { amountDue: number; payments: { amount: number }[] }) {
+  const { state } = getPaidState(amountDue, payments);
+  const { label, bg, text } = PAID_STATE_CONFIG[state];
+  return <span className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${bg} ${text}`}>{label}</span>;
 }
 
 interface BatchDetail {
@@ -67,6 +90,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILL_FINALIZED: '這筆帳單已定案，無法修改',
   BATCH_FINALIZED: '這個批次已定案，無法修改',
   MISSING_PRICE: '尚有班級未設定單價，請先設定後再定案',
+  BILL_NOT_FINALIZED: '尚有帳單非已定案狀態，無法通知',
+  ALREADY_PAID: '這筆帳單已繳清，不需催繳',
 };
 
 export default function AdminBillingBatchPage({ params }: { params: { batchId: string } }) {
@@ -85,6 +110,11 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
   const [deletingBatch, setDeletingBatch] = useState(false);
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>({});
+  const [notifying, setNotifying] = useState<'selected' | 'all' | null>(null);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
+  const [paymentBillId, setPaymentBillId] = useState<string | null>(null);
+  const [settleBillId, setSettleBillId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -198,6 +228,68 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
     }
   }
 
+  async function notifyBillIds(ids: string[]): Promise<boolean> {
+    const res = await fetch('/api/admin/billing/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ billIds: ids }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(ERROR_MESSAGES[data.error] ?? '通知失敗，請稍後再試');
+      return false;
+    }
+    return true;
+  }
+
+  async function notifySelected() {
+    if (!batch) return;
+    const ids = batch.bills.filter((b) => checkedIds[b.id]).map((b) => b.id);
+    if (ids.length === 0) return;
+    if (!(await confirm(`確定要通知這 ${ids.length} 筆帳單的家長嗎？`))) return;
+    setNotifying('selected');
+    try {
+      if (await notifyBillIds(ids)) {
+        showToast('已通知');
+        setCheckedIds({});
+        await load();
+      }
+    } finally {
+      setNotifying(null);
+    }
+  }
+
+  async function notifyAllUnnotified() {
+    if (!batch) return;
+    const ids = batch.bills.filter((b) => !b.notifiedAt).map((b) => b.id);
+    if (ids.length === 0) return;
+    if (!(await confirm(`確定要通知所有 ${ids.length} 筆尚未通知的家長嗎？`))) return;
+    setNotifying('all');
+    try {
+      if (await notifyBillIds(ids)) {
+        showToast('已通知');
+        await load();
+      }
+    } finally {
+      setNotifying(null);
+    }
+  }
+
+  async function remindBill(billId: string) {
+    setRemindingId(billId);
+    try {
+      const res = await fetch(`/api/admin/billing/bills/${billId}/remind`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(ERROR_MESSAGES[data.error] ?? '催繳失敗，請稍後再試');
+        return;
+      }
+      showToast('已發送催繳通知');
+    } finally {
+      setRemindingId(null);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-inkMuted">載入中…</p>;
   }
@@ -238,16 +330,167 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
 
   if (batch.status === 'FINALIZED') {
     const totalPaid = batch.bills.reduce((s, b) => s + b.payments.reduce((p, x) => p + x.amount, 0), 0);
+    const checkedCount = batch.bills.filter((b) => checkedIds[b.id]).length;
+    const unnotifiedCount = batch.bills.filter((b) => !b.notifiedAt).length;
+    const allChecked = batch.bills.length > 0 && checkedCount === batch.bills.length;
+    const paymentBill = batch.bills.find((b) => b.id === paymentBillId) ?? null;
+    const settleTargetBill = batch.bills.find((b) => b.id === settleBillId) ?? null;
+
+    const finalizedColumns: Column<BillRow>[] = [
+      {
+        header: (
+          <input
+            type="checkbox"
+            aria-label="全選"
+            checked={allChecked}
+            onChange={() =>
+              setCheckedIds(allChecked ? {} : Object.fromEntries(batch.bills.map((b) => [b.id, true])))
+            }
+          />
+        ),
+        render: (b) => (
+          <input
+            type="checkbox"
+            checked={!!checkedIds[b.id]}
+            onChange={() => setCheckedIds((prev) => ({ ...prev, [b.id]: !prev[b.id] }))}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ),
+      },
+      { header: '學生', render: (b) => b.student.user.name, sortValue: (b) => b.student.user.name },
+      {
+        header: '班級/課程',
+        render: (b) => (batch.kind === 'CLASS' ? b.class?.name : b.tutoringEnrollment?.program.name) ?? '-',
+      },
+      {
+        header: '金額',
+        render: (b) => (
+          <span>
+            {b.amountDue.toLocaleString('en-US')} 元
+            {b.settledAsWithdrawal && <span className="ml-1 text-xs text-inkMuted">已結算（退班）</span>}
+          </span>
+        ),
+        sortValue: (b) => b.amountDue,
+      },
+      {
+        header: '已繳',
+        render: (b) => `${getPaidState(b.amountDue, b.payments).paid.toLocaleString('en-US')} 元`,
+        sortValue: (b) => getPaidState(b.amountDue, b.payments).paid,
+      },
+      {
+        header: '尚欠',
+        render: (b) => {
+          const { outstanding } = getPaidState(b.amountDue, b.payments);
+          return <span className={outstanding > 0 ? 'font-semibold text-rejected' : ''}>{outstanding.toLocaleString('en-US')} 元</span>;
+        },
+        sortValue: (b) => getPaidState(b.amountDue, b.payments).outstanding,
+      },
+      { header: '繳費狀態', render: (b) => <PaidStateBadge amountDue={b.amountDue} payments={b.payments} /> },
+      {
+        header: '通知',
+        render: (b) =>
+          b.notifiedAt ? (
+            <span className="text-ink">已通知・{formatDateWithWeekday(b.notifiedAt)}</span>
+          ) : (
+            <span className="text-inkMuted">未通知</span>
+          ),
+        sortValue: (b) => b.notifiedAt,
+      },
+      {
+        header: '操作',
+        render: (b) => {
+          const { state } = getPaidState(b.amountDue, b.payments);
+          return (
+            <div className="flex flex-wrap items-center justify-center gap-1">
+              <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(b.id)}>
+                繳款
+              </Button>
+              {state !== 'PAID' && (
+                <Button
+                  variant="secondary"
+                  className="px-2 py-1 text-xs"
+                  loading={remindingId === b.id}
+                  onClick={() => remindBill(b.id)}
+                >
+                  催繳
+                </Button>
+              )}
+              {!b.settledAsWithdrawal && (
+                <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setSettleBillId(b.id)}>
+                  結算
+                </Button>
+              )}
+              <button
+                type="button"
+                onClick={() => setExpandedBillId((prev) => (prev === b.id ? null : b.id))}
+                className="cursor-pointer text-sm font-medium text-brandDark hover:underline"
+              >
+                {expandedBillId === b.id ? '收合' : '明細'}
+              </button>
+            </div>
+          );
+        },
+      },
+    ];
+
+    const exportColumns = [
+      { header: '學生', value: (b: BillRow) => b.student.user.name },
+      { header: '班級', value: (b: BillRow) => (batch.kind === 'CLASS' ? b.class?.name : b.tutoringEnrollment?.program.name) ?? '-' },
+      { header: '區間', value: (b: BillRow) => `${formatDateWithWeekday(b.periodStart)}～${formatDateWithWeekday(b.periodEnd)}` },
+      { header: '堂數', value: (b: BillRow) => b.billedSessions ?? '-' },
+      { header: '單價', value: (b: BillRow) => b.unitPrice ?? '-' },
+      { header: '金額', value: (b: BillRow) => b.amountDue },
+      { header: '已繳', value: (b: BillRow) => getPaidState(b.amountDue, b.payments).paid },
+      { header: '尚欠', value: (b: BillRow) => getPaidState(b.amountDue, b.payments).outstanding },
+      { header: '繳費狀態', value: (b: BillRow) => PAID_STATE_CONFIG[getPaidState(b.amountDue, b.payments).state].label },
+      { header: '通知時間', value: (b: BillRow) => (b.notifiedAt ? formatDateWithWeekday(b.notifiedAt) : '未通知') },
+    ];
+
     return (
       <>
         {header}
+
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button disabled={checkedCount === 0} loading={notifying === 'selected'} onClick={notifySelected}>
+              通知勾選家長（{checkedCount}）
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={unnotifiedCount === 0}
+              loading={notifying === 'all'}
+              onClick={notifyAllUnnotified}
+            >
+              一鍵通知所有未通知（{unnotifiedCount}）
+            </Button>
+          </div>
+          <ExportExcelButton
+            rows={batch.bills}
+            columns={exportColumns}
+            filename={`收費批次_${batch.periodStart.slice(0, 10)}~${batch.periodEnd.slice(0, 10)}`}
+          />
+        </div>
+
         <Card>
-          <p className="text-sm text-ink">
-            共 {batch.bills.length} 筆帳單・總應收 {totalDue.toLocaleString('en-US')} 元・已收 {totalPaid.toLocaleString('en-US')} 元・未收{' '}
-            {(totalDue - totalPaid).toLocaleString('en-US')} 元
-          </p>
-          <p className="mt-2 text-xs text-inkMuted">已定案。收款登記／通知／催繳／結算功能即將上線。</p>
+          <DataTable
+            columns={finalizedColumns}
+            rows={batch.bills}
+            keyField={(b) => b.id}
+            expandedKey={expandedBillId}
+            renderExpanded={(b) => <BillDetailBlock detail={b.detail} />}
+            emptyText="這個批次沒有帳單"
+          />
         </Card>
+
+        <p className="mt-4 text-sm text-ink">
+          共 {batch.bills.length} 筆帳單・總應收 {totalDue.toLocaleString('en-US')} 元・已收 {totalPaid.toLocaleString('en-US')} 元・未收{' '}
+          {(totalDue - totalPaid).toLocaleString('en-US')} 元
+        </p>
+
+        <PaymentModal bill={paymentBill} onClose={() => setPaymentBillId(null)} onChanged={load} />
+        <SettleModal bill={settleTargetBill} onClose={() => setSettleBillId(null)} onChanged={load} />
+
+        {ConfirmDialog}
       </>
     );
   }
