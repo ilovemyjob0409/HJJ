@@ -5,10 +5,11 @@ import {
   sendMakeupNotFiledReminders,
   sendPendingMakeupDigest,
 } from '@/lib/services/makeupRequestService';
+import { refreshNationalHolidaysFromDGPA } from '@/lib/services/closedDayService';
 
 // 每日提醒總路由（Vercel 免費方案 cron 上限 2 個，所有每日任務併在這裡，
 // 每天台北 09:00 跑一次）。子任務彼此獨立：任一失敗記 log 後其餘照跑。
-// 四個子任務循序跑在同一次呼叫，給足執行時間避免預設逾時砍掉後段任務
+// 五個子任務循序跑在同一次呼叫，給足執行時間避免預設逾時砍掉後段任務
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
     ['makeupDayBefore', () => sendMakeupDayBeforeReminders()],
     ['makeupNotFiled', () => sendMakeupNotFiledReminders()],
     ['pendingMakeupDigest', () => sendPendingMakeupDigest()],
+    ['nationalHolidaysRefresh', () => refreshNationalHolidaysFromDGPA()],
   ];
   const results: Record<string, unknown> = {};
   for (const [name, run] of jobs) {
