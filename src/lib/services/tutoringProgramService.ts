@@ -268,6 +268,7 @@ export interface EnrollmentSummary {
   locked: number;
   upcoming: number;
   pendingOverQuota: number;
+  feeTierId: string | null;
 }
 
 export async function listEnrollments(studentId?: string): Promise<EnrollmentSummary[]> {
@@ -314,6 +315,7 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
       locked,
       upcoming,
       pendingOverQuota,
+      feeTierId: e.feeTierId,
     };
   });
 }
@@ -321,6 +323,7 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
 export interface UpdateEnrollmentInput {
   monthlyQuota?: number | null;
   active?: boolean;
+  feeTierId?: string | null;
 }
 
 export async function updateEnrollment(id: string, input: UpdateEnrollmentInput) {

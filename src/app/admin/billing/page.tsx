@@ -14,6 +14,8 @@ import BatchWizardModal from './BatchWizardModal';
 import StandaloneBillModal from './StandaloneBillModal';
 import PaymentModal from './PaymentModal';
 import SettleModal from './SettleModal';
+import ClosedDaysTab from './ClosedDaysTab';
+import SettingsTab from './SettingsTab';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 
 type TabKey = 'batches' | 'closedDays' | 'settings';
@@ -329,8 +331,8 @@ export default function AdminBillingPage() {
         </>
       )}
 
-      {tab === 'closedDays' && <Card>{/* Task 15 填入停課日維護 */}</Card>}
-      {tab === 'settings' && <Card>{/* Task 15 填入折抵上限／繳費資訊／收費級距維護 */}</Card>}
+      {tab === 'closedDays' && <ClosedDaysTab />}
+      {tab === 'settings' && <SettingsTab />}
 
       <BatchWizardModal open={wizardOpen} onClose={() => setWizardOpen(false)} />
       <StandaloneBillModal

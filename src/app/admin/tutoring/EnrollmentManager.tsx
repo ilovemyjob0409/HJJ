@@ -28,6 +28,14 @@ interface EnrollmentRow {
   active: boolean;
   locked: number;
   upcoming: number;
+  feeTierId: string | null;
+}
+
+interface FeeTierOption {
+  id: string;
+  name: string;
+  sessionsPerWeek: number;
+  monthlyFee: number;
 }
 
 interface AttendanceRecord {
@@ -56,12 +64,14 @@ export default function EnrollmentManager() {
   const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
+  const [feeTiers, setFeeTiers] = useState<FeeTierOption[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentQuery, setStudentQuery] = useState('');
   const [listSearch, setListSearch] = useState('');
   const [programId, setProgramId] = useState('');
   const [newMonthlyQuota, setNewMonthlyQuota] = useState('');
   const [quotaOverride, setQuotaOverride] = useState<Record<string, string>>({});
+  const [feeTierOverride, setFeeTierOverride] = useState<Record<string, string>>({});
   const [editingEnrollment, setEditingEnrollment] = useState<EnrollmentRow | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[] | null>(null);
   const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0); // 彈窗內預約成功後刷新出缺勤表格
@@ -70,14 +80,16 @@ export default function EnrollmentManager() {
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
-    const [enrollmentsRes, studentsRes, programsRes] = await Promise.all([
+    const [enrollmentsRes, studentsRes, programsRes, settingsRes] = await Promise.all([
       fetch('/api/tutoring-enrollments'),
       fetch('/api/students'),
       fetch('/api/tutoring-programs'),
+      fetch('/api/admin/billing/settings'),
     ]);
     setEnrollments(await enrollmentsRes.json());
     setStudents(await studentsRes.json());
     setPrograms(await programsRes.json());
+    if (settingsRes.ok) setFeeTiers((await settingsRes.json()).feeTiers);
   }
 
   useEffect(() => {
@@ -185,6 +197,22 @@ export default function EnrollmentManager() {
       return;
     }
     showToast('已更新額度');
+    load();
+  }
+
+  async function saveFeeTierOverride(row: EnrollmentRow) {
+    const raw = feeTierOverride[row.id] ?? row.feeTierId ?? '';
+    const feeTierId = raw === '' ? null : raw;
+    const res = await fetch(`/api/tutoring-enrollments/${row.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feeTierId }),
+    });
+    if (!res.ok) {
+      showToast('更新失敗，請稍後再試');
+      return;
+    }
+    showToast('已更新收費級距');
     load();
   }
 
@@ -426,6 +454,32 @@ export default function EnrollmentManager() {
                     儲存
                   </Button>
                 </div>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-inkMuted">收費級距</p>
+                <div className="flex items-center gap-1">
+                  <Select
+                    value={feeTierOverride[editingRow.id] ?? editingRow.feeTierId ?? ''}
+                    onChange={(e) => setFeeTierOverride((prev) => ({ ...prev, [editingRow.id]: e.target.value }))}
+                    className="flex-1 py-1 text-sm"
+                  >
+                    <option value="">未指定</option>
+                    {feeTiers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}・{t.monthlyFee.toLocaleString('en-US')} 元/月
+                      </option>
+                    ))}
+                  </Select>
+                  <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => saveFeeTierOverride(editingRow)}>
+                    儲存
+                  </Button>
+                </div>
+                {(() => {
+                  const selectedId = feeTierOverride[editingRow.id] ?? editingRow.feeTierId ?? '';
+                  const selectedTier = feeTiers.find((t) => t.id === selectedId);
+                  if (!selectedTier || selectedTier.sessionsPerWeek !== 1 || editingRow.monthlyQuota === 4) return null;
+                  return <p className="mt-1 text-xs text-pending">建議把月額度改成 4</p>;
+                })()}
               </div>
               <div className="mt-2 flex flex-col gap-2">
                 {editingRow.active ? (
