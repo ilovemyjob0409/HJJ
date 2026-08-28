@@ -105,6 +105,16 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
     });
   }
 
+  function selectAll() {
+    if (kind === 'CLASS') setSelectedClassIds(new Set(classes.map((c) => c.id)));
+    else setSelectedProgramIds(new Set(programs.map((p) => p.id)));
+  }
+
+  function clearAll() {
+    if (kind === 'CLASS') setSelectedClassIds(new Set());
+    else setSelectedProgramIds(new Set());
+  }
+
   function applyMonth(offsetMonths: number) {
     const { year, month } = taipeiYearMonth(offsetMonths);
     const { start, end } = monthRange(year, month);
@@ -177,9 +187,20 @@ export default function BatchWizardModal({ open, onClose }: { open: boolean; onC
 
       {step === 2 && kind && (
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium text-ink">
-            {kind === 'CLASS' ? '選擇要開單的班級' : '選擇要開單的課程'}（已選 {selectedCount} 項）
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-ink">
+              {kind === 'CLASS' ? '選擇要開單的班級' : '選擇要開單的課程'}（已選 {selectedCount} 項）
+            </p>
+            <div className="flex gap-1">
+              <button type="button" onClick={selectAll} className="cursor-pointer text-xs text-brandDark hover:underline">
+                全選
+              </button>
+              <span className="text-xs text-inkMuted">・</span>
+              <button type="button" onClick={clearAll} className="cursor-pointer text-xs text-brandDark hover:underline">
+                取消全選
+              </button>
+            </div>
+          </div>
           <div className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-lg border border-borderSubtle p-2">
             {kind === 'CLASS'
               ? classes.map((c) => (
