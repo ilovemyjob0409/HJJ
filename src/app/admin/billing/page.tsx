@@ -240,7 +240,7 @@ export default function AdminBillingPage() {
               items={[
                 { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(r.id) },
                 ...(notifyItem ? [notifyItem] : []),
-                ...(r.settledAsWithdrawal ? [] : [{ key: 'settle', label: '結算', onClick: () => setSettleBillId(r.id) }]),
+                ...(r.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(r.id) }]),
                 {
                   key: 'detail',
                   label: expandedStandaloneId === r.id ? '收合明細' : '明細',

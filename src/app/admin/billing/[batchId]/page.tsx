@@ -419,7 +419,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
               )}
               {!b.settledAsWithdrawal && (
                 <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setSettleBillId(b.id)}>
-                  結算
+                  退班結算
                 </Button>
               )}
               <Button
