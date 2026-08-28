@@ -577,7 +577,7 @@ function StudentsContent() {
         />
       </Card>
 
-      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生" maxWidthClassName="max-w-2xl">
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯學生" maxWidthClassName="max-w-4xl">
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-6">
           <div>
             <p className="mb-2 text-sm font-medium text-ink">基本資料</p>
@@ -624,6 +624,7 @@ function StudentsContent() {
                     columns={[
                       {
                         header: '班級',
+                        width: 'w-32',
                         render: (c: EnrolledRow) => (
                           <div className="text-left">
                             <div className="font-medium">{c.name}</div>
@@ -633,6 +634,7 @@ function StudentsContent() {
                       },
                       {
                         header: '總堂數',
+                        width: 'w-36',
                         render: (c: EnrolledRow) =>
                           c.rowKind === 'tutoring' ? (
                             <span className="text-xs text-inkMuted">月額度制</span>
@@ -656,6 +658,7 @@ function StudentsContent() {
                       },
                       {
                         header: '覆寫價',
+                        width: 'w-28',
                         render: (c: EnrolledRow) =>
                           c.rowKind === 'tutoring' ? (
                             <span className="text-xs text-inkMuted">—</span>
@@ -671,6 +674,7 @@ function StudentsContent() {
                       },
                       {
                         header: '已上／剩餘',
+                        width: 'w-32',
                         render: (c: EnrolledRow) => {
                           if (c.rowKind === 'tutoring') return <span className="text-xs text-inkMuted">—</span>;
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
@@ -699,6 +703,7 @@ function StudentsContent() {
                             </HintButton>
                           </span>
                         ),
+                        width: 'w-20',
                         render: (c: EnrolledRow) => {
                           if (c.rowKind === 'tutoring') return <span className="text-xs text-inkMuted">—</span>;
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
@@ -727,6 +732,7 @@ function StudentsContent() {
                             </HintButton>
                           </span>
                         ),
+                        width: 'w-20',
                         render: (c: EnrolledRow) => {
                           if (c.rowKind === 'tutoring') return <span className="text-xs text-inkMuted">—</span>;
                           const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
@@ -744,6 +750,7 @@ function StudentsContent() {
                       },
                       {
                         header: '',
+                        width: 'w-20',
                         render: (c: EnrolledRow) =>
                           c.rowKind === 'tutoring' ? (
                             <Link
