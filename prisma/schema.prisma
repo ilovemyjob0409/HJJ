@@ -140,6 +140,7 @@ model Student {
   goHallSeasonPasses       GoHallSeasonPass[]
   activityAttendances      ActivityAttendance[]
   tutoringEnrollments      TutoringEnrollment[]
+  bills                    Bill[]
 }
 
 model Class {
@@ -158,6 +159,8 @@ model Class {
   substituteReqs   SubstituteRequest[]
   insertionTargets MakeupRequest[]     @relation("TargetClass")
   attendances      ClassAttendance[]
+  feePerSession    Int? // 每堂單價（收費模組）
+  bills            Bill[]
 }
 
 model ClassEnrollment {
@@ -169,6 +172,7 @@ model ClassEnrollment {
   totalSessions      Int?
   lowQuotaNotifiedAt DateTime?
   periods            EnrollmentPeriod[]
+  feeOverride        Int? // 學生覆寫價；null=用班級價
 
   @@unique([studentId, classId])
 }
@@ -484,6 +488,9 @@ model TutoringEnrollment {
   lastQuotaReminderMonth String? // "2026-08"，月中提醒防重複
   bookings               TutoringBooking[]
   quotaChanges           TutoringQuotaChange[]
+  feeTierId              String?
+  feeTier                TutoringFeeTier?      @relation(fields: [feeTierId], references: [id])
+  bills                  Bill[]
 
   @@unique([programId, studentId])
   @@index([studentId])
@@ -619,4 +626,109 @@ model Notification {
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
+}
+
+enum ClosedDaySource {
+  NATIONAL
+  CUSTOM
+}
+
+// 停課日曆：這張表是唯一來源。預載國定假日=source NATIONAL 的列；
+// 刪除某列=該天照常上課；新增 CUSTOM 列=自訂停課（颱風假）。
+model ClosedDay {
+  id     String          @id @default(cuid())
+  date   DateTime        @unique // UTC 日曆日
+  name   String
+  source ClosedDaySource @default(CUSTOM)
+}
+
+model TutoringFeeTier {
+  id              String               @id @default(cuid())
+  name            String
+  sessionsPerWeek Int
+  monthlyFee      Int
+  sortOrder       Int                  @default(0)
+  enrollments     TutoringEnrollment[]
+}
+
+// 單列設定（id 固定 "main"）
+model BillingSetting {
+  id           String @id @default("main")
+  deductionCap Int    @default(2) // 上期剩餘折抵上限（堂）
+  paymentInfo  String @default("") // 學生端繳費資訊卡文字（銀行帳戶等）
+}
+
+enum BillingKind {
+  CLASS
+  TUTORING
+}
+
+enum BillingBatchStatus {
+  DRAFT
+  FINALIZED
+}
+
+model BillingBatch {
+  id          String             @id @default(cuid())
+  kind        BillingKind
+  periodStart DateTime // UTC 日曆日
+  periodEnd   DateTime
+  status      BillingBatchStatus @default(DRAFT)
+  finalizedAt DateTime?
+  createdAt   DateTime           @default(now())
+  bills       Bill[]
+}
+
+enum BillStatus {
+  DRAFT
+  FINALIZED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+}
+
+model Bill {
+  id                   String              @id @default(cuid())
+  batchId              String?
+  batch                BillingBatch?       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  studentId            String
+  student              Student             @relation(fields: [studentId], references: [id])
+  classId              String?
+  class                Class?              @relation(fields: [classId], references: [id])
+  tutoringEnrollmentId String?
+  tutoringEnrollment   TutoringEnrollment? @relation(fields: [tutoringEnrollmentId], references: [id])
+  periodStart          DateTime
+  periodEnd            DateTime
+  sessionsTotal        Int? // 班級：區間堂數（扣假日後）
+  deductedSessions     Int                 @default(0)
+  billedSessions       Int? // 班級：計費堂數
+  unitPrice            Int? // 班級帳單
+  monthlyFee           Int? // 個別輔導帳單
+  prorationRatio       Float? // 個別輔導折算比例（1=全額）
+  amountDue            Int
+  detail               Json // 定案凍結的明細快照，見 billingCalcService BillDetail
+  status               BillStatus          @default(DRAFT)
+  settledAsWithdrawal  Boolean             @default(false)
+  notifiedAt           DateTime?
+  note                 String?
+  createdAt            DateTime            @default(now())
+  payments             BillPayment[]
+
+  @@index([studentId, periodStart])
+  @@index([classId, periodStart])
+  @@index([tutoringEnrollmentId, periodStart])
+}
+
+model BillPayment {
+  id          String        @id @default(cuid())
+  billId      String
+  bill        Bill          @relation(fields: [billId], references: [id], onDelete: Cascade)
+  amount      Int
+  paidOn      DateTime // UTC 日曆日
+  method      PaymentMethod
+  note        String?
+  createdById String
+  createdAt   DateTime      @default(now())
 }
