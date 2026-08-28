@@ -71,9 +71,10 @@ export async function previewStandaloneClassBill(input: {
   ]);
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
+  const netFormula = discounts.length > 0 ? `＝ ${netAmountDue.toLocaleString('en-US')} 元` : undefined;
   const detail = core.unitPrice === null
     ? { sessionDates: core.entries, deduction: null, discounts, formula: '（請先設定班級單價）' }
-    : { ...buildClassBillDetail(core.entries, core.deduction, core.billed, core.unitPrice), discounts };
+    : { ...buildClassBillDetail(core.entries, core.deduction, core.billed, core.unitPrice), discounts, ...(netFormula ? { netFormula } : {}) };
   return {
     sessionsTotal: core.open,
     deductedSessions: core.deducted,
@@ -98,18 +99,35 @@ export async function createStandaloneClassBill(input: {
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
 
-  // amountDue 由呼叫端傳入（行政可能微調過）；detail 重算但 formula 以傳入值為準，
-  // 與試算（已扣優惠）算出的值不同時附註「（手動調整）」。
+  // amountDue 由呼叫端傳入（行政可能微調過），與試算（已扣優惠）算出的值不同時
+  // 附註「（手動調整）」。formula 只顯示未扣優惠的毛額算式（billedSessions ×
+  // unitPrice）——絕對不能把 input.amountDue 塞進乘法算式的「＝」，那樣有優惠項目
+  // 時算式會自相矛盾（例如 3 堂 × 500 卻寫著已經扣過優惠的金額）；有優惠項目時
+  // 額外算一行 netFormula 顯示扣完的最終金額，手動調整標記跟著挪到那一行。
   const adjusted = input.billedSessions !== core.billed || input.amountDue !== netAmountDue;
-  const amount = input.amountDue.toLocaleString('en-US');
-  const baseFormula = core.deduction
-    ? `${core.open} − ${core.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${amount} 元`
-    : `${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${amount} 元`;
+  const grossAmount = input.billedSessions * core.unitPrice;
+  let formula: string;
+  let netFormula: string | undefined;
+  if (discounts.length === 0) {
+    const amount = input.amountDue.toLocaleString('en-US');
+    const baseFormula = core.deduction
+      ? `${core.open} − ${core.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${amount} 元`
+      : `${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${amount} 元`;
+    formula = adjusted ? `${baseFormula}（手動調整）` : baseFormula;
+  } else {
+    const grossStr = grossAmount.toLocaleString('en-US');
+    formula = core.deduction
+      ? `${core.open} − ${core.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${grossStr} 元`
+      : `${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${grossStr} 元`;
+    const finalStr = input.amountDue.toLocaleString('en-US');
+    netFormula = `＝ ${finalStr} 元${adjusted ? '（手動調整）' : ''}`;
+  }
   const detail = {
     sessionDates: core.entries,
     deduction: core.deduction,
     discounts,
-    formula: adjusted ? `${baseFormula}（手動調整）` : baseFormula,
+    ...(netFormula ? { netFormula } : {}),
+    formula,
   } as unknown as Prisma.InputJsonValue;
 
   const bill = await prisma.bill.create({
@@ -177,16 +195,25 @@ export async function createStandaloneTutoringBill(input: {
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netExpected = Math.max(0, grossAmountDue - discountTotal);
   const adjusted = input.amountDue !== netExpected;
-  const amount = input.amountDue.toLocaleString('en-US');
   const ratioText = prorationRatio < 1 ? `（折算 ${Math.round(prorationRatio * 100)}%）` : '';
-  const formula = `月費（${enrollment.feeTier.name}）${ratioText} ＝ ${amount} 元${adjusted ? '（手動調整）' : ''}`;
+  let formula: string;
+  let netFormula: string | undefined;
+  if (discounts.length === 0) {
+    const amount = input.amountDue.toLocaleString('en-US');
+    formula = `月費（${enrollment.feeTier.name}）${ratioText} ＝ ${amount} 元${adjusted ? '（手動調整）' : ''}`;
+  } else {
+    const grossStr = grossAmountDue.toLocaleString('en-US');
+    formula = `月費（${enrollment.feeTier.name}）${ratioText} ＝ ${grossStr} 元`;
+    const finalStr = input.amountDue.toLocaleString('en-US');
+    netFormula = `＝ ${finalStr} 元${adjusted ? '（手動調整）' : ''}`;
+  }
 
   const bill = await prisma.bill.create({
     data: {
       batchId: null, studentId: enrollment.studentId, tutoringEnrollmentId: input.enrollmentId,
       periodStart: input.periodStart, periodEnd: input.periodEnd,
       monthlyFee: enrollment.feeTier.monthlyFee, prorationRatio, amountDue: input.amountDue,
-      detail: { sessionDates: [], deduction: null, discounts, formula },
+      detail: { sessionDates: [], deduction: null, discounts, ...(netFormula ? { netFormula } : {}), formula },
       status: 'FINALIZED', note: input.note,
     },
   });

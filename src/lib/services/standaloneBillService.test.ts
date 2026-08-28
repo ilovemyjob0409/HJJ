@@ -49,6 +49,11 @@ describe('standalone class bill', () => {
     // 4 堂 × 500 = 2000，扣 500 優惠 = 1500
     expect(preview.amountDue).toBe(1500);
     expect(preview.detail.discounts).toEqual([{ name: '台積電特約', amount: 500 }]);
+    // formula 只顯示未扣優惠的毛額（4 堂 × 500 ＝ 2000 元），不能把已扣優惠的淨額塞進乘法算式；
+    // 淨額另外用 netFormula 顯示，避免算式自相矛盾（迴歸測試：曾經錯寫成「4 堂 × 500 ＝ 1500 元」）。
+    expect(preview.detail.formula).toContain('4 堂 × 500 ＝ 2,000 元');
+    expect(preview.detail.formula).not.toContain('1,500');
+    expect(preview.detail.netFormula).toBe('＝ 1,500 元');
 
     const { billId } = await createStandaloneClassBill({
       studentId: student.id, classId: cls.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30),
@@ -56,9 +61,11 @@ describe('standalone class bill', () => {
     });
     const bill = await prisma.bill.findUniqueOrThrow({ where: { id: billId } });
     expect(bill.amountDue).toBe(1500);
-    const detail = bill.detail as { discounts: { name: string; amount: number }[]; formula: string };
+    const detail = bill.detail as { discounts: { name: string; amount: number }[]; formula: string; netFormula?: string };
     expect(detail.discounts).toEqual([{ name: '台積電特約', amount: 500 }]);
-    expect(detail.formula).not.toContain('手動調整'); // 1500 剛好等於試算算出的淨額，不算手動調整
+    expect(detail.formula).toContain('4 堂 × 500 ＝ 2,000 元');
+    expect(detail.formula).not.toContain('1,500');
+    expect(detail.netFormula).toBe('＝ 1,500 元'); // 1500 剛好等於試算算出的淨額，不算手動調整
 
     // 優惠金額大於原始金額時，不會變成負數帳單
     const bigDiscount = await createDiscountItem({ name: '全額招待', amount: 9999 });
@@ -105,7 +112,11 @@ describe('standalone tutoring bill', () => {
     });
     const bill = await prisma.bill.findUniqueOrThrow({ where: { id: billId } });
     expect(bill.amountDue).toBe(2700);
-    const detail = bill.detail as { discounts: { name: string; amount: number }[] };
+    const detail = bill.detail as { discounts: { name: string; amount: number }[]; formula: string; netFormula?: string };
     expect(detail.discounts).toEqual([{ name: '友達特約', amount: 300 }]);
+    // formula 顯示未扣優惠的月費毛額（3000），淨額另外用 netFormula 顯示 2700。
+    expect(detail.formula).toContain('3,000 元');
+    expect(detail.formula).not.toContain('2,700');
+    expect(detail.netFormula).toBe('＝ 2,700 元');
   });
 });

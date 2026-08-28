@@ -7,6 +7,10 @@ export interface BillDetailJson {
   deduction: { previousRemaining: number; cap: number; deducted: number } | null;
   discounts?: { name: string; amount: number }[];
   formula: string;
+  // 有優惠項目時才會有值——formula 只顯示未扣優惠的毛額算式，netFormula 是扣完優
+  // 惠項目後的最終金額（含「（手動調整）」標記），避免 formula 自身的乘法算不出
+  // 它宣稱的「＝」結果（例如 3 堂 × 500 卻寫著已經扣過優惠的金額）。
+  netFormula?: string;
 }
 
 export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) {
@@ -35,16 +39,17 @@ export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) 
           堂，其餘 {detail.deduction.previousRemaining - detail.deduction.deducted} 堂保留至本期繼續使用
         </p>
       )}
+      <p className="font-bold text-ink">{detail.formula}</p>
       {detail.discounts && detail.discounts.length > 0 && (
-        <div className="mb-1 border-t border-borderSubtle pt-2">
+        <div className="mt-1">
           {detail.discounts.map((d, i) => (
             <p key={i} className="text-rejected">
               － {d.name} {d.amount.toLocaleString('en-US')} 元
             </p>
           ))}
+          {detail.netFormula && <p className="mt-1 font-bold text-ink">{detail.netFormula}</p>}
         </div>
       )}
-      <p className="font-bold text-ink">{detail.formula}</p>
     </div>
   );
 }
