@@ -37,6 +37,13 @@ async function resolveDiscounts(discountItemIds?: string[]): Promise<{ name: str
   return items.map((i) => ({ name: i.name, amount: i.amount }));
 }
 
+// 單行完整算式：毛額 － 優惠項目1 － 優惠項目2 ＝ 最終金額（手動調整）。只在有優
+// 惠項目時呼叫；finalAmount 用實際寫進 Bill.amountDue 的值（可能經行政手動調整過）。
+function buildNetFormula(grossAmount: number, discounts: { name: string; amount: number }[], finalAmount: number, adjusted: boolean): string {
+  const discountText = discounts.map((d) => `－ ${d.name} ${d.amount.toLocaleString('en-US')} 元`).join(' ');
+  return `${grossAmount.toLocaleString('en-US')} 元 ${discountText} ＝ ${finalAmount.toLocaleString('en-US')} 元${adjusted ? '（手動調整）' : ''}`;
+}
+
 type Deduction = { previousRemaining: number; cap: number; deducted: number } | null;
 
 // 單一 (studentId, classId) 版的 createClassBatch 迴圈內邏輯：同一批 import、同一段
@@ -71,7 +78,7 @@ export async function previewStandaloneClassBill(input: {
   ]);
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
-  const netFormula = discounts.length > 0 ? `＝ ${netAmountDue.toLocaleString('en-US')} 元` : undefined;
+  const netFormula = discounts.length > 0 ? buildNetFormula(core.amountDue, discounts, netAmountDue, false) : undefined;
   const detail = core.unitPrice === null
     ? { sessionDates: core.entries, deduction: null, discounts, formula: '（請先設定班級單價）' }
     : { ...buildClassBillDetail(core.entries, core.deduction, core.billed, core.unitPrice), discounts, ...(netFormula ? { netFormula } : {}) };
@@ -119,8 +126,7 @@ export async function createStandaloneClassBill(input: {
     formula = core.deduction
       ? `${core.open} − ${core.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${grossStr} 元`
       : `${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${grossStr} 元`;
-    const finalStr = input.amountDue.toLocaleString('en-US');
-    netFormula = `＝ ${finalStr} 元${adjusted ? '（手動調整）' : ''}`;
+    netFormula = buildNetFormula(grossAmount, discounts, input.amountDue, adjusted);
   }
   const detail = {
     sessionDates: core.entries,
@@ -202,10 +208,8 @@ export async function createStandaloneTutoringBill(input: {
     const amount = input.amountDue.toLocaleString('en-US');
     formula = `月費（${enrollment.feeTier.name}）${ratioText} ＝ ${amount} 元${adjusted ? '（手動調整）' : ''}`;
   } else {
-    const grossStr = grossAmountDue.toLocaleString('en-US');
-    formula = `月費（${enrollment.feeTier.name}）${ratioText} ＝ ${grossStr} 元`;
-    const finalStr = input.amountDue.toLocaleString('en-US');
-    netFormula = `＝ ${finalStr} 元${adjusted ? '（手動調整）' : ''}`;
+    formula = `月費（${enrollment.feeTier.name}）${ratioText} ＝ ${grossAmountDue.toLocaleString('en-US')} 元`;
+    netFormula = buildNetFormula(grossAmountDue, discounts, input.amountDue, adjusted);
   }
 
   const bill = await prisma.bill.create({

@@ -50,10 +50,10 @@ describe('standalone class bill', () => {
     expect(preview.amountDue).toBe(1500);
     expect(preview.detail.discounts).toEqual([{ name: '台積電特約', amount: 500 }]);
     // formula 只顯示未扣優惠的毛額（4 堂 × 500 ＝ 2000 元），不能把已扣優惠的淨額塞進乘法算式；
-    // 淨額另外用 netFormula 顯示，避免算式自相矛盾（迴歸測試：曾經錯寫成「4 堂 × 500 ＝ 1500 元」）。
+    // netFormula 是「毛額－優惠項目＝淨額」單行完整算式（迴歸測試：曾經錯寫成「4 堂 × 500 ＝ 1500 元」）。
     expect(preview.detail.formula).toContain('4 堂 × 500 ＝ 2,000 元');
     expect(preview.detail.formula).not.toContain('1,500');
-    expect(preview.detail.netFormula).toBe('＝ 1,500 元');
+    expect(preview.detail.netFormula).toBe('2,000 元 － 台積電特約 500 元 ＝ 1,500 元');
 
     const { billId } = await createStandaloneClassBill({
       studentId: student.id, classId: cls.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30),
@@ -65,7 +65,7 @@ describe('standalone class bill', () => {
     expect(detail.discounts).toEqual([{ name: '台積電特約', amount: 500 }]);
     expect(detail.formula).toContain('4 堂 × 500 ＝ 2,000 元');
     expect(detail.formula).not.toContain('1,500');
-    expect(detail.netFormula).toBe('＝ 1,500 元'); // 1500 剛好等於試算算出的淨額，不算手動調整
+    expect(detail.netFormula).toBe('2,000 元 － 台積電特約 500 元 ＝ 1,500 元'); // 1500 等於試算算出的淨額，不算手動調整
 
     // 優惠金額大於原始金額時，不會變成負數帳單
     const bigDiscount = await createDiscountItem({ name: '全額招待', amount: 9999 });
@@ -114,9 +114,9 @@ describe('standalone tutoring bill', () => {
     expect(bill.amountDue).toBe(2700);
     const detail = bill.detail as { discounts: { name: string; amount: number }[]; formula: string; netFormula?: string };
     expect(detail.discounts).toEqual([{ name: '友達特約', amount: 300 }]);
-    // formula 顯示未扣優惠的月費毛額（3000），淨額另外用 netFormula 顯示 2700。
+    // formula 顯示未扣優惠的月費毛額（3000），netFormula 是「3000－友達特約300＝2700」單行完整算式。
     expect(detail.formula).toContain('3,000 元');
     expect(detail.formula).not.toContain('2,700');
-    expect(detail.netFormula).toBe('＝ 2,700 元');
+    expect(detail.netFormula).toBe('3,000 元 － 友達特約 300 元 ＝ 2,700 元');
   });
 });
