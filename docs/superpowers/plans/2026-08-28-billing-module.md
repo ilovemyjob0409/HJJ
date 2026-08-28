@@ -1976,3 +1976,214 @@ git commit -m "feat: 學生端繳費頁（繳費資訊卡/待繳明細/繳費紀
 git add -A docs/superpowers/2026-08-28-billing-module-production.sql
 git commit -m "chore: 收費模組整合驗證＋正式站 SQL 定稿"
 ```
+
+---
+
+### Task 18: 國定假日自動更新機制（DGPA 官方資料每日檢查）
+
+> 使用者 2026-08-28 要求：Task 2 手動寫死的 NATIONAL_HOLIDAYS 陣列人工核對過 2026/2027，但無法涵蓋未來年度。這裡加一個每日自動檢查機制，向人事行政總處（DGPA）官方開放資料抓取，避免每年都要手動更新程式碼。
+
+**Files:**
+- Modify: `src/lib/services/closedDayService.ts`（加 `refreshNationalHolidaysFromDGPA`）
+- Create: `src/lib/services/closedDayService.dgpa.test.ts`（獨立測試檔，隔離會打外部網路的測試——不跟其他不連網的單元測試混在同一檔，方便日後單獨排除／重跑）
+- Modify: `src/app/api/cron/daily-reminders/route.ts`（掛進既有 jobs 清單，不開新 cron——Vercel 免費方案 cron 數量上限 2 個已用滿，見 `vercel.json`）
+
+**背景（DGPA 開放資料格式，2026-08-28 人工查證）**：
+- 資料集：`https://data.gov.tw/api/v2/rest/dataset/14718`（政府資料開放平台，JSON API，穩定網址，回傳當前所有年度資源的中繼資料，含每份 CSV 的實際下載網址——下載網址本身含隨機 UUID，不可預測，必須先打這支 API 查出來）。
+- 每個資源物件的 `name` 欄位形如「116年中華民國政府行政機關辦公日曆表」（標準版）或「116年中華民國政府行政機關辦公日曆表_Google行事曆專用」（要排除的版本）；`resource_format` 或副檔名為 CSV；下載網址欄位在 API 回傳的 JSON 裡（實際 key 名稱需執行時親自查看該 API 回應結構，不要用臆測的 key 名稱硬寫死）。
+- CSV 格式：欄位「西元日期,星期,是否放假,備註」，日期格式 `YYYYMMDD`（無分隔符）。近年（115/116年，即 2026/2027）的檔案是 **UTF-8 with BOM**；較舊年度（114年/2025 以前）可能是 **Big5**——這個任務**只需要正確處理 UTF-8-with-BOM**（未來年度預期延續近年格式），Big5 不必支援：解碼後若表頭第一格不是「西元日期」（代表編碼不對或格式跳號），視為解析失敗，記 log 略過、不拋錯，等下次排程再試。
+- 篩選規則：只取 `是否放假 === "2"` 且 `備註` 非空的列（這樣會排除純粹週六週日的例假日，只留下有名稱的真正國定假日／補假——跟 Task 2 現有種子資料的篩選邏輯完全一致）。
+
+**Interfaces:**
+- Consumes: `prisma`（`@/lib/db`）、`fetch`（Node 18+/26 全域內建，不需額外套件）。
+- Produces：
+  - `interface DgpaHolidayRow { date: Date; name: string }`
+  - `parseDgpaCsv(csvText: string): DgpaHolidayRow[]`（純函式，方便單獨測試解析邏輯，不含網路呼叫；輸入是已經去除 BOM 的 UTF-8 字串；日期用 `Date.UTC` 建構，不用本地建構子）
+  - `fetchDgpaResourceUrl(rocYear: number): Promise<string | null>`（打 dataset API，找出該民國年「標準版」CSV 網址；找不到該年度資源時回傳 `null`，不拋錯）
+  - `refreshNationalHolidaysFromDGPA(now: Date = new Date()): Promise<{ year: number; inserted: number }[]>`——對「今年」與「明年」（台北曆年，`taipeiDateKey` 換算）各自檢查：若該年**已有任何** `source: 'NATIONAL'` 的 `ClosedDay` 列，跳過（代表已經種過，不管理員後續有沒有手動刪掉某幾筆，都不再重新整批處理，避免蓋掉管理員「這天照常上課」的手動覆寫）；若該年還沒有任何 NATIONAL 列，才呼叫 `fetchDgpaResourceUrl`＋抓 CSV＋`parseDgpaCsv`＋`createMany({ skipDuplicates: true, data: rows.map(r => ({ date: r.date, name: r.name, source: 'NATIONAL' })) })`。回傳每個實際處理過（不管有沒有抓到資料）的年度及插入筆數；若該年資源尚未公告（`fetchDgpaResourceUrl` 回 `null`）或解析失敗，該年度**不放進回傳陣列**（代表「這次沒動作」，不算錯誤）。
+
+**民國年／西元年換算**：民國年 = 西元年 − 1911（例如西元 2027 年 = 民國 116 年）。
+
+- [ ] **Step 1: 寫失敗測試 `src/lib/services/closedDayService.dgpa.test.ts`**
+
+```ts
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { prisma } from '@/lib/db';
+import { parseDgpaCsv, refreshNationalHolidaysFromDGPA } from './closedDayService';
+
+const SAMPLE_CSV = `西元日期,星期,是否放假,備註
+20270101,五,2,開國紀念日
+20270102,六,2,
+20270103,日,2,
+20270928,二,2,孔子誕辰紀念日/教師節
+`;
+
+describe('parseDgpaCsv', () => {
+  it('keeps only rows with a real holiday name, skipping plain weekends', () => {
+    const rows = parseDgpaCsv(SAMPLE_CSV);
+    expect(rows).toEqual([
+      { date: new Date(Date.UTC(2027, 0, 1)), name: '開國紀念日' },
+      { date: new Date(Date.UTC(2027, 8, 28)), name: '孔子誕辰紀念日/教師節' },
+    ]);
+  });
+
+  it('returns empty array for malformed header (wrong encoding guard)', () => {
+    expect(parseDgpaCsv('garbled,header\n1,2')).toEqual([]);
+  });
+});
+
+describe('refreshNationalHolidaysFromDGPA', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('fetches and inserts when the year has no NATIONAL rows yet', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('rest/dataset')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result: {
+              resources: [
+                { name: '116年中華民國政府行政機關辦公日曆表', Format: 'CSV', url: 'https://example.test/116.csv' },
+                { name: '116年中華民國政府行政機關辦公日曆表_Google行事曆專用', Format: 'CSV', url: 'https://example.test/116-google.csv' },
+              ],
+            },
+          }),
+        };
+      }
+      return { ok: true, text: async () => '﻿' + SAMPLE_CSV };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await refreshNationalHolidaysFromDGPA(new Date(Date.UTC(2026, 11, 31)));
+    // 今年（2026 台北曆）已被 Task 2 種過，跳過；明年（2027）沒種過，抓取
+    const entry2027 = result.find((r) => r.year === 2027);
+    expect(entry2027).toMatchObject({ year: 2027, inserted: 2 });
+
+    const rows = await prisma.closedDay.findMany({ where: { date: { gte: new Date(Date.UTC(2027, 0, 1)) } } });
+    expect(rows.some((r) => r.name === '開國紀念日')).toBe(true);
+  });
+
+  it('skips a year that already has NATIONAL rows, without calling fetch', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    // 2026 已由 Task 2 seedNationalHolidays() 種過（本檔測試共用整合測試 DB，
+    // beforeEach 由 vitest 全域 setup 的 resetDb 清過，這裡改用單獨插入一筆代替跑整個 Task 2 種子）
+    await prisma.closedDay.create({ data: { date: new Date(Date.UTC(2026, 8, 25)), name: '中秋節', source: 'NATIONAL' } });
+
+    const result = await refreshNationalHolidaysFromDGPA(new Date(Date.UTC(2026, 5, 1)));
+    expect(result.find((r) => r.year === 2026)).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when the target year resource is not published yet', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ result: { resources: [] } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await refreshNationalHolidaysFromDGPA(new Date(Date.UTC(2026, 5, 1)));
+    expect(result).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: 跑測試確認失敗**
+
+Run: `npx vitest run src/lib/services/closedDayService.dgpa.test.ts --testTimeout=30000 --hookTimeout=60000`
+Expected: FAIL（`parseDgpaCsv`/`refreshNationalHolidaysFromDGPA` 不存在）。
+
+- [ ] **Step 3: 實作**（加進 `src/lib/services/closedDayService.ts`）
+
+```ts
+import { taipeiDateKey } from './tutoringBookingService';
+
+export interface DgpaHolidayRow {
+  date: Date;
+  name: string;
+}
+
+// 只信任「西元日期,星期,是否放假,備註」表頭；表頭對不上代表編碼錯誤或
+// 格式改版，直接回空陣列讓呼叫端略過，不要憑錯誤資料寫進資料庫。
+export function parseDgpaCsv(csvText: string): DgpaHolidayRow[] {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0 || !lines[0].startsWith('西元日期')) return [];
+  const rows: DgpaHolidayRow[] = [];
+  for (const line of lines.slice(1)) {
+    const [dateStr, , isHoliday, name] = line.split(',');
+    if (isHoliday !== '2' || !name || !name.trim()) continue;
+    const y = Number(dateStr.slice(0, 4));
+    const m = Number(dateStr.slice(4, 6));
+    const d = Number(dateStr.slice(6, 8));
+    rows.push({ date: new Date(Date.UTC(y, m - 1, d)), name: name.trim() });
+  }
+  return rows;
+}
+
+// 民國年 = 西元年 - 1911。只找「標準版」（排除 Google 行事曆專用版）。
+export async function fetchDgpaResourceUrl(rocYear: number): Promise<string | null> {
+  const res = await fetch('https://data.gov.tw/api/v2/rest/dataset/14718');
+  if (!res.ok) return null;
+  const data = await res.json();
+  const resources: { name?: string; url?: string; Format?: string }[] = data?.result?.resources ?? [];
+  const match = resources.find(
+    (r) => r.name?.includes(`${rocYear}年`) && r.name?.includes('辦公日曆表') && !r.name?.includes('Google') && r.Format === 'CSV'
+  );
+  return match?.url ?? null;
+}
+
+async function refreshYearIfMissing(year: number): Promise<{ year: number; inserted: number } | null> {
+  const existing = await prisma.closedDay.count({
+    where: { source: 'NATIONAL', date: { gte: new Date(Date.UTC(year, 0, 1)), lte: new Date(Date.UTC(year, 11, 31)) } },
+  });
+  if (existing > 0) return null;
+
+  const rocYear = year - 1911;
+  const url = await fetchDgpaResourceUrl(rocYear);
+  if (!url) return null;
+
+  const csvRes = await fetch(url);
+  if (!csvRes.ok) return null;
+  const rawText = await csvRes.text();
+  const text = rawText.startsWith('﻿') ? rawText.slice(1) : rawText;
+  const rows = parseDgpaCsv(text);
+  if (rows.length === 0) return null;
+
+  const result = await prisma.closedDay.createMany({
+    data: rows.map((r) => ({ date: r.date, name: r.name, source: 'NATIONAL' as const })),
+    skipDuplicates: true,
+  });
+  return { year, inserted: result.count };
+}
+
+// 每日排程呼叫：檢查「今年／明年」（台北曆年）是否已有國定假日資料，
+// 沒有才去抓——政府行事曆通常年中就會公告下一年度，這樣一發布就近日內
+// 自動補上，不用死等到 1/1；已種過的年度即使被管理員手動刪掉幾筆
+// （標記某天照常上課）也不會被整批覆蓋回去。
+export async function refreshNationalHolidaysFromDGPA(now: Date = new Date()): Promise<{ year: number; inserted: number }[]> {
+  const [y] = taipeiDateKey(now).split('-').map(Number);
+  const results = await Promise.all([refreshYearIfMissing(y), refreshYearIfMissing(y + 1)]);
+  return results.filter((r): r is { year: number; inserted: number } => r !== null);
+}
+```
+
+- [ ] **Step 4: 跑測試確認通過**
+
+Run: `npx vitest run src/lib/services/closedDayService.dgpa.test.ts --testTimeout=30000 --hookTimeout=60000`
+Expected: PASS。
+
+- [ ] **Step 5: 掛進既有每日 cron**——修改 `src/app/api/cron/daily-reminders/route.ts`：import `refreshNationalHolidaysFromDGPA`，在 `jobs` 陣列加一筆 `['nationalHolidaysRefresh', () => refreshNationalHolidaysFromDGPA()]`（沿用既有的逐一 try/catch 隔離失敗的模式，不用另外處理）。
+
+- [ ] **Step 6: 驗證**
+
+Run: `npx tsc --noEmit && npx eslint src/lib/services/closedDayService.ts src/lib/services/closedDayService.dgpa.test.ts src/app/api/cron/daily-reminders/route.ts`
+Expected: 乾淨。
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/lib/services/closedDayService.ts src/lib/services/closedDayService.dgpa.test.ts src/app/api/cron/daily-reminders/route.ts
+git commit -m "feat: 國定假日每日自動檢查更新（DGPA 官方開放資料，掛進既有每日 cron）"
+```
