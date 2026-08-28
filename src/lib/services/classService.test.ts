@@ -798,9 +798,9 @@ describe('listStudentEnrolledClasses 批次堂數＝逐班 getClassEnrollmentQuo
       expect(row.quota).toEqual(ref);
     }
     const a = mine.find((r) => r.id === clsA.id)!;
-    expect(a.quota).toEqual({ totalSessions: 10, usedSessions: 2, remaining: 8 });
+    expect(a.quota).toEqual({ totalSessions: 10, usedSessions: 2, remaining: 8, feeOverride: null });
     const b = mine.find((r) => r.id === clsB.id)!;
-    expect(b.quota).toEqual({ totalSessions: null, usedSessions: 1, remaining: null });
+    expect(b.quota).toEqual({ totalSessions: null, usedSessions: 1, remaining: null, feeOverride: null });
   });
 });
 

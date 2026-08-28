@@ -391,7 +391,7 @@ export async function listStudentEnrolledClasses(studentId: string) {
   const [enrollments, usedCounts] = await Promise.all([
     prisma.classEnrollment.findMany({
       where: { studentId, classId: { in: classIds } },
-      select: { classId: true, totalSessions: true },
+      select: { classId: true, totalSessions: true, feeOverride: true },
     }),
     prisma.classAttendance.groupBy({
       by: ['classId'],
@@ -400,13 +400,19 @@ export async function listStudentEnrolledClasses(studentId: string) {
     }),
   ]);
   const totalByClass = new Map(enrollments.map((e) => [e.classId, e.totalSessions]));
+  const feeOverrideByClass = new Map(enrollments.map((e) => [e.classId, e.feeOverride]));
   const usedByClass = new Map(usedCounts.map((g) => [g.classId, g._count._all]));
   return classes.map((c) => {
     const totalSessions = totalByClass.get(c.id) ?? null;
     const usedSessions = usedByClass.get(c.id) ?? 0;
     return {
       ...c,
-      quota: { totalSessions, usedSessions, remaining: totalSessions === null ? null : totalSessions - usedSessions },
+      quota: {
+        totalSessions,
+        usedSessions,
+        remaining: totalSessions === null ? null : totalSessions - usedSessions,
+        feeOverride: feeOverrideByClass.get(c.id) ?? null,
+      },
     };
   });
 }

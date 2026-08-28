@@ -133,6 +133,7 @@ export interface ClassAttendanceQuota {
   totalSessions: number | null;
   usedSessions: number;
   remaining: number | null;
+  feeOverride: number | null;
 }
 
 export async function getClassEnrollmentQuota(classId: string, studentId: string): Promise<ClassAttendanceQuota> {
@@ -146,6 +147,7 @@ export async function getClassEnrollmentQuota(classId: string, studentId: string
     totalSessions,
     usedSessions,
     remaining: totalSessions === null ? null : totalSessions - usedSessions,
+    feeOverride: enrollment.feeOverride,
   };
 }
 
