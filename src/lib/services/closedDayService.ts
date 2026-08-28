@@ -77,7 +77,10 @@ export interface DgpaHolidayRow {
 // 格式改版，直接回空陣列讓呼叫端略過，不要憑錯誤資料寫進資料庫。
 export function parseDgpaCsv(csvText: string): DgpaHolidayRow[] {
   const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0 || !lines[0].startsWith('西元日期')) return [];
+  if (lines.length === 0 || !lines[0].startsWith('西元日期')) {
+    console.warn('[DGPA] CSV header not recognized, skipping (encoding or format change?)');
+    return [];
+  }
   const rows: DgpaHolidayRow[] = [];
   for (const line of lines.slice(1)) {
     const [dateStr, , isHoliday, name] = line.split(',');
@@ -93,12 +96,16 @@ export function parseDgpaCsv(csvText: string): DgpaHolidayRow[] {
 // 民國年 = 西元年 - 1911。只找「標準版」（排除 Google 行事曆專用版）。
 export async function fetchDgpaResourceUrl(rocYear: number): Promise<string | null> {
   const res = await fetch('https://data.gov.tw/api/v2/rest/dataset/14718');
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.warn(`[DGPA] dataset API request failed (status ${res.status}), skipping ROC year ${rocYear}`);
+    return null;
+  }
   const data = await res.json();
   const resources: { name?: string; url?: string; Format?: string }[] = data?.result?.resources ?? [];
   const match = resources.find(
     (r) => r.name?.includes(`${rocYear}年`) && r.name?.includes('辦公日曆表') && !r.name?.includes('Google') && r.Format === 'CSV'
   );
+  if (!match) console.warn(`[DGPA] no standard-version CSV resource found for ROC year ${rocYear} yet`);
   return match?.url ?? null;
 }
 
@@ -113,11 +120,17 @@ async function refreshYearIfMissing(year: number): Promise<{ year: number; inser
   if (!url) return null;
 
   const csvRes = await fetch(url);
-  if (!csvRes.ok) return null;
+  if (!csvRes.ok) {
+    console.warn(`[DGPA] CSV download failed for ${year} (status ${csvRes.status}), skipping`);
+    return null;
+  }
   const rawText = await csvRes.text();
   const text = rawText.startsWith('﻿') ? rawText.slice(1) : rawText;
   const rows = parseDgpaCsv(text);
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    console.warn(`[DGPA] no holiday rows parsed for ${year}, skipping`);
+    return null;
+  }
 
   const result = await prisma.closedDay.createMany({
     data: rows.map((r) => ({ date: r.date, name: r.name, source: 'NATIONAL' as const })),
