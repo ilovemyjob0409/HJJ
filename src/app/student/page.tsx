@@ -14,6 +14,7 @@ import GoHallSummaryTable from '@/components/GoHallSummaryTable';
 import LeaveHistoryTable from './LeaveHistoryTable';
 import GoHallQualificationCard from './GoHallQualificationCard';
 import ClassesAndTutoringList from './ClassesAndTutoringList';
+import { LeaveIcon, MakeupIcon, AttendanceIcon, ChevronRightIcon } from './NavIcons';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every student until the next deploy.
@@ -78,19 +79,31 @@ export default async function StudentDashboard() {
         </Card>
       </Link>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-6 divide-y divide-borderSubtle overflow-hidden rounded-xl bg-card shadow-sm">
         {showLeave && (
           <>
-            <Link href="/student/leave-request">
-              <Card className="text-ink transition-shadow hover:shadow-md">請假申請與紀錄</Card>
+            <Link href="/student/leave-request" className="flex items-center gap-3 px-5 py-4 text-ink hover:bg-stripe">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brandDark">
+                <LeaveIcon className="h-5 w-5" />
+              </span>
+              <span className="flex-1 text-sm font-semibold">請假申請與紀錄</span>
+              <ChevronRightIcon className="h-4 w-4 shrink-0 text-inkMuted" />
             </Link>
-            <Link href="/student/makeup-request">
-              <Card className="text-ink transition-shadow hover:shadow-md">申請補課</Card>
+            <Link href="/student/makeup-request" className="flex items-center gap-3 px-5 py-4 text-ink hover:bg-stripe">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brandDark">
+                <MakeupIcon className="h-5 w-5" />
+              </span>
+              <span className="flex-1 text-sm font-semibold">申請補課</span>
+              <ChevronRightIcon className="h-4 w-4 shrink-0 text-inkMuted" />
             </Link>
           </>
         )}
-        <Link href="/student/attendance">
-          <Card className="text-ink transition-shadow hover:shadow-md">我的出席紀錄</Card>
+        <Link href="/student/attendance" className="flex items-center gap-3 px-5 py-4 text-ink hover:bg-stripe">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brandDark">
+            <AttendanceIcon className="h-5 w-5" />
+          </span>
+          <span className="flex-1 text-sm font-semibold">我的出席紀錄</span>
+          <ChevronRightIcon className="h-4 w-4 shrink-0 text-inkMuted" />
         </Link>
       </div>
 
