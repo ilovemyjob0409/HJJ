@@ -17,6 +17,7 @@ import SettleModal from './SettleModal';
 import ClosedDaysTab from './ClosedDaysTab';
 import SettingsTab from './SettingsTab';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
+import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
 
 type TabKey = 'batches' | 'closedDays' | 'settings';
 
@@ -226,46 +227,27 @@ export default function AdminBillingPage() {
       header: '操作',
       render: (r) => {
         const { state } = getPaidState(r.amountDue, r.payments);
+        // 單一狀態驅動的通知類動作：未通知過＝通知；已通知過但未繳清＝提醒繳費；
+        // 已通知且已繳清＝不放進選單。不是「按過」這種前端暫時狀態，是系統實際判定。
+        const notifyItem: ActionMenuItem | null = !r.notifiedAt
+          ? { key: 'notify', label: '通知', loading: notifyingId === r.id, onClick: () => notifyStandaloneBill(r.id) }
+          : state !== 'PAID'
+            ? { key: 'remind', label: '提醒繳費', loading: remindingId === r.id, onClick: () => remindStandaloneBill(r.id) }
+            : null;
         return (
-          <div className="flex flex-wrap items-center justify-center gap-1 whitespace-nowrap">
-            <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(r.id)}>
-              繳款
-            </Button>
-            {/* 單一按鈕：狀態完全看 notifiedAt——未通知過＝通知；已通知過但未繳清＝提醒繳費；
-                已通知且已繳清＝不顯示。不是「按過」這種前端暫時狀態，是系統實際判定。 */}
-            {!r.notifiedAt ? (
-              <Button
-                variant="secondary"
-                className="px-2 py-1 text-xs"
-                loading={notifyingId === r.id}
-                onClick={() => notifyStandaloneBill(r.id)}
-              >
-                通知
-              </Button>
-            ) : (
-              state !== 'PAID' && (
-                <Button
-                  variant="secondary"
-                  className="px-2 py-1 text-xs"
-                  loading={remindingId === r.id}
-                  onClick={() => remindStandaloneBill(r.id)}
-                >
-                  提醒繳費
-                </Button>
-              )
-            )}
-            {!r.settledAsWithdrawal && (
-              <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setSettleBillId(r.id)}>
-                結算
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              className="px-2 py-1 text-xs"
-              onClick={() => setExpandedStandaloneId((prev) => (prev === r.id ? null : r.id))}
-            >
-              {expandedStandaloneId === r.id ? '收合' : '明細'}
-            </Button>
+          <div className="flex justify-center">
+            <ActionMenu
+              items={[
+                { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(r.id) },
+                ...(notifyItem ? [notifyItem] : []),
+                ...(r.settledAsWithdrawal ? [] : [{ key: 'settle', label: '結算', onClick: () => setSettleBillId(r.id) }]),
+                {
+                  key: 'detail',
+                  label: expandedStandaloneId === r.id ? '收合明細' : '明細',
+                  onClick: () => setExpandedStandaloneId((prev) => (prev === r.id ? null : r.id)),
+                },
+              ]}
+            />
           </div>
         );
       },
