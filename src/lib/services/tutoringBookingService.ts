@@ -358,8 +358,22 @@ export async function getMonthlyQuotaStatus(
   return { locked, upcoming, quota, pendingOverQuota };
 }
 
+// 同一天、同一星期可能有 2 個以上作用中窗口（例如一場下午、一場晚上，
+// 不同老師）——這種情況前端要顯示選擇器讓學生自己挑，不能合併容量、
+// 也不能自動選一個（見 AvailabilityDay 註解與 2026-08-28 產品決策）。
+export interface AvailabilityWindowOption {
+  windowId: string;
+  startTime: string;
+  endTime: string;
+  teacherNames: string[];
+  capacity: number;
+  remaining: number;
+}
+
 export interface AvailabilityDay {
   date: string;
+  // 相容單一窗口的既有呼叫端：永遠等於 windows[0]（時間最早的那個）。
+  // 只有 1 個窗口時維持這個形狀不變，不加 windows 欄位。
   windowId: string;
   capacity: number;
   remaining: number;
@@ -369,12 +383,23 @@ export interface AvailabilityDay {
   myBookingId: string | null;
   myBookingStatus: 'BOOKED' | 'PENDING_ADMIN' | null;
   myBookingCount: number;
+  // 只有這天有 2 個以上作用中窗口時才會出現：每個窗口各自的時段/老師/剩餘
+  // 名額，前端要顯示選擇器。只有 1 個窗口時是 undefined，行為與過去完全
+  // 相同（不顯示選擇器，直接用上面的 windowId 預約）——regression-safe。
+  windows?: AvailabilityWindowOption[];
 }
 
 export async function listAvailability(enrollmentId: string, days = 14): Promise<AvailabilityDay[]> {
   const enrollment = await prisma.tutoringEnrollment.findUnique({ where: { id: enrollmentId } });
   if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
-  const windows = await prisma.tutoringWindow.findMany({ where: { programId: enrollment.programId, active: true } });
+  const windows = await prisma.tutoringWindow.findMany({
+    where: { programId: enrollment.programId, active: true },
+    include: {
+      teacher: { select: { user: { select: { name: true } } } },
+      teacher2: { select: { user: { select: { name: true } } } },
+    },
+    orderBy: [{ startTime: 'asc' }, { id: 'asc' }],
+  });
   const todayKey = taipeiDateKey(new Date());
   const [ty, tm, td] = todayKey.split('-').map(Number);
 
@@ -405,26 +430,43 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
   const result: AvailabilityDay[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(Date.UTC(ty, tm - 1, td + i));
-    const window = windows.find((w) => w.weekday === d.getUTCDay());
-    if (!window) continue;
+    const dayWindows = windows.filter((w) => w.weekday === d.getUTCDay());
+    if (dayWindows.length === 0) continue;
 
-    const closure = await prisma.tutoringWindowClosure.findUnique({
-      where: { windowId_date: { windowId: window.id, date: d } },
-    });
-    if (closure) continue;
+    // 一個星期可能有 2 個以上作用中窗口；逐一算各自的停開日／剩餘名額，
+    // 該天全部窗口都停開才整天跳過（比照過去單一窗口停開就跳過的行為）。
+    const options: AvailabilityWindowOption[] = [];
+    for (const window of dayWindows) {
+      const closure = await prisma.tutoringWindowClosure.findUnique({
+        where: { windowId_date: { windowId: window.id, date: d } },
+      });
+      if (closure) continue;
 
-    const booked = await prisma.tutoringBooking.count({
-      where: { windowId: window.id, date: d, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
-    });
+      const booked = await prisma.tutoringBooking.count({
+        where: { windowId: window.id, date: d, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
+      });
+      options.push({
+        windowId: window.id,
+        startTime: window.startTime,
+        endTime: window.endTime,
+        teacherNames: [window.teacher.user.name, window.teacher2?.user.name].filter((n): n is string => !!n),
+        capacity: window.capacity,
+        remaining: Math.max(0, window.capacity - booked),
+      });
+    }
+    if (options.length === 0) continue;
+
+    const [primary] = options;
     const mine = mineByDate.get(utcDateKey(d));
     result.push({
       date: utcDateKey(d),
-      windowId: window.id,
-      capacity: window.capacity,
-      remaining: Math.max(0, window.capacity - booked),
+      windowId: primary.windowId,
+      capacity: primary.capacity,
+      remaining: primary.remaining,
       myBookingId: mine?.id ?? null,
       myBookingStatus: mine?.status ?? null,
       myBookingCount: mine?.count ?? 0,
+      ...(options.length > 1 ? { windows: options } : {}),
     });
   }
   return result;

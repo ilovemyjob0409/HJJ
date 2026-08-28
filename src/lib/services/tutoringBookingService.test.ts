@@ -511,6 +511,82 @@ describe('listAvailability', () => {
       myBookingStatus: null,
     });
   });
+
+  it('does not add a `windows` field when there is exactly one matching window (regression: unchanged shape)', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(8);
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.find((d) => d.windowId === window.id)!;
+    expect(target.windows).toBeUndefined();
+  });
+
+  it('surfaces every window when a program has 2+ active windows on the same weekday, without merging capacity', async () => {
+    const { teacher, program, window: morning, enrollment } = await setupProgramWithEnrollment(8);
+    const eveningTeacher = await createTeacher({ name: '陳老師', email: `chen-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const evening = await createWindow({
+      programId: program.id,
+      weekday: morning.weekday,
+      startTime: '19:00',
+      endTime: '21:00',
+      capacity: 4,
+      teacherId: eveningTeacher.id,
+    });
+
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.find((d) => d.windows && d.windows.length > 0);
+    expect(target).toBeDefined();
+    expect(target!.windows).toHaveLength(2);
+
+    const ids = target!.windows!.map((w) => w.windowId).sort();
+    expect(ids).toEqual([evening.id, morning.id].sort());
+
+    const morningOption = target!.windows!.find((w) => w.windowId === morning.id)!;
+    expect(morningOption).toMatchObject({ startTime: morning.startTime, endTime: morning.endTime, capacity: 8, remaining: 8 });
+    expect(morningOption.teacherNames).toEqual([teacher.user.name]);
+
+    const eveningOption = target!.windows!.find((w) => w.windowId === evening.id)!;
+    expect(eveningOption).toMatchObject({ startTime: '19:00', endTime: '21:00', capacity: 4, remaining: 4 });
+    expect(eveningOption.teacherNames).toEqual(['陳老師']);
+
+    // 相容既有單一窗口呼叫端：頂層 windowId/capacity/remaining 仍然存在，
+    // 對應時間最早的那個窗口（morning）。
+    expect(target).toMatchObject({ windowId: morning.id, capacity: 8, remaining: 8 });
+
+    // 預約其中一個窗口不影響另一個窗口的剩餘名額（不合併容量）。
+    await createBooking({ enrollmentId: enrollment.id, windowId: evening.id, date: new Date(target!.date) });
+    const afterBooking = await listAvailability(enrollment.id, 14);
+    const targetAfter = afterBooking.find((d) => d.date === target!.date)!;
+    expect(targetAfter.windows!.find((w) => w.windowId === evening.id)).toMatchObject({ remaining: 3 });
+    expect(targetAfter.windows!.find((w) => w.windowId === morning.id)).toMatchObject({ remaining: 8 });
+    // myBooking 資訊是這一天（不分窗口）的欄位：同日已有一筆有效預約就會標示。
+    expect(targetAfter).toMatchObject({ myBookingStatus: 'BOOKED' });
+  });
+
+  it('skips a date entirely only when every matching window is closed that day, keeping the others open', async () => {
+    const { program, window: morning, enrollment } = await setupProgramWithEnrollment(8);
+    const eveningTeacher = await createTeacher({ name: '周老師', email: `chou-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const evening = await createWindow({
+      programId: program.id,
+      weekday: morning.weekday,
+      startTime: '19:00',
+      endTime: '21:00',
+      capacity: 4,
+      teacherId: eveningTeacher.id,
+    });
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.find((d) => d.windows && d.windows.length === 2)!;
+
+    // 只停開晚上那個窗口：這天還是要出現，但只剩早上那個選項。
+    await prisma.tutoringWindowClosure.create({ data: { windowId: evening.id, date: new Date(target.date) } });
+    const afterOneClosure = await listAvailability(enrollment.id, 14);
+    const dayAfterOneClosure = afterOneClosure.find((d) => d.date === target.date)!;
+    expect(dayAfterOneClosure.windows).toBeUndefined();
+    expect(dayAfterOneClosure.windowId).toBe(morning.id);
+
+    // 兩個窗口都停開：這天要整個消失，跟過去單一窗口停開的行為一致。
+    await prisma.tutoringWindowClosure.create({ data: { windowId: morning.id, date: new Date(target.date) } });
+    const afterBothClosed = await listAvailability(enrollment.id, 14);
+    expect(afterBothClosed.find((d) => d.date === target.date)).toBeUndefined();
+  });
 });
 
 describe('listAttendanceForStudent', () => {
