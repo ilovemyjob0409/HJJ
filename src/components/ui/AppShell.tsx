@@ -43,6 +43,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/student/tutoring', label: 'MPM&PLUS' },
     { href: '/student/timetable', label: '週課表' },
     { href: '/student/go-hall', label: '弈廳' },
+    { href: '/student/billing', label: '繳費' },
     { href: '/student/attendance', label: '我的出席紀錄' },
     { href: '/student/points', label: '集點卡' },
     { href: '/student/activities', label: '活動專區' },
