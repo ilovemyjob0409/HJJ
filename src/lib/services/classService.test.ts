@@ -803,3 +803,19 @@ describe('listStudentEnrolledClasses 批次堂數＝逐班 getClassEnrollmentQuo
     expect(b.quota).toEqual({ totalSessions: null, usedSessions: 1, remaining: null });
   });
 });
+
+describe('class fee fields', () => {
+  it('stores feePerSession on class and feeOverride on enrollment', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'fee-chen@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: 'fee-ming@example.com', password: 'x' });
+    const cls = await createClass({ name: '週六班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 6, startTime: '10:00', endTime: '12:00', feePerSession: 500 });
+    expect(cls.feePerSession).toBe(500);
+
+    await updateClass(cls.id, { feePerSession: 550 });
+    expect((await prisma.class.findUniqueOrThrow({ where: { id: cls.id } })).feePerSession).toBe(550);
+
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: null, feeOverride: 450 }]);
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(enrollment.feeOverride).toBe(450);
+  });
+});

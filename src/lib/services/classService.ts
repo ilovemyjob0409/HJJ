@@ -10,6 +10,7 @@ export interface CreateClassInput {
   weekday: number;
   startTime: string;
   endTime: string;
+  feePerSession?: number | null;
 }
 
 const SAFE_USER_SELECT = { name: true, email: true } as const;
@@ -21,9 +22,10 @@ const CLASS_WITH_TEACHER_SELECT = {
   weekday: true,
   startTime: true,
   endTime: true,
+  feePerSession: true,
   teacher: { select: { id: true, subjects: true, phone: true, user: { select: SAFE_USER_SELECT } } },
   enrollments: {
-    select: { id: true, studentId: true, student: { select: { user: { select: { name: true } } } } },
+    select: { id: true, studentId: true, feeOverride: true, student: { select: { user: { select: { name: true } } } } },
     orderBy: { student: { user: { name: 'asc' } } },
   },
 } as const;
@@ -56,6 +58,7 @@ export interface UpdateClassInput {
   weekday?: number;
   startTime?: string;
   endTime?: string;
+  feePerSession?: number | null;
 }
 
 export function updateClass(id: string, input: UpdateClassInput) {
@@ -197,6 +200,7 @@ export function enrollStudent(classId: string, studentId: string) {
 export interface EnrollmentInput {
   classId: string;
   totalSessions: number | null;
+  feeOverride?: number | null;
 }
 
 // 台北曆日「今天」換算成 UTC 午夜的 Date，用於 ClassAttendance.date（以 UTC
@@ -239,6 +243,7 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
           studentId,
           classId: e.classId,
           totalSessions: e.totalSessions,
+          feeOverride: e.feeOverride ?? null,
           // 首次報名且有堂數＝第一期。之後的期由「新增一期」
           // (addEnrollmentSessions) 建立；直接改 totalSessions 是校正，不建期。
           ...(e.totalSessions !== null ? { periods: { create: { sessions: e.totalSessions } } } : {}),
@@ -250,6 +255,7 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
         where: { studentId_classId: { studentId, classId: e.classId } },
         data: {
           totalSessions: e.totalSessions,
+          feeOverride: e.feeOverride ?? null,
           // Only clear the "already notified" flag when totalSessions actually
           // changed (a real top-up). The admin edit form resubmits every
           // enrolled class's totalSessions verbatim on every save (even when

@@ -20,6 +20,7 @@ interface EnrollmentQuota {
   totalSessions: number | null;
   usedSessions: number;
   remaining: number | null;
+  feeOverride?: number | null;
 }
 
 interface StudentRow {
@@ -125,6 +126,7 @@ function StudentsContent() {
   const [familyModalStudent, setFamilyModalStudent] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '', studentNumber: '' });
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
+  const [editFeeOverrides, setEditFeeOverrides] = useState<Record<string, string>>({});
   const [addClassQuery, setAddClassQuery] = useState('');
   const [openHintClassId, setOpenHintClassId] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -177,11 +179,15 @@ function StudentsContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, students]);
 
-  function enrollmentsFromMap(map: Record<string, string>) {
-    return Object.entries(map).map(([classId, val]) => ({
-      classId,
-      totalSessions: val === '' ? null : Number(val),
-    }));
+  function enrollmentsFromMap(map: Record<string, string>, feeMap: Record<string, string> = {}) {
+    return Object.entries(map).map(([classId, val]) => {
+      const fee = feeMap[classId];
+      return {
+        classId,
+        totalSessions: val === '' ? null : Number(val),
+        feeOverride: fee === undefined || fee === '' ? null : Number(fee),
+      };
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -225,6 +231,9 @@ function StudentsContent() {
     setEditing(s);
     setEditForm({ name: s.user.name, email: s.user.email, password: '', parentPhone: s.parentPhone ?? '', studentNumber: s.studentNumber ?? '' });
     setEditEnrollments(Object.fromEntries(s.enrollments.map((e) => [e.classId, e.totalSessions === null ? '' : String(e.totalSessions)])));
+    setEditFeeOverrides(
+      Object.fromEntries(s.enrollments.map((e) => [e.classId, e.feeOverride == null ? '' : String(e.feeOverride)]))
+    );
     setRenewTarget(null);
     setAddClassQuery('');
     setEditError('');
@@ -240,6 +249,12 @@ function StudentsContent() {
       }
       return { ...prev, [classId]: '' };
     });
+    setEditFeeOverrides((prev) => {
+      if (!(classId in prev)) return prev;
+      const rest = { ...prev };
+      delete rest[classId];
+      return rest;
+    });
   }
 
   async function handleEditSubmit(e: React.FormEvent) {
@@ -250,7 +265,7 @@ function StudentsContent() {
       setEditError('');
       const res = await fetch(`/api/students/${editing.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...editForm, enrollments: enrollmentsFromMap(editEnrollments) }),
+        body: JSON.stringify({ ...editForm, enrollments: enrollmentsFromMap(editEnrollments, editFeeOverrides) }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -637,6 +652,21 @@ function StudentsContent() {
                               留空表示不追蹤堂數——「已上／剩餘」會顯示「未追蹤」，點名也不會扣堂。填數字才會開始計算已上與剩餘堂數。
                             </HintButton>
                           </div>
+                          ),
+                      },
+                      {
+                        header: '覆寫價',
+                        render: (c: EnrolledRow) =>
+                          c.rowKind === 'tutoring' ? (
+                            <span className="text-xs text-inkMuted">—</span>
+                          ) : (
+                            <Input
+                              type="number"
+                              placeholder="覆寫價"
+                              value={editFeeOverrides[c.id] ?? ''}
+                              onChange={(e) => setEditFeeOverrides((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                              className="w-24"
+                            />
                           ),
                       },
                       {

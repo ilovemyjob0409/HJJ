@@ -47,6 +47,7 @@ interface ClassRow {
   weekday: number;
   startTime: string;
   endTime: string;
+  feePerSession: number | null;
   teacher: { id: string; user: { name: string } };
   enrollments: EnrollmentRow[];
 }
@@ -61,7 +62,7 @@ export default function ClassesPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
   const [editing, setEditing] = useState<ClassRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00' });
+  const [editForm, setEditForm] = useState({ name: '', subject: '', level: '', teacherId: '', weekday: '1', startTime: '19:00', endTime: '21:00', feePerSession: '' });
   const [showEditFields, setShowEditFields] = useState(false);
   const [editError, setEditError] = useState('');
   const [showTimetable, setShowTimetable] = useState(false);
@@ -122,6 +123,7 @@ export default function ClassesPage() {
       weekday: String(c.weekday),
       startTime: c.startTime,
       endTime: c.endTime,
+      feePerSession: c.feePerSession === null ? '' : String(c.feePerSession),
     });
     setShowEditFields(false);
     setEditError('');
@@ -135,7 +137,11 @@ export default function ClassesPage() {
       setEditError('');
       const res = await fetch(`/api/classes/${editing.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...editForm, weekday: Number(editForm.weekday) }),
+        body: JSON.stringify({
+          ...editForm,
+          weekday: Number(editForm.weekday),
+          feePerSession: editForm.feePerSession === '' ? null : Number(editForm.feePerSession),
+        }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -316,6 +322,15 @@ export default function ClassesPage() {
             </Select>
             <Input type="time" value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} />
             <Input type="time" value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} />
+            <div>
+              <p className="mb-1 text-sm font-medium text-ink">每堂單價（元）</p>
+              <Input
+                type="number"
+                placeholder="留空＝未設定"
+                value={editForm.feePerSession}
+                onChange={(e) => setEditForm({ ...editForm, feePerSession: e.target.value })}
+              />
+            </div>
             <Button type="submit" loading={submitting}>儲存</Button>
           </form>
         )}
