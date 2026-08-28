@@ -56,17 +56,34 @@ export default function SettleModal({ bill, onClose, onChanged }: SettleModalPro
     setPreview(null);
     setNote('');
     setLoadingPreview(true);
-    fetch(`/api/admin/billing/bills/${billId}/settle`)
-      .then(async (res) => {
-        if (!res.ok) {
-          setAmount(String(fallbackAmount));
+
+    // NOT_A_CLASS_BILL 是唯一「預期內」的失敗（TUTORING/非 CLASS 帳單本來就沒有
+    // 堂數式試算）——這種才靜默退回金額＋備註表單。任何其他錯誤碼、無法解析的
+    // 回應、或連 fetch 本身都失敗（網路斷線/逾時），都代表後端真的出錯了，
+    // 不能讓行政誤以為「這只是 TUTORING 帳單本來就這樣」，一律跳 toast 提醒。
+    async function loadPreview() {
+      try {
+        const res = await fetch(`/api/admin/billing/bills/${billId}/settle`);
+        if (res.ok) {
+          const data: SettlePreview = await res.json();
+          setPreview(data);
+          setAmount(String(data.suggestedAmount));
           return;
         }
-        const data: SettlePreview = await res.json();
-        setPreview(data);
-        setAmount(String(data.suggestedAmount));
-      })
-      .finally(() => setLoadingPreview(false));
+        const data = await res.json().catch(() => ({}));
+        if (data.error !== 'NOT_A_CLASS_BILL') {
+          showToast('無法載入結算試算，請稍後再試或聯絡工程師');
+        }
+        setAmount(String(fallbackAmount));
+      } catch {
+        showToast('無法載入結算試算，請稍後再試或聯絡工程師');
+        setAmount(String(fallbackAmount));
+      } finally {
+        setLoadingPreview(false);
+      }
+    }
+
+    loadPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bill?.id, bill?.amountDue]);
 
