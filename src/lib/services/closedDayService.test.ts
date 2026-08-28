@@ -28,4 +28,18 @@ describe('closedDayService', () => {
     const ranged = await listClosedDays(new Date(Date.UTC(2026, 9, 1)), new Date(Date.UTC(2026, 9, 31)));
     expect(ranged.every((d) => d.date >= new Date(Date.UTC(2026, 9, 1)))).toBe(true);
   });
+
+  it('does not resurrect a manually deleted national holiday on re-seed', async () => {
+    await seedNationalHolidays();
+    const all = await listClosedDays();
+    const toDelete = all.find((d) => d.source === 'NATIONAL');
+    expect(toDelete).toBeDefined();
+    await removeClosedDay(toDelete!.id);
+
+    await seedNationalHolidays(); // simulates the next GET /closed-days call
+
+    const after = await listClosedDays();
+    expect(after.some((d) => d.id === toDelete!.id)).toBe(false);
+    expect(after.some((d) => d.date.getTime() === toDelete!.date.getTime())).toBe(false);
+  });
 });

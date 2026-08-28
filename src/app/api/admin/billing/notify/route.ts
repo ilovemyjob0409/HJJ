@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/apiGuards';
 import { notifyBills } from '@/lib/services/billNotifyService';
 
+// 逐筆帳單發送通知，給足執行時間避免預設逾時砍掉後段
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const body = await req.json().catch(() => ({}));

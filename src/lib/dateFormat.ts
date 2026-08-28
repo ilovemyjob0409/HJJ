@@ -24,3 +24,16 @@ export function formatDateWithWeekday(date: Date | string, locale: string = 'zh-
   const dateStr = d.toLocaleDateString(locale, { timeZone: 'UTC' });
   return `${dateStr}（${WEEKDAY_LABELS[d.getUTCDay()]}）`;
 }
+
+const TAIPEI_EN_WEEKDAY_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Taipei', weekday: 'short' });
+const EN_WEEKDAY_TO_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+// 給「真實時間戳」欄位（如 Bill.notifiedAt）用——輸出格式跟 formatDateWithWeekday
+// 一樣，但日期與星期都用台北時區換算，不是 UTC。這類欄位存的是實際發生時刻，不是
+// 日曆日期；用 UTC 判斷星期在台北凌晨（UTC 前一天 16:00–24:00）會顯示早一天。
+export function formatTimestampWithWeekdayTaipei(date: Date | string, locale: string = 'zh-TW'): string {
+  const d = new Date(date);
+  const dateStr = d.toLocaleDateString(locale, { timeZone: 'Asia/Taipei' });
+  const weekdayIndex = EN_WEEKDAY_TO_INDEX[TAIPEI_EN_WEEKDAY_FMT.format(d)];
+  return `${dateStr}（${WEEKDAY_LABELS[weekdayIndex]}）`;
+}

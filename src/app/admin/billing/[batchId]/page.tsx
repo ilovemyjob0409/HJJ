@@ -11,7 +11,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 import { getPaidState } from '@/lib/billingCalc';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
@@ -93,6 +93,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   MISSING_PRICE: '尚有班級未設定單價，請先設定後再定案',
   BILL_NOT_FINALIZED: '尚有帳單非已定案狀態，無法通知',
   ALREADY_PAID: '這筆帳單已繳清，不需提醒繳費',
+  PARTIAL_TOPUP_FAILURE: '定案成功，但部分學生的堂數補登失敗，請檢查該生報名狀態後手動補登',
 };
 
 export default function AdminBillingBatchPage({ params }: { params: { batchId: string } }) {
@@ -391,7 +392,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
         header: '通知',
         render: (b) =>
           b.notifiedAt ? (
-            <span className="text-ink">已通知・{formatDateWithWeekday(b.notifiedAt)}</span>
+            <span className="text-ink">已通知・{formatTimestampWithWeekdayTaipei(b.notifiedAt)}</span>
           ) : (
             <span className="text-inkMuted">未通知</span>
           ),
@@ -432,7 +433,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
       { header: '已繳', value: (b: BillRow) => getPaidState(b.amountDue, b.payments).paid },
       { header: '待繳', value: (b: BillRow) => getPaidState(b.amountDue, b.payments).outstanding },
       { header: '繳費狀態', value: (b: BillRow) => PAID_STATE_CONFIG[getPaidState(b.amountDue, b.payments).state].label },
-      { header: '通知時間', value: (b: BillRow) => (b.notifiedAt ? formatDateWithWeekday(b.notifiedAt) : '未通知') },
+      { header: '通知時間', value: (b: BillRow) => (b.notifiedAt ? formatTimestampWithWeekdayTaipei(b.notifiedAt) : '未通知') },
     ];
 
     return (

@@ -114,6 +114,7 @@ ALTER TABLE "Bill" ADD CONSTRAINT "Bill_tutoringEnrollmentId_fkey"
 CREATE INDEX IF NOT EXISTS "Bill_studentId_periodStart_idx" ON "Bill"("studentId", "periodStart");
 CREATE INDEX IF NOT EXISTS "Bill_classId_periodStart_idx" ON "Bill"("classId", "periodStart");
 CREATE INDEX IF NOT EXISTS "Bill_tutoringEnrollmentId_periodStart_idx" ON "Bill"("tutoringEnrollmentId", "periodStart");
+CREATE INDEX IF NOT EXISTS "Bill_batchId_idx" ON "Bill"("batchId");
 
 -- 7) 繳款紀錄
 CREATE TABLE IF NOT EXISTS "BillPayment" (
@@ -131,6 +132,8 @@ CREATE TABLE IF NOT EXISTS "BillPayment" (
 ALTER TABLE "BillPayment" DROP CONSTRAINT IF EXISTS "BillPayment_billId_fkey";
 ALTER TABLE "BillPayment" ADD CONSTRAINT "BillPayment_billId_fkey"
   FOREIGN KEY ("billId") REFERENCES "Bill"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+CREATE INDEX IF NOT EXISTS "BillPayment_billId_idx" ON "BillPayment"("billId");
 
 -- 8) 既有表加欄位
 ALTER TABLE "Class" ADD COLUMN IF NOT EXISTS "feePerSession" INTEGER;

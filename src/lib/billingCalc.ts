@@ -70,5 +70,5 @@ export function buildClassBillDetail(
 export function getPaidState(amountDue: number, payments: { amount: number }[]) {
   const paid = payments.reduce((s, p) => s + p.amount, 0);
   const outstanding = amountDue - paid;
-  return { paid, outstanding, state: paid === 0 ? ('UNPAID' as const) : outstanding > 0 ? ('PARTIAL' as const) : ('PAID' as const) };
+  return { paid, outstanding, state: outstanding <= 0 ? ('PAID' as const) : paid === 0 ? ('UNPAID' as const) : ('PARTIAL' as const) };
 }

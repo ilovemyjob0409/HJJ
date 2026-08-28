@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/apiGuards';
 import { listBatches, createClassBatch, createTutoringBatch } from '@/lib/services/billingBatchService';
 
+// 建立整批帳單時每筆列（班級/報名）逐一序列查詢，給足執行時間避免預設逾時砍掉後段
+export const maxDuration = 60;
+
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {

@@ -72,5 +72,6 @@ describe('getPaidState', () => {
     expect(getPaidState(2000, [])).toMatchObject({ paid: 0, outstanding: 2000, state: 'UNPAID' });
     expect(getPaidState(2000, [{ amount: 500 }])).toMatchObject({ paid: 500, outstanding: 1500, state: 'PARTIAL' });
     expect(getPaidState(2000, [{ amount: 500 }, { amount: 1500 }])).toMatchObject({ outstanding: 0, state: 'PAID' });
+    expect(getPaidState(0, [])).toMatchObject({ paid: 0, outstanding: 0, state: 'PAID' });
   });
 });

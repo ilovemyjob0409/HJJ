@@ -8,8 +8,9 @@ import {
 import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
 import { BILL_DETAIL_INCLUDE } from './billingBatchService';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
-const fmtRange = (s: Date, e: Date) => `${s.toISOString().slice(0, 10)}～${e.toISOString().slice(0, 10)}`;
+const fmtRange = (s: Date, e: Date) => `${formatDateWithWeekday(s)}～${formatDateWithWeekday(e)}`;
 const overlapMessage = (existing: { periodStart: Date; periodEnd: Date }) =>
   `已有 ${fmtRange(existing.periodStart, existing.periodEnd)} 的帳單涵蓋本區間，請確認是否重複開單`;
 
@@ -104,7 +105,14 @@ export async function createStandaloneClassBill(input: {
   });
 
   if (input.billedSessions > 0) {
-    await addEnrollmentSessions(input.classId, input.studentId, input.billedSessions);
+    try {
+      await addEnrollmentSessions(input.classId, input.studentId, input.billedSessions);
+    } catch (err) {
+      // 補堂失敗就不該留下一張已定案卻沒有對應堂數的孤兒帳單——刪掉剛建立的帳單，
+      // 把原始錯誤往外丟，讓管理員的這次操作乾淨地整個失敗，而不是半成功。
+      await prisma.bill.delete({ where: { id: bill.id } });
+      throw err;
+    }
   }
   if (input.notifyNow) await notifyBills([bill.id]);
   return { billId: bill.id };

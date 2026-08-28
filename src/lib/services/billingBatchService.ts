@@ -7,17 +7,11 @@ import {
 } from '@/lib/billingCalc';
 import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 export interface SkippedRow { studentName: string; targetName: string; reason: string }
 
-const fmtRange = (s: Date, e: Date) => `${s.toISOString().slice(0, 10)}～${e.toISOString().slice(0, 10)}`;
-
-async function overlappingClassBill(studentId: string, classId: string, periodStart: Date, periodEnd: Date) {
-  return prisma.bill.findFirst({
-    where: { studentId, classId, periodStart: { lte: periodEnd }, periodEnd: { gte: periodStart } },
-    select: { periodStart: true, periodEnd: true },
-  });
-}
+const fmtRange = (s: Date, e: Date) => `${formatDateWithWeekday(s)}～${formatDateWithWeekday(e)}`;
 
 export async function createClassBatch(input: { periodStart: Date; periodEnd: Date; classIds: string[] }) {
   const [closedDays, setting, classes] = await Promise.all([
@@ -34,17 +28,44 @@ export async function createClassBatch(input: { periodStart: Date; periodEnd: Da
   const skipped: SkippedRow[] = [];
   const batch = await prisma.billingBatch.create({ data: { kind: 'CLASS', periodStart: input.periodStart, periodEnd: input.periodEnd } });
 
+  const allClassIds = classes.map((c) => c.id);
+  const allStudentIds = Array.from(new Set(classes.flatMap((c) => c.enrollments.map((e) => e.studentId))));
+
+  // 整批一次查完「已有重疊帳單」與「已扣堂數」，避免每個(班級,學生)組合各發兩次
+  // 查詢（N+1）；寫法同 listClassesForTeacher 的 groupBy 批次寫法。in 條件為空陣列
+  // 時 Prisma 會回傳空結果，不需要另外判斷 classes.length。
+  const [overlaps, usedCounts] = await Promise.all([
+    prisma.bill.findMany({
+      where: {
+        studentId: { in: allStudentIds }, classId: { in: allClassIds },
+        periodStart: { lte: input.periodEnd }, periodEnd: { gte: input.periodStart },
+      },
+      select: { studentId: true, classId: true, periodStart: true, periodEnd: true },
+    }),
+    prisma.classAttendance.groupBy({
+      by: ['classId', 'studentId'],
+      where: { classId: { in: allClassIds }, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } },
+      _count: { _all: true },
+    }),
+  ]);
+  const overlapByKey = new Map<string, { periodStart: Date; periodEnd: Date }>();
+  for (const o of overlaps) {
+    const key = `${o.studentId}:${o.classId}`;
+    if (!overlapByKey.has(key)) overlapByKey.set(key, { periodStart: o.periodStart, periodEnd: o.periodEnd });
+  }
+  const usedByKey = new Map(usedCounts.map((c) => [`${c.classId}:${c.studentId}`, c._count._all]));
+
   for (const cls of classes) {
     const entries = computeClassSessionDates(cls.weekday, input.periodStart, input.periodEnd, closedDays);
     const open = countOpenSessions(entries);
     for (const e of cls.enrollments) {
-      const existing = await overlappingClassBill(e.studentId, cls.id, input.periodStart, input.periodEnd);
+      const existing = overlapByKey.get(`${e.studentId}:${cls.id}`) ?? null;
       if (existing) {
         skipped.push({ studentName: e.student.user.name, targetName: cls.name, reason: `已有 ${fmtRange(existing.periodStart, existing.periodEnd)} 的帳單涵蓋本區間，本批略過` });
         continue;
       }
       // 剩餘＝totalSessions − 已扣堂（請假/未報名不扣，同 getClassEnrollmentQuota 語意）
-      const used = await prisma.classAttendance.count({ where: { classId: cls.id, studentId: e.studentId, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } } });
+      const used = usedByKey.get(`${cls.id}:${e.studentId}`) ?? 0;
       const remaining = e.totalSessions === null ? null : e.totalSessions - used;
       const deducted = computeDeduction(remaining, setting.deductionCap);
       const billed = Math.max(0, open - deducted);
@@ -72,15 +93,28 @@ export async function createTutoringBatch(input: { periodStart: Date; periodEnd:
   });
   const skipped: SkippedRow[] = [];
   const batch = await prisma.billingBatch.create({ data: { kind: 'TUTORING', periodStart: input.periodStart, periodEnd: input.periodEnd } });
+
+  // 同 createClassBatch：整批一次查完重疊帳單，避免每個報名各發一次查詢（N+1）。
+  const enrollmentIds = enrollments.map((e) => e.id);
+  const overlaps = enrollmentIds.length === 0 ? [] : await prisma.bill.findMany({
+    where: {
+      tutoringEnrollmentId: { in: enrollmentIds },
+      periodStart: { lte: input.periodEnd }, periodEnd: { gte: input.periodStart },
+    },
+    select: { tutoringEnrollmentId: true, periodStart: true, periodEnd: true },
+  });
+  const overlapByEnrollmentId = new Map<string, { periodStart: Date; periodEnd: Date }>();
+  for (const o of overlaps) {
+    if (!o.tutoringEnrollmentId) continue;
+    if (!overlapByEnrollmentId.has(o.tutoringEnrollmentId)) overlapByEnrollmentId.set(o.tutoringEnrollmentId, { periodStart: o.periodStart, periodEnd: o.periodEnd });
+  }
+
   for (const e of enrollments) {
     if (!e.feeTier) {
       skipped.push({ studentName: e.student.user.name, targetName: e.program.name, reason: '尚未指定收費級距，本批略過' });
       continue;
     }
-    const existing = await prisma.bill.findFirst({
-      where: { tutoringEnrollmentId: e.id, periodStart: { lte: input.periodEnd }, periodEnd: { gte: input.periodStart } },
-      select: { periodStart: true, periodEnd: true },
-    });
+    const existing = overlapByEnrollmentId.get(e.id) ?? null;
     if (existing) {
       skipped.push({ studentName: e.student.user.name, targetName: e.program.name, reason: `已有 ${fmtRange(existing.periodStart, existing.periodEnd)} 的帳單涵蓋本區間，本批略過` });
       continue;
@@ -161,15 +195,29 @@ export async function finalizeBatch(batchId: string, options: { notifyNow: boole
   if (batch.status === 'FINALIZED') throw new Error('BATCH_FINALIZED');
   if (batch.kind === 'CLASS' && batch.bills.some((b) => b.unitPrice === null)) throw new Error('MISSING_PRICE');
 
-  await prisma.$transaction([
-    prisma.billingBatch.update({ where: { id: batchId }, data: { status: 'FINALIZED', finalizedAt: new Date() } }),
+  const [{ count: transitioned }] = await prisma.$transaction([
+    prisma.billingBatch.updateMany({ where: { id: batchId, status: 'DRAFT' }, data: { status: 'FINALIZED', finalizedAt: new Date() } }),
     prisma.bill.updateMany({ where: { batchId }, data: { status: 'FINALIZED' } }),
   ]);
-  // 定案即自動充值（開一期）：帳與堂一致；billedSessions 0 沒東西可充。
+  // updateMany 的 where 帶 status:'DRAFT' 讓狀態轉換本身是原子的：兩個併發的定案
+  // 請求只有一個能真的把 count 轉成 1，另一個會拿到 0，代表已經被搶先定案過了。
+  if (transitioned === 0) throw new Error('BATCH_FINALIZED');
+
+  // 定案即自動充值（開一期）：帳與堂一致；billedSessions 0 沒東西可充。單筆充值失敗
+  // （例如學生在開草稿後、定案前被退班）不應該讓其餘學生的充值跟著失敗、也不該讓
+  // 已經定案的批次回報「定案失敗」誤導管理員——收集失敗清單，繼續處理其餘帳單，
+  // 全部跑完後再統一拋出，讓管理員知道哪些學生需要手動補堂。
+  const topUpFailures: { billId: string; studentId: string }[] = [];
   for (const bill of batch.bills) {
     if (bill.classId && (bill.billedSessions ?? 0) > 0) {
-      await addEnrollmentSessions(bill.classId, bill.studentId, bill.billedSessions as number);
+      try {
+        await addEnrollmentSessions(bill.classId, bill.studentId, bill.billedSessions as number);
+      } catch (err) {
+        console.error(`finalizeBatch: session top-up failed for bill ${bill.id} (student ${bill.studentId})`, err);
+        topUpFailures.push({ billId: bill.id, studentId: bill.studentId });
+      }
     }
   }
   if (options.notifyNow) await notifyBills(batch.bills.map((b) => b.id));
+  if (topUpFailures.length > 0) throw new Error('PARTIAL_TOPUP_FAILURE');
 }

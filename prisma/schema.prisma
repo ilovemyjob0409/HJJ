@@ -719,6 +719,7 @@ model Bill {
   @@index([studentId, periodStart])
   @@index([classId, periodStart])
   @@index([tutoringEnrollmentId, periodStart])
+  @@index([batchId])
 }
 
 model BillPayment {
@@ -731,4 +732,6 @@ model BillPayment {
   note        String?
   createdById String
   createdAt   DateTime      @default(now())
+
+  @@index([billId])
 }

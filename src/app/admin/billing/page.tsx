@@ -8,7 +8,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 import { getPaidState } from '@/lib/billingCalc';
 import BatchWizardModal from './BatchWizardModal';
 import StandaloneBillModal from './StandaloneBillModal';
@@ -217,7 +217,7 @@ export default function AdminBillingPage() {
       header: '通知',
       render: (r) =>
         r.notifiedAt ? (
-          <span className="text-ink">已通知・{formatDateWithWeekday(r.notifiedAt)}</span>
+          <span className="text-ink">已通知・{formatTimestampWithWeekdayTaipei(r.notifiedAt)}</span>
         ) : (
           <span className="text-inkMuted">未通知</span>
         ),

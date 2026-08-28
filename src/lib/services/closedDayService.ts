@@ -42,6 +42,11 @@ function toUtcDate(key: string): Date {
 }
 
 export async function seedNationalHolidays(): Promise<number> {
+  // 只在完全沒種過的時候才種——避免管理員手動刪掉某天（該日照常上課）後，
+  // 下次 GET /closed-days 又把它種回來。跟 Task 18 的 refreshYearIfMissing
+  // 用同一條規則：任何一筆 NATIONAL 列存在就代表「已經處理過」，不再整批覆蓋。
+  const alreadySeeded = await prisma.closedDay.count({ where: { source: 'NATIONAL' } });
+  if (alreadySeeded > 0) return 0;
   const result = await prisma.closedDay.createMany({
     data: NATIONAL_HOLIDAYS.map((h) => ({ date: toUtcDate(h.date), name: h.name, source: 'NATIONAL' as const })),
     skipDuplicates: true,
