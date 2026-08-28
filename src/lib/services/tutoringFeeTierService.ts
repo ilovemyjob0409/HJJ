@@ -33,3 +33,12 @@ export async function seedDefaultFeeTiers(): Promise<void> {
 export async function setEnrollmentFeeTier(enrollmentId: string, feeTierId: string | null): Promise<void> {
   await prisma.tutoringEnrollment.update({ where: { id: enrollmentId }, data: { feeTierId } });
 }
+
+// 批量指定收費級距：單一 updateMany，不逐筆 update（避免 N 次序列查詢）。
+export async function batchSetFeeTier(enrollmentIds: string[], feeTierId: string | null): Promise<number> {
+  const result = await prisma.tutoringEnrollment.updateMany({
+    where: { id: { in: enrollmentIds } },
+    data: { feeTierId },
+  });
+  return result.count;
+}

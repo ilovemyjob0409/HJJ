@@ -78,6 +78,9 @@ export default function EnrollmentManager() {
   const [addOpen, setAddOpen] = useState(false);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>({});
+  const [bulkFeeTierId, setBulkFeeTierId] = useState('');
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   async function load() {
     const [enrollmentsRes, studentsRes, programsRes, settingsRes] = await Promise.all([
@@ -216,6 +219,31 @@ export default function EnrollmentManager() {
     load();
   }
 
+  async function applyBulkFeeTier() {
+    const ids = Object.keys(checkedIds).filter((id) => checkedIds[id]);
+    if (ids.length === 0) return;
+    const tierName = bulkFeeTierId ? feeTiers.find((t) => t.id === bulkFeeTierId)?.name ?? '' : '未指定';
+    if (!(await confirm(`確定要把 ${ids.length} 位學生的收費級距套用為「${tierName}」嗎？`))) return;
+    setBulkApplying(true);
+    try {
+      const res = await fetch('/api/tutoring-enrollments/batch-fee-tier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrollmentIds: ids, feeTierId: bulkFeeTierId || null }),
+      });
+      if (!res.ok) {
+        showToast('套用失敗，請稍後再試');
+        return;
+      }
+      showToast(`已套用收費級距至 ${ids.length} 位學生`);
+      setCheckedIds({});
+      setBulkFeeTierId('');
+      load();
+    } finally {
+      setBulkApplying(false);
+    }
+  }
+
   async function toggleActive(row: EnrollmentRow): Promise<boolean> {
     const res = await fetch(`/api/tutoring-enrollments/${row.id}`, {
       method: 'PATCH',
@@ -247,7 +275,30 @@ export default function EnrollmentManager() {
     ? enrollments.filter((r) => r.studentName.toLowerCase().includes(q) || r.programName.toLowerCase().includes(q))
     : enrollments;
 
+  const allChecked = filteredEnrollments.length > 0 && filteredEnrollments.every((r) => checkedIds[r.id]);
+  const checkedCount = Object.values(checkedIds).filter(Boolean).length;
+
   const columns: Column<EnrollmentRow>[] = [
+    {
+      header: (
+        <input
+          type="checkbox"
+          aria-label="全選"
+          checked={allChecked}
+          onChange={() =>
+            setCheckedIds(allChecked ? {} : Object.fromEntries(filteredEnrollments.map((r) => [r.id, true])))
+          }
+        />
+      ),
+      render: (r) => (
+        <input
+          type="checkbox"
+          checked={!!checkedIds[r.id]}
+          onChange={() => setCheckedIds((prev) => ({ ...prev, [r.id]: !prev[r.id] }))}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
     {
@@ -412,6 +463,25 @@ export default function EnrollmentManager() {
           <Button onClick={createEnrollments} loading={submitting}>新增報名</Button>
         </div>
       </Card>
+      )}
+      {checkedCount > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-borderSubtle bg-stripe px-3 py-2">
+          <span className="text-sm text-ink">已選 {checkedCount} 位學生</span>
+          <Select value={bulkFeeTierId} onChange={(e) => setBulkFeeTierId(e.target.value)} className="w-56 py-1 text-sm">
+            <option value="">未指定</option>
+            {feeTiers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}・{t.monthlyFee.toLocaleString('en-US')} 元/月
+              </option>
+            ))}
+          </Select>
+          <Button className="px-3 py-1 text-xs" loading={bulkApplying} onClick={applyBulkFeeTier}>
+            套用收費級距
+          </Button>
+          <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => setCheckedIds({})}>
+            取消選取
+          </Button>
+        </div>
       )}
       <Card>
         <DataTable
