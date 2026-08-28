@@ -7,7 +7,8 @@ import { addClosedDay } from './closedDayService';
 import { updateBillingSetting } from './billingSettingService';
 import { createProgram } from './tutoringProgramService';
 import { seedDefaultFeeTiers, listFeeTiers, setEnrollmentFeeTier } from './tutoringFeeTierService';
-import { createClassBatch, createTutoringBatch, listBatches, getBatchDetail, updateDraftBill, deleteDraftBatch } from './billingBatchService';
+import { createClassBatch, createTutoringBatch, listBatches, getBatchDetail, updateDraftBill, deleteDraftBatch, finalizeBatch } from './billingBatchService';
+import { notifyBills } from './billNotifyService';
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
@@ -134,5 +135,51 @@ describe('draft editing', () => {
 
     await deleteDraftBatch(batchId);
     expect(await prisma.bill.count({ where: { batchId } })).toBe(0);
+  });
+});
+
+describe('finalizeBatch', () => {
+  it('finalizes bills, tops up class sessions, and stamps notifiedAt when notifyNow', async () => {
+    const { student, cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: true });
+
+    const detail = await getBatchDetail(batchId);
+    expect(detail.status).toBe('FINALIZED');
+    expect(detail.bills[0].status).toBe('FINALIZED');
+    expect(detail.bills[0].notifiedAt).not.toBeNull();
+
+    // 自動充值：totalSessions 從 null → 4（開一期）
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(enrollment.totalSessions).toBe(4);
+    expect(await prisma.enrollmentPeriod.count({ where: { enrollmentId: enrollment.id } })).toBe(1);
+
+    // 收件夾有通知
+    const notes = await prisma.notification.findMany({ where: { userId: (await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).userId } });
+    expect(notes.some((n) => n.title === '繳費通知')).toBe(true);
+  });
+
+  it('does not notify when notifyNow=false; notifyBills later stamps notifiedAt', async () => {
+    const { cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    let bill = (await getBatchDetail(batchId)).bills[0];
+    expect(bill.notifiedAt).toBeNull();
+
+    await notifyBills([bill.id]);
+    bill = (await getBatchDetail(batchId)).bills[0];
+    expect(bill.notifiedAt).not.toBeNull();
+  });
+
+  it('refuses to finalize with a missing unit price and refuses double finalize', async () => {
+    const { cls } = await setupClassFixture();
+    await prisma.class.update({ where: { id: cls.id }, data: { feePerSession: null } });
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await expect(finalizeBatch(batchId, { notifyNow: false })).rejects.toThrow('MISSING_PRICE');
+
+    await prisma.class.update({ where: { id: cls.id }, data: { feePerSession: 500 } });
+    await prisma.bill.updateMany({ where: { batchId }, data: { unitPrice: 500, amountDue: 2000 } });
+    await finalizeBatch(batchId, { notifyNow: false });
+    await expect(finalizeBatch(batchId, { notifyNow: false })).rejects.toThrow('BATCH_FINALIZED');
   });
 });

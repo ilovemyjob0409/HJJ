@@ -1,0 +1,27 @@
+import { prisma } from '@/lib/db';
+import { notifyUser } from './notificationService';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
+
+const BILL_NOTIFY_INCLUDE = {
+  student: { select: { userId: true } },
+  class: { select: { name: true } },
+  tutoringEnrollment: { select: { program: { select: { name: true } } } },
+} as const;
+
+export function billTargetName(bill: { class: { name: string } | null; tutoringEnrollment: { program: { name: string } } | null }): string {
+  return bill.class?.name ?? bill.tutoringEnrollment?.program.name ?? '';
+}
+
+export async function notifyBills(billIds: string[]): Promise<void> {
+  const bills = await prisma.bill.findMany({ where: { id: { in: billIds } }, include: BILL_NOTIFY_INCLUDE });
+  if (bills.some((b) => b.status !== 'FINALIZED')) throw new Error('BILL_NOT_FINALIZED');
+  const now = new Date();
+  for (const bill of bills) {
+    await notifyUser(bill.student.userId, {
+      title: '繳費通知',
+      body: `${billTargetName(bill)} ${formatDateWithWeekday(bill.periodStart)}～${formatDateWithWeekday(bill.periodEnd)} 應繳 ${bill.amountDue.toLocaleString('en-US')} 元，點擊查看明細`,
+      url: '/student/billing',
+    });
+    await prisma.bill.update({ where: { id: bill.id }, data: { notifiedAt: now } });
+  }
+}

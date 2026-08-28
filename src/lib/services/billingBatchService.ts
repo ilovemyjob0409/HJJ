@@ -5,6 +5,8 @@ import { getBillingSetting } from './billingSettingService';
 import {
   buildClassBillDetail, computeClassSessionDates, computeDeduction, countOpenSessions,
 } from '@/lib/billingCalc';
+import { addEnrollmentSessions } from './classService';
+import { notifyBills } from './billNotifyService';
 
 export interface SkippedRow { studentName: string; targetName: string; reason: string }
 
@@ -152,4 +154,22 @@ export async function deleteDraftBatch(batchId: string): Promise<void> {
   const batch = await prisma.billingBatch.findUniqueOrThrow({ where: { id: batchId }, select: { status: true } });
   if (batch.status === 'FINALIZED') throw new Error('BATCH_FINALIZED');
   await prisma.billingBatch.delete({ where: { id: batchId } }); // bills onDelete: Cascade
+}
+
+export async function finalizeBatch(batchId: string, options: { notifyNow: boolean }): Promise<void> {
+  const batch = await prisma.billingBatch.findUniqueOrThrow({ where: { id: batchId }, include: { bills: true } });
+  if (batch.status === 'FINALIZED') throw new Error('BATCH_FINALIZED');
+  if (batch.kind === 'CLASS' && batch.bills.some((b) => b.unitPrice === null)) throw new Error('MISSING_PRICE');
+
+  await prisma.$transaction([
+    prisma.billingBatch.update({ where: { id: batchId }, data: { status: 'FINALIZED', finalizedAt: new Date() } }),
+    prisma.bill.updateMany({ where: { batchId }, data: { status: 'FINALIZED' } }),
+  ]);
+  // 定案即自動充值（開一期）：帳與堂一致；billedSessions 0 沒東西可充。
+  for (const bill of batch.bills) {
+    if (bill.classId && (bill.billedSessions ?? 0) > 0) {
+      await addEnrollmentSessions(bill.classId, bill.studentId, bill.billedSessions as number);
+    }
+  }
+  if (options.notifyNow) await notifyBills(batch.bills.map((b) => b.id));
 }
