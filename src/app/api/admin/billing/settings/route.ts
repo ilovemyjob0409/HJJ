@@ -6,9 +6,15 @@ import { seedDefaultFeeTiers, listFeeTiers } from '@/lib/services/tutoringFeeTie
 // 首次呼叫先種預設級距（表空時才建），再回設定＋級距清單。
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  await seedDefaultFeeTiers();
-  const [setting, feeTiers] = await Promise.all([getBillingSetting(), listFeeTiers()]);
-  return NextResponse.json({ ...setting, feeTiers });
+  try {
+    await seedDefaultFeeTiers();
+    const [setting, feeTiers] = await Promise.all([getBillingSetting(), listFeeTiers()]);
+    return NextResponse.json({ ...setting, feeTiers });
+  } catch (e) {
+    const code = e instanceof Error ? e.message : 'INTERNAL';
+    if (/^[A-Z_]+$/.test(code)) return NextResponse.json({ error: code }, { status: 400 });
+    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest) {

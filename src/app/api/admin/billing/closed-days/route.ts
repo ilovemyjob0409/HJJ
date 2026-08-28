@@ -5,8 +5,14 @@ import { seedNationalHolidays, listClosedDays, addClosedDay } from '@/lib/servic
 // 首次呼叫先種國定假日（表為唯一來源，之後靠後台自行增補），再回完整清單。
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  await seedNationalHolidays();
-  return NextResponse.json(await listClosedDays());
+  try {
+    await seedNationalHolidays();
+    return NextResponse.json(await listClosedDays());
+  } catch (e) {
+    const code = e instanceof Error ? e.message : 'INTERNAL';
+    if (/^[A-Z_]+$/.test(code)) return NextResponse.json({ error: code }, { status: 400 });
+    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {

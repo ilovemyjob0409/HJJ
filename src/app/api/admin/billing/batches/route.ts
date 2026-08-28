@@ -4,7 +4,13 @@ import { listBatches, createClassBatch, createTutoringBatch } from '@/lib/servic
 
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  return NextResponse.json(await listBatches());
+  try {
+    return NextResponse.json(await listBatches());
+  } catch (e) {
+    const code = e instanceof Error ? e.message : 'INTERNAL';
+    if (/^[A-Z_]+$/.test(code)) return NextResponse.json({ error: code }, { status: 400 });
+    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {

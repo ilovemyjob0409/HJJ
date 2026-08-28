@@ -8,7 +8,13 @@ import {
 
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  return NextResponse.json(await listStandaloneBills());
+  try {
+    return NextResponse.json(await listStandaloneBills());
+  } catch (e) {
+    const code = e instanceof Error ? e.message : 'INTERNAL';
+    if (/^[A-Z_]+$/.test(code)) return NextResponse.json({ error: code }, { status: 400 });
+    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
+  }
 }
 
 // body: { kind: 'CLASS'|'TUTORING', preview: boolean, periodStart, periodEnd,
