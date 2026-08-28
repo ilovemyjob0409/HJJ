@@ -99,6 +99,32 @@ describe('createClassBatch', () => {
     expect(otherClassBatch.skipped).toHaveLength(0);
     expect((await getBatchDetail(otherClassBatch.batchId)).bills).toHaveLength(1);
   });
+
+  it('computes used-session counts per (class, student) without leaking across a student enrolled in two classes', async () => {
+    // 迴歸測試：createClassBatch 內的已用堂數改用一次 groupBy(['classId','studentId'])
+    // 批次查詢，若 Map key 漏掉其中一個欄位，同一學生的兩個班級會互相污染已用堂數。
+    const { teacher, student, cls: cls1 } = await setupClassFixture();
+    const cls2 = await createClass({ name: '週三進階班', subject: '圍棋', level: '進階', teacherId: teacher.id, weekday: 3, startTime: '19:00', endTime: '21:00', feePerSession: 500 });
+    await enrollStudent(cls2.id, student.id);
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls1.id } }, data: { totalSessions: 3 } });
+    await prisma.classEnrollment.update({ where: { studentId_classId: { studentId: student.id, classId: cls2.id } }, data: { totalSessions: 3 } });
+
+    const marker = await prisma.user.findFirstOrThrow();
+    // cls1：用掉 3 堂（含 1 筆 ON_LEAVE 不算）→ remaining 0 → 折抵 0
+    await prisma.classAttendance.create({ data: { classId: cls1.id, studentId: student.id, date: D(2026, 8, 1), status: 'PRESENT', markedById: marker.id } });
+    await prisma.classAttendance.create({ data: { classId: cls1.id, studentId: student.id, date: D(2026, 8, 8), status: 'PRESENT', markedById: marker.id } });
+    await prisma.classAttendance.create({ data: { classId: cls1.id, studentId: student.id, date: D(2026, 8, 15), status: 'PRESENT', markedById: marker.id } });
+    await prisma.classAttendance.create({ data: { classId: cls1.id, studentId: student.id, date: D(2026, 8, 22), status: 'ON_LEAVE', markedById: marker.id } });
+    // cls2：只用掉 1 堂 → remaining 2 → 折抵上限 2（預設 cap）
+    await prisma.classAttendance.create({ data: { classId: cls2.id, studentId: student.id, date: D(2026, 8, 5), status: 'PRESENT', markedById: marker.id } });
+
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls1.id, cls2.id] });
+    const bills = (await getBatchDetail(batchId)).bills;
+    const bill1 = bills.find((b) => b.classId === cls1.id)!;
+    const bill2 = bills.find((b) => b.classId === cls2.id)!;
+    expect(bill1).toMatchObject({ deductedSessions: 0 });
+    expect(bill2).toMatchObject({ deductedSessions: 2 });
+  });
 });
 
 describe('createTutoringBatch', () => {

@@ -220,6 +220,12 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         showToast(ERROR_MESSAGES[data.error] ?? '定案失敗，請稍後再試');
+        // PARTIAL_TOPUP_FAILURE 時批次其實已經定案成功（只是部分學生補堂失敗），
+        // 畫面仍留在草稿視圖會誤導管理員；重新載入讓畫面跟真實狀態一致。
+        if (data.error === 'PARTIAL_TOPUP_FAILURE') {
+          setFinalizeModalOpen(false);
+          await load();
+        }
         return;
       }
       setFinalizeModalOpen(false);
