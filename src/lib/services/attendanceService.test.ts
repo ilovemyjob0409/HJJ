@@ -1091,6 +1091,18 @@ async function setupTutoringBooking() {
   return { teacher, student, program, window, enrollment, date, booking };
 }
 
+// 第二個獨立窗口＋預約，日期與 setupTutoringBooking 同天（都是週五），
+// 用來驗證「W1 的請求不能動到 W2 的點名紀錄」。
+async function setupTutoringBookingInOtherWindow(date: Date) {
+  const teacher = await createTeacher({ name: '黃老師', email: `huang-${Date.now()}-${Math.random()}@example.com`, password: 'x', subjects: '數學' });
+  const student = await createStudent({ name: '小華', email: `hua-${Date.now()}-${Math.random()}@example.com`, password: 'x' });
+  const program = await createProgram({ name: '數學個別輔導' });
+  const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+  const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
+  const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date });
+  return { teacher, student, program, window, enrollment, booking };
+}
+
 describe('getTutoringRoster / saveTutoringAttendance / clearTutoringAttendance', () => {
   it('lists a booked student with no status yet, then reflects a saved status', async () => {
     const { window, date, booking } = await setupTutoringBooking();
@@ -1102,7 +1114,7 @@ describe('getTutoringRoster / saveTutoringAttendance / clearTutoringAttendance',
     expect(roster[0].status).toBeNull();
     expect(roster[0].isMakeup).toBe(false);
 
-    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:05' }]);
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:05' }]);
     roster = await getTutoringRoster(window.id, date);
     expect(roster[0].status).toBe('PRESENT');
     expect(roster[0].checkInTime).toBe('16:05');
@@ -1110,10 +1122,47 @@ describe('getTutoringRoster / saveTutoringAttendance / clearTutoringAttendance',
 
   it('clears a saved attendance record', async () => {
     const { window, date, booking } = await setupTutoringBooking();
-    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'ABSENT' }]);
-    await clearTutoringAttendance([booking.id]);
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'ABSENT' }]);
+    await clearTutoringAttendance(window.id, [booking.id]);
     const roster = await getTutoringRoster(window.id, date);
     expect(roster[0].status).toBeNull();
+  });
+
+  it('rejects saving a bookingId that belongs to a different window, leaving that window\'s attendance unchanged', async () => {
+    const { window: window1, date } = await setupTutoringBooking();
+    const { window: window2, booking: booking2 } = await setupTutoringBookingInOtherWindow(date);
+
+    // window2 已經有一筆點名紀錄，用來證明之後沒被覆蓋
+    await saveTutoringAttendance(window2.id, 'marker-1', [{ bookingId: booking2.id, status: 'ABSENT' }]);
+
+    await expect(
+      saveTutoringAttendance(window1.id, 'marker-1', [{ bookingId: booking2.id, status: 'PRESENT', checkInTime: '16:05' }])
+    ).rejects.toThrow('BOOKING_NOT_IN_WINDOW');
+
+    const window2Roster = await getTutoringRoster(window2.id, date);
+    expect(window2Roster[0].status).toBe('ABSENT');
+    expect(window2Roster[0].checkInTime).toBeNull();
+  });
+
+  it('rejects clearing a bookingId that belongs to a different window, leaving that record intact', async () => {
+    const { window: window1, date } = await setupTutoringBooking();
+    const { window: window2, booking: booking2 } = await setupTutoringBookingInOtherWindow(date);
+
+    await saveTutoringAttendance(window2.id, 'marker-1', [{ bookingId: booking2.id, status: 'PRESENT' }]);
+
+    await expect(clearTutoringAttendance(window1.id, [booking2.id])).rejects.toThrow('BOOKING_NOT_IN_WINDOW');
+
+    const window2Roster = await getTutoringRoster(window2.id, date);
+    expect(window2Roster[0].status).toBe('PRESENT');
+  });
+
+  it('still saves normally when every bookingId belongs to the given window (regression)', async () => {
+    const { window, date, booking } = await setupTutoringBooking();
+    await expect(
+      saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:05' }])
+    ).resolves.not.toThrow();
+    const roster = await getTutoringRoster(window.id, date);
+    expect(roster[0].status).toBe('PRESENT');
   });
 });
 
@@ -1151,8 +1200,8 @@ describe('listAttendanceSessionsForDate with tutoring windows', () => {
 
 describe('listMyAttendance with tutoring bookings', () => {
   it('includes a tutoring attendance row', async () => {
-    const { student, booking } = await setupTutoringBooking();
-    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT' }]);
+    const { window, student, booking } = await setupTutoringBooking();
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'PRESENT' }]);
     const rows = await listMyAttendance(student.id);
     expect(rows.find((r) => r.type === 'TUTORING')).toMatchObject({ status: 'PRESENT', title: '英文個別輔導' });
   });
@@ -1436,7 +1485,7 @@ describe('getTutoringWindowAttendanceOverview', () => {
   it('reflects a marked attendance status, check-in/out times, and isMakeup for a REGULAR booking', async () => {
     const { window, studentA, enrollmentA } = await setup();
     const booking = await createBooking({ enrollmentId: enrollmentA.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
 
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     const row = overview.find((s) => s.studentId === studentA.id)!;
@@ -1448,7 +1497,7 @@ describe('getTutoringWindowAttendanceOverview', () => {
   it('reflects an ON_LEAVE attendance status', async () => {
     const { window, studentA, enrollmentA } = await setup();
     const booking = await createBooking({ enrollmentId: enrollmentA.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'ON_LEAVE', checkInTime: null, checkOutTime: null }]);
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'ON_LEAVE', checkInTime: null, checkOutTime: null }]);
 
     const overview = await getTutoringWindowAttendanceOverview(window.id);
     const row = overview.find((s) => s.studentId === studentA.id)!;
@@ -1558,9 +1607,9 @@ describe('getTutoringEnrollmentAttendance', () => {
   it('returns marked bookings and past no-shows newest first, excluding cancelled and future bookings', async () => {
     const { window, enrollment } = await setup();
     const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-    await saveTutoringAttendance('marker-1', [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
     const absent = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 17)) });
-    await saveTutoringAttendance('marker-1', [{ bookingId: absent.id, status: 'ABSENT' }]);
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: absent.id, status: 'ABSENT' }]);
     // 預約了沒出現（過期、未取消、未點名）＝未到課，要列入出缺勤
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 24)) });
     const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 10)) });
@@ -1601,7 +1650,7 @@ describe('getTutoringEnrollmentAttendance', () => {
   it('keeps a legacy cancelled-late booking that has an attendance record', async () => {
     const { window, enrollment } = await setup();
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-    await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
+    await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
     await prisma.tutoringBooking.update({ where: { id: booking.id }, data: { status: 'CANCELLED_LATE' } });
 
     const result = await getTutoringEnrollmentAttendance(enrollment.id);

@@ -199,7 +199,18 @@ export interface EnrollmentInput {
   totalSessions: number | null;
 }
 
-export async function setStudentEnrollments(studentId: string, enrollments: EnrollmentInput[]) {
+// 台北曆日「今天」換算成 UTC 午夜的 Date，用於 ClassAttendance.date（以 UTC
+// 午夜存 date-only 值）的「今天（含）以後」界線比較。setStudentEnrollments
+// （整批同步報名）與 unenrollStudent（單一退班）都用這個算法抽離未來點名：
+// 正式站伺服器是 UTC，若改用伺服器當地午夜，台北 00:00–07:59 這段會把邊界
+// 算早一天，連帶把台北昨天「已經記錄」的出席紀錄也一起刪掉（同 isBeforeToday
+// 的道理，見 src/lib/pastDate.ts）。
+function taipeiTodayAsUtcMidnight(now: Date): Date {
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+export async function setStudentEnrollments(studentId: string, enrollments: EnrollmentInput[], now: Date = new Date()) {
   const current = await prisma.classEnrollment.findMany({ where: { studentId }, select: { classId: true, totalSessions: true } });
   const currentByClassId = new Map(current.map((e) => [e.classId, e.totalSessions]));
   const currentIds = new Set(current.map((e) => e.classId));
@@ -211,8 +222,7 @@ export async function setStudentEnrollments(studentId: string, enrollments: Enro
 
   // 退班同時抽離該班「今天（含）以後」的點名紀錄：學生端不再看到未來
   // 場次、重新報名時也不會被舊點名灌堂數。過去的出席歷史保留備查。
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = taipeiTodayAsUtcMidnight(now);
 
   await prisma.$transaction([
     ...(toRemove.length > 0
@@ -275,9 +285,12 @@ export async function addEnrollmentSessions(
   if (dates.length > 0) {
     if (!markedById) throw new Error('MARKER_REQUIRED');
     const cls = await prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { weekday: true } });
+    const todayKey = taipeiDateKey(new Date());
     for (const date of dates) {
       // 日期由 date-only 字串解析為 UTC 午夜，取 UTC 星期幾（同點名慣例）。
       if (date.getUTCDay() !== cls.weekday) throw new Error('INVALID_DATE');
+      // 過去日期不可覆蓋：可能已有真實點名（含簽到時間），同 setNotRegisteredDates 的界線。
+      if (utcDateKey(date) < todayKey) throw new Error('INVALID_DATE');
     }
   }
   await prisma.$transaction([
@@ -286,7 +299,7 @@ export async function addEnrollmentSessions(
     ...dates.map((date) =>
       prisma.classAttendance.upsert({
         where: { classId_studentId_date: { classId, studentId, date } },
-        update: { status: 'NOT_REGISTERED', markedById: markedById! },
+        update: { status: 'NOT_REGISTERED', checkInTime: null, checkOutTime: null, markedById: markedById! },
         create: { classId, studentId, date, status: 'NOT_REGISTERED', markedById: markedById! },
       })
     ),
@@ -340,8 +353,17 @@ export async function setNotRegisteredDates(classId: string, studentId: string, 
   ]);
 }
 
-export function unenrollStudent(classId: string, studentId: string) {
-  return prisma.classEnrollment.delete({ where: { studentId_classId: { studentId, classId } } });
+// 退班同時抽離該班「今天（含）以後」的點名紀錄，理由與界線算法同
+// setStudentEnrollments（見 taipeiTodayAsUtcMidnight）：getClassEnrollmentQuota
+// 是用 (classId, studentId) 算已用堂數，不是用 enrollmentId，若退班沒清掉
+// 未來的點名，之後重新報名同一班會立刻繼承這些舊紀錄，灌高已用堂數。
+export async function unenrollStudent(classId: string, studentId: string, now: Date = new Date()) {
+  const today = taipeiTodayAsUtcMidnight(now);
+  const [, enrollment] = await prisma.$transaction([
+    prisma.classAttendance.deleteMany({ where: { studentId, classId, date: { gte: today } } }),
+    prisma.classEnrollment.delete({ where: { studentId_classId: { studentId, classId } } }),
+  ]);
+  return enrollment;
 }
 
 // 是否仍有「有效班級」的報名（班級未被軟刪除）。請假／補課流程都掛在

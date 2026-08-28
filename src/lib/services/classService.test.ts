@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
@@ -305,6 +305,64 @@ describe('unenrollStudent', () => {
 
     expect(await prisma.enrollmentPeriod.count()).toBe(0);
   });
+
+  it('退班刪除今天以後的點名，保留過去的出席歷史（同 setStudentEnrollments 的抽離邏輯）', async () => {
+    const teacher = await createTeacher({ name: '徐老師', email: 'class-unenroll-attendance-hsu@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小抽', email: 'class-unenroll-attendance-chou@example.com', password: 'x' });
+    const cls = await createClass({ name: '圍棋抽離班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const keep = await createClass({ name: '圍棋保留班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    await setStudentEnrollments(student.id, [
+      { classId: cls.id, totalSessions: 12 },
+      { classId: keep.id, totalSessions: 12 },
+    ]);
+    const marker = await prisma.user.findFirstOrThrow();
+    const mk = (classId: string, date: Date) =>
+      prisma.classAttendance.create({
+        data: { classId, studentId: student.id, date, status: 'PRESENT', markedById: marker.id },
+      });
+    await mk(cls.id, new Date(2020, 0, 6)); // 過去：保留
+    await mk(cls.id, new Date(2030, 0, 7)); // 未來：刪除
+    await mk(keep.id, new Date(2030, 0, 8)); // 未退的班：不受影響
+
+    await unenrollStudent(cls.id, student.id);
+
+    const remaining = await prisma.classAttendance.findMany({ where: { studentId: student.id }, select: { classId: true, date: true } });
+    expect(remaining).toHaveLength(2);
+    expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2020)).toBe(true);
+    expect(remaining.some((r) => r.classId === keep.id)).toBe(true);
+    expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2030)).toBe(false);
+  });
+});
+
+describe('unenrollStudent 退班抽離點名 — Taipei day boundary (server clock running in UTC)', () => {
+  const originalTZ = process.env.TZ;
+  afterEach(() => {
+    process.env.TZ = originalTZ;
+  });
+
+  it('keeps a Taipei-yesterday attendance row but still clears a Taipei-today (and later) one', async () => {
+    process.env.TZ = 'UTC';
+    const teacher = await createTeacher({ name: '徐老師', email: 'class-unenroll-hsu-tz@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小抽', email: 'class-unenroll-chou-tz@example.com', password: 'x' });
+    const cls = await createClass({ name: '圍棋抽離班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+    const marker = await prisma.user.findFirstOrThrow();
+    const mk = (date: Date) =>
+      prisma.classAttendance.create({
+        data: { classId: cls.id, studentId: student.id, date, status: 'PRESENT', markedById: marker.id },
+      });
+    // 瞬間 = UTC 2026-01-15 20:00 = 台北 2026-01-16 04:00：台北已跨到
+    // 1/16，但伺服器（UTC）當地日期仍是 1/15。
+    const now = new Date('2026-01-15T20:00:00.000Z');
+    await mk(new Date('2026-01-15T00:00:00.000Z')); // 台北昨天：應保留
+    await mk(new Date('2026-01-16T00:00:00.000Z')); // 台北今天：應清除
+    await mk(new Date('2026-01-20T00:00:00.000Z')); // 台北未來：應清除
+
+    await unenrollStudent(cls.id, student.id, now);
+
+    const remaining = await prisma.classAttendance.findMany({ where: { studentId: student.id }, select: { date: true } });
+    expect(remaining.map((r) => r.date.toISOString().slice(0, 10))).toEqual(['2026-01-15']);
+  });
 });
 
 describe('listStudentEnrolledClasses', () => {
@@ -406,6 +464,13 @@ describe('deleteClass', () => {
 });
 
 describe('addEnrollmentSessions with notRegisteredDates', () => {
+  // 未來日期用 2099 年（週二班，同 weekday 2），讓guard 在任何執行時間都穩定；
+  // 過去日期固定用 2020 年，早於現實中任何測試執行時間，永遠是「過去」。
+  const FUTURE_TUE_1 = new Date('2099-01-06');
+  const FUTURE_TUE_2 = new Date('2099-01-13');
+  const FUTURE_WED = new Date('2099-01-07'); // 錯星期（非過去，單純測 weekday 檢查）
+  const PAST_TUE = new Date('2020-08-11');
+
   async function setupWithMarker() {
     const marker = await prisma.user.create({
       data: { email: 'renew-marker@example.com', password: 'x', name: '行政', role: 'ADMIN' },
@@ -422,7 +487,7 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
     const { marker, student, cls } = await setupWithMarker();
 
     await addEnrollmentSessions(cls.id, student.id, 8, {
-      notRegisteredDates: [new Date('2026-08-11'), new Date('2026-08-18')], // both Tuesdays
+      notRegisteredDates: [FUTURE_TUE_1, FUTURE_TUE_2],
       markedById: marker.id,
     });
 
@@ -431,7 +496,7 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
     });
     expect(enrollment.totalSessions).toBe(18);
 
-    const roster = await getClassRoster(cls.id, new Date('2026-08-11'));
+    const roster = await getClassRoster(cls.id, FUTURE_TUE_1);
     expect(roster.find((r) => r.studentId === student.id)?.status).toBe('NOT_REGISTERED');
 
     const marked = await prisma.classAttendance.findMany({ where: { studentId: student.id, status: 'NOT_REGISTERED' } });
@@ -443,7 +508,7 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
 
     await expect(
       addEnrollmentSessions(cls.id, student.id, 8, {
-        notRegisteredDates: [new Date('2026-08-12')], // Wednesday
+        notRegisteredDates: [FUTURE_WED],
         markedById: marker.id,
       })
     ).rejects.toThrow('INVALID_DATE');
@@ -456,21 +521,64 @@ describe('addEnrollmentSessions with notRegisteredDates', () => {
     expect(await prisma.enrollmentPeriod.count()).toBe(1);
   });
 
-  it('overwrites an existing attendance row for the same date instead of failing', async () => {
+  it('overwrites an existing FUTURE attendance row for the same date, clearing check-in/out times', async () => {
     const { marker, student, cls } = await setupWithMarker();
     await prisma.classAttendance.create({
-      data: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11'), status: 'PRESENT', markedById: marker.id },
+      data: {
+        classId: cls.id,
+        studentId: student.id,
+        date: FUTURE_TUE_1,
+        status: 'PRESENT',
+        markedById: marker.id,
+        checkInTime: '14:00',
+        checkOutTime: '16:00',
+      },
     });
 
     await addEnrollmentSessions(cls.id, student.id, 8, {
-      notRegisteredDates: [new Date('2026-08-11')],
+      notRegisteredDates: [FUTURE_TUE_1],
       markedById: marker.id,
     });
 
     const row = await prisma.classAttendance.findUniqueOrThrow({
-      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: new Date('2026-08-11') } },
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: FUTURE_TUE_1 } },
     });
     expect(row.status).toBe('NOT_REGISTERED');
+    expect(row.checkInTime).toBeNull();
+    expect(row.checkOutTime).toBeNull();
+  });
+
+  it('rejects a PAST date, leaving a real checked-in attendance row untouched', async () => {
+    const { marker, student, cls } = await setupWithMarker();
+    const checkInTime = '14:05';
+    await prisma.classAttendance.create({
+      data: {
+        classId: cls.id,
+        studentId: student.id,
+        date: PAST_TUE,
+        status: 'PRESENT',
+        markedById: marker.id,
+        checkInTime,
+      },
+    });
+
+    await expect(
+      addEnrollmentSessions(cls.id, student.id, 8, {
+        notRegisteredDates: [PAST_TUE],
+        markedById: marker.id,
+      })
+    ).rejects.toThrow('INVALID_DATE');
+
+    const enrollment = await prisma.classEnrollment.findUniqueOrThrow({
+      where: { studentId_classId: { studentId: student.id, classId: cls.id } },
+    });
+    expect(enrollment.totalSessions).toBe(10); // 交易整筆回滾，堂數也沒被加
+
+    const row = await prisma.classAttendance.findUniqueOrThrow({
+      where: { classId_studentId_date: { classId: cls.id, studentId: student.id, date: PAST_TUE } },
+    });
+    expect(row.status).toBe('PRESENT');
+    expect(row.checkInTime).toBe(checkInTime);
   });
 });
 
@@ -626,6 +734,37 @@ describe('setStudentEnrollments 退班抽離點名', () => {
     expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2020)).toBe(true);
     expect(remaining.some((r) => r.classId === keep.id)).toBe(true);
     expect(remaining.some((r) => r.classId === cls.id && r.date.getFullYear() === 2030)).toBe(false);
+  });
+});
+
+describe('setStudentEnrollments 退班抽離點名 — Taipei day boundary (server clock running in UTC)', () => {
+  const originalTZ = process.env.TZ;
+  afterEach(() => {
+    process.env.TZ = originalTZ;
+  });
+
+  it('keeps a Taipei-yesterday attendance row but still clears a Taipei-today (and later) one', async () => {
+    process.env.TZ = 'UTC';
+    const teacher = await createTeacher({ name: '徐老師', email: 'hsu-tz@example.com', password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小抽', email: 'chou-tz@example.com', password: 'x' });
+    const cls = await createClass({ name: '圍棋抽離班', subject: '圍棋', level: '初級', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    await setStudentEnrollments(student.id, [{ classId: cls.id, totalSessions: 12 }]);
+    const marker = await prisma.user.findFirstOrThrow();
+    const mk = (date: Date) =>
+      prisma.classAttendance.create({
+        data: { classId: cls.id, studentId: student.id, date, status: 'PRESENT', markedById: marker.id },
+      });
+    // 瞬間 = UTC 2026-01-15 20:00 = 台北 2026-01-16 04:00：台北已跨到
+    // 1/16，但伺服器（UTC）當地日期仍是 1/15。
+    const now = new Date('2026-01-15T20:00:00.000Z');
+    await mk(new Date('2026-01-15T00:00:00.000Z')); // 台北昨天：應保留
+    await mk(new Date('2026-01-16T00:00:00.000Z')); // 台北今天：應清除
+    await mk(new Date('2026-01-20T00:00:00.000Z')); // 台北未來：應清除
+
+    await setStudentEnrollments(student.id, [], now);
+
+    const remaining = await prisma.classAttendance.findMany({ where: { studentId: student.id }, select: { date: true } });
+    expect(remaining.map((r) => r.date.toISOString().slice(0, 10))).toEqual(['2026-01-15']);
   });
 });
 

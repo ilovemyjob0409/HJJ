@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createSignedUrls } from '@/lib/storage';
+import { taipeiDateKey } from './tutoringBookingService';
 
 vi.mock('@/lib/storage', () => ({
   uploadActivityImage: vi.fn(),
@@ -239,8 +240,10 @@ describe('cancelRegistration', () => {
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
+    // 台北今天，以日期欄位的實際存法（UTC 午夜代表曆日）建構，而非伺服器
+    // 當地午夜——兩者在正式站（UTC）並不相等。
+    const [ty, tm, td] = taipeiDateKey(new Date()).split('-').map(Number);
+    const todayMidnight = new Date(Date.UTC(ty, tm - 1, td));
     await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: yesterday, endDate: todayMidnight, capacity: 8, teacherIds: [teacher.id] });
     const activity = await prisma.activity.findFirstOrThrow();
     const registration = await registerForActivity(activity.id, student.id);
@@ -285,6 +288,21 @@ describe('deleteActivity', () => {
     expect(remainingActivities).toBe(0);
     expect(remainingRegistrations).toBe(0);
     expect(remainingTeacherLinks).toBe(0);
+  });
+
+  it('throws ACTIVITY_HAS_ATTENDANCE and does not delete when the activity has attendance history', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'activity-delete-block-att-chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const student = await createStudent({ name: '小明', email: 'activity-delete-block-att-ming@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
+    const activity = await prisma.activity.findFirstOrThrow();
+    const marker = await prisma.user.create({ data: { name: '行政', email: 'activity-delete-block-att-marker@example.com', password: 'x', role: 'ADMIN' } });
+    await prisma.activityAttendance.create({
+      data: { activityId: activity.id, studentId: student.id, date: new Date(2026, 7, 1), status: 'PRESENT', markedById: marker.id },
+    });
+
+    await expect(deleteActivity(activity.id)).rejects.toThrow('ACTIVITY_HAS_ATTENDANCE');
+    expect(await prisma.activity.findUnique({ where: { id: activity.id } })).not.toBeNull();
   });
 });
 

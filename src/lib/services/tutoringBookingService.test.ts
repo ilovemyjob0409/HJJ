@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { subscribeStudentForTest } from '@/lib/testUtils/pushHelpers';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createProgram, createWindow } from './tutoringProgramService';
+import { createProgram, createWindow, updateProgram } from './tutoringProgramService';
 import { createBooking, cancelBooking, adminCancelBooking, approveBooking, rejectBooking } from './tutoringBookingService';
 import { getMonthlyQuotaStatus, listAvailability, listAttendanceForStudent, listBookingsOverview, sendMonthlyQuotaReminders } from './tutoringBookingService';
 import { listPendingReviewBookings } from './tutoringBookingService';
@@ -173,7 +173,7 @@ describe('createBooking 每月額度閘門', () => {
       data: { email: `quota-marker-${Date.now()}@example.com`, password: 'x', name: 'Marker', role: 'TEACHER' },
     });
     const past = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await saveTutoringAttendance(marker.id, [{ bookingId: past.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: past.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
     // FRIDAY（2026-08-07）已到場＝已計次，同月（2026-08）再約就是第 2 堂 → 送審
     const b2 = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2026-08-14'), quotaReview: true });
     expect(b2.status).toBe('PENDING_ADMIN');
@@ -252,6 +252,16 @@ describe('listWalkInCandidates', () => {
       createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
     ).rejects.toThrow('ENROLLMENT_INACTIVE');
   });
+
+  it('rejects booking against a deactivated window (stale windowId held by client)', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    await prisma.tutoringWindow.update({ where: { id: window.id }, data: { active: false } });
+    await expect(
+      createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY })
+    ).rejects.toThrow('WINDOW_INACTIVE');
+    const count = await prisma.tutoringBooking.count({ where: { enrollmentId: enrollment.id } });
+    expect(count).toBe(0);
+  });
 });
 
 describe('cancelBooking', () => {
@@ -301,6 +311,17 @@ describe('cancelBooking', () => {
   it('rejects with BOOKING_NOT_FOUND for a nonexistent booking id', async () => {
     await expect(cancelBooking('nonexistent-booking-id', 'someone')).rejects.toThrow('BOOKING_NOT_FOUND');
   });
+
+  it('rejects cancelling a booking that already has an attendance record (attended but would silently free up quota)', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const marker = await createMarker();
+    const future = new Date(Date.UTC(2099, 0, 2));
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: future });
+    await prisma.tutoringAttendance.create({ data: { bookingId: booking.id, status: 'PRESENT', markedById: marker.id } });
+    await expect(cancelBooking(booking.id, enrollment.studentId)).rejects.toThrow('BOOKING_HAS_ATTENDANCE');
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(row.status).toBe('BOOKED');
+  });
 });
 
 describe('adminCancelBooking', () => {
@@ -309,6 +330,16 @@ describe('adminCancelBooking', () => {
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
     await adminCancelBooking(booking.id);
     expect((await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('CANCELLED');
+  });
+
+  it('rejects cancelling a booking that already has an attendance record', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    const marker = await createMarker();
+    const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
+    await prisma.tutoringAttendance.create({ data: { bookingId: booking.id, status: 'PRESENT', markedById: marker.id } });
+    await expect(adminCancelBooking(booking.id)).rejects.toThrow('BOOKING_HAS_ATTENDANCE');
+    const row = await prisma.tutoringBooking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(row.status).toBe('BOOKED');
   });
 
   it('rejects with BOOKING_NOT_FOUND for a nonexistent booking id', async () => {
@@ -480,6 +511,82 @@ describe('listAvailability', () => {
       myBookingStatus: null,
     });
   });
+
+  it('does not add a `windows` field when there is exactly one matching window (regression: unchanged shape)', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(8);
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.find((d) => d.windowId === window.id)!;
+    expect(target.windows).toBeUndefined();
+  });
+
+  it('surfaces every window when a program has 2+ active windows on the same weekday, without merging capacity', async () => {
+    const { teacher, program, window: morning, enrollment } = await setupProgramWithEnrollment(8);
+    const eveningTeacher = await createTeacher({ name: '陳老師', email: `chen-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const evening = await createWindow({
+      programId: program.id,
+      weekday: morning.weekday,
+      startTime: '19:00',
+      endTime: '21:00',
+      capacity: 4,
+      teacherId: eveningTeacher.id,
+    });
+
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.find((d) => d.windows && d.windows.length > 0);
+    expect(target).toBeDefined();
+    expect(target!.windows).toHaveLength(2);
+
+    const ids = target!.windows!.map((w) => w.windowId).sort();
+    expect(ids).toEqual([evening.id, morning.id].sort());
+
+    const morningOption = target!.windows!.find((w) => w.windowId === morning.id)!;
+    expect(morningOption).toMatchObject({ startTime: morning.startTime, endTime: morning.endTime, capacity: 8, remaining: 8 });
+    expect(morningOption.teacherNames).toEqual([teacher.user.name]);
+
+    const eveningOption = target!.windows!.find((w) => w.windowId === evening.id)!;
+    expect(eveningOption).toMatchObject({ startTime: '19:00', endTime: '21:00', capacity: 4, remaining: 4 });
+    expect(eveningOption.teacherNames).toEqual(['陳老師']);
+
+    // 相容既有單一窗口呼叫端：頂層 windowId/capacity/remaining 仍然存在，
+    // 對應時間最早的那個窗口（morning）。
+    expect(target).toMatchObject({ windowId: morning.id, capacity: 8, remaining: 8 });
+
+    // 預約其中一個窗口不影響另一個窗口的剩餘名額（不合併容量）。
+    await createBooking({ enrollmentId: enrollment.id, windowId: evening.id, date: new Date(target!.date) });
+    const afterBooking = await listAvailability(enrollment.id, 14);
+    const targetAfter = afterBooking.find((d) => d.date === target!.date)!;
+    expect(targetAfter.windows!.find((w) => w.windowId === evening.id)).toMatchObject({ remaining: 3 });
+    expect(targetAfter.windows!.find((w) => w.windowId === morning.id)).toMatchObject({ remaining: 8 });
+    // myBooking 資訊是這一天（不分窗口）的欄位：同日已有一筆有效預約就會標示。
+    expect(targetAfter).toMatchObject({ myBookingStatus: 'BOOKED' });
+  });
+
+  it('skips a date entirely only when every matching window is closed that day, keeping the others open', async () => {
+    const { program, window: morning, enrollment } = await setupProgramWithEnrollment(8);
+    const eveningTeacher = await createTeacher({ name: '周老師', email: `chou-${Date.now()}@example.com`, password: 'x', subjects: '英文' });
+    const evening = await createWindow({
+      programId: program.id,
+      weekday: morning.weekday,
+      startTime: '19:00',
+      endTime: '21:00',
+      capacity: 4,
+      teacherId: eveningTeacher.id,
+    });
+    const days = await listAvailability(enrollment.id, 14);
+    const target = days.find((d) => d.windows && d.windows.length === 2)!;
+
+    // 只停開晚上那個窗口：這天還是要出現，但只剩早上那個選項。
+    await prisma.tutoringWindowClosure.create({ data: { windowId: evening.id, date: new Date(target.date) } });
+    const afterOneClosure = await listAvailability(enrollment.id, 14);
+    const dayAfterOneClosure = afterOneClosure.find((d) => d.date === target.date)!;
+    expect(dayAfterOneClosure.windows).toBeUndefined();
+    expect(dayAfterOneClosure.windowId).toBe(morning.id);
+
+    // 兩個窗口都停開：這天要整個消失，跟過去單一窗口停開的行為一致。
+    await prisma.tutoringWindowClosure.create({ data: { windowId: morning.id, date: new Date(target.date) } });
+    const afterBothClosed = await listAvailability(enrollment.id, 14);
+    expect(afterBothClosed.find((d) => d.date === target.date)).toBeUndefined();
+  });
 });
 
 describe('listAttendanceForStudent', () => {
@@ -487,7 +594,7 @@ describe('listAttendanceForStudent', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const marker = await createMarker();
     const marked = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await saveTutoringAttendance(marker.id, [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: marked.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
     // 過期、未取消、未點名＝未到課，要列入
     await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-14') });
     const cancelled = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) });
@@ -510,7 +617,7 @@ describe('listAttendanceForStudent', () => {
     const { window, enrollment } = await setupProgramWithEnrollment();
     const marker = await createMarker();
     const legacy = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
-    await saveTutoringAttendance(marker.id, [{ bookingId: legacy.id, status: 'PRESENT' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: legacy.id, status: 'PRESENT' }]);
     await prisma.tutoringBooking.update({ where: { id: legacy.id }, data: { status: 'CANCELLED_LATE' } });
 
     const rows = await listAttendanceForStudent(enrollment.studentId);
@@ -579,6 +686,126 @@ describe('getTutoringDeductionLedger', () => {
 
   it('rejects with ENROLLMENT_NOT_FOUND for a nonexistent enrollment id', async () => {
     await expect(getTutoringDeductionLedger('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
+  it('uses the quota that was in effect for each month instead of retroactively applying the current value', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(); // program default quota 8
+    const marker = await createMarker();
+    const augBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: augBooking.id, status: 'PRESENT', markedById: marker.id } });
+    const sepBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: sepBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 模擬行政在 9 月把額度從 8 調成 10：目前靜態值已經是 10，但歷史紀錄
+    // 記著「8 月當時是 8」——8 月的帳本不該被新值回頭改寫。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 10 } });
+    await prisma.tutoringQuotaChange.createMany({
+      data: [
+        { enrollmentId: enrollment.id, monthlyQuota: 8, effectiveFrom: new Date(0) },
+        { enrollmentId: enrollment.id, monthlyQuota: 10, effectiveFrom: new Date('2020-09-01') },
+      ],
+    });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(10); // 頂層欄位仍是目前的靜態值，不受影響
+    expect(history.map((h) => [utcDateKey(h.date), h.kind, h.amount, h.remainingAfter])).toEqual([
+      ['2020-09-04', 'DEDUCT', -1, 9],
+      ['2020-09-01', 'GRANT', 10, 10], // 變更生效當月起用新額度 10
+      ['2020-08-07', 'DEDUCT', -1, 7],
+      ['2020-08-01', 'GRANT', 8, 8], // 變更前的月份仍是舊額度 8，沒被改寫
+    ]);
+  });
+
+  it('documents current month-granularity limitation: a mid-month quota change applies to the WHOLE current month, including days before the change', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment(); // program default quota 8
+    const marker = await createMarker();
+    // 8/7：異動額度「之前」發生的一堂，原本照舊額度 8 計算才對
+    const before = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: before.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 模擬行政在 8/15（月中）把額度從 8 調成 10——effectiveFrom 是完整日期，
+    // 但 quotaForMonth 只比對到「月」的粒度（'2020-08' <= '2020-08'），所以
+    // 整個 8 月都套用新額度 10，包含 8/15 之前已經發生的 8/7 那堂。這是
+    // 已知的月粒度限制（quotaForMonth 定義處有註解），不是本次修復目標。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 10 } });
+    await prisma.tutoringQuotaChange.createMany({
+      data: [
+        { enrollmentId: enrollment.id, monthlyQuota: 8, effectiveFrom: new Date(0) },
+        { enrollmentId: enrollment.id, monthlyQuota: 10, effectiveFrom: new Date('2020-08-15') },
+      ],
+    });
+
+    // 8/21：異動額度「之後」發生的一堂
+    const after = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-21') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: after.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { history } = await getTutoringDeductionLedger(enrollment.id);
+    const augustGrant = history.find((h) => h.kind === 'GRANT' && utcDateKey(h.date) === '2020-08-01');
+    // 期望值是 10 而非「8/7 用 8、8/21 用 10」的混合結果——這就是要釘選的
+    // 已知行為：整月一律套用月底當時生效的最新額度。
+    expect(augustGrant?.amount).toBe(10);
+  });
+
+  it('falls back to the current static quota for every month when there is no recorded quota change history', async () => {
+    const { window, enrollment } = await setupProgramWithEnrollment();
+    // 直接改資料庫，不經過 updateEnrollment：模擬「這筆報名從沒被行政異動
+    // 過額度」的既有資料——TutoringQuotaChange 完全沒有紀錄。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 11 } });
+    const marker = await createMarker();
+    const augBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: augBooking.id, status: 'PRESENT', markedById: marker.id } });
+    const sepBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-09-04') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: sepBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(11);
+    expect(history.filter((h) => h.kind === 'GRANT').map((h) => h.amount)).toEqual([11, 11]);
+  });
+
+  it('propagates a program defaultMonthlyQuota change into a null-quota enrollment\'s ledger history (program-default path, not the enrollment-override path)', async () => {
+    const { window, enrollment, program } = await setupProgramWithEnrollment(); // program default quota 8; enrollment.monthlyQuota stays null throughout
+    const marker = await createMarker();
+    const pastBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: pastBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 行政直接改課程的預設額度（8→10），不是改這筆報名的個別覆寫值——
+    // enrollment.monthlyQuota 全程是 null，吃的正是這個預設值，所以這筆報名
+    // 的帳本也該跟著補一筆歷史列，8 月不該被回頭改寫成 10。
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+
+    const futureBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0] });
+    await prisma.tutoringAttendance.create({ data: { bookingId: futureBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(10); // 頂層欄位是目前的課程預設值
+    const augustGrant = history.find((h) => h.kind === 'GRANT' && utcDateKey(h.date) === '2020-08-01');
+    const futureMonthKey = utcDateKey(FUTURE_FRIDAYS[0]).slice(0, 7);
+    const futureGrant = history.find((h) => h.kind === 'GRANT' && utcDateKey(h.date) === `${futureMonthKey}-01`);
+    expect(augustGrant?.amount).toBe(8); // 變更前的月份仍是舊的課程預設值 8，沒被改寫
+    expect(futureGrant?.amount).toBe(10); // 變更生效之後（下個月）用新值 10
+  });
+
+  it('leaves an enrollment with its own monthlyQuota override unaffected by a program defaultMonthlyQuota change (regression: overrides stay insulated)', async () => {
+    const { window, program, enrollment } = await setupProgramWithEnrollment(); // program default quota 8
+    // 直接改資料庫帶自己的覆寫值 11（不經過 updateEnrollment），這筆報名從頭
+    // 到尾都吃這個覆寫值，不吃課程預設，也完全沒有 TutoringQuotaChange 歷史列
+    // ——模擬「這筆報名的覆寫值從沒被 updateEnrollment 異動過」的既有資料。
+    await prisma.tutoringEnrollment.update({ where: { id: enrollment.id }, data: { monthlyQuota: 11 } });
+    const marker = await createMarker();
+    const pastBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date('2020-08-07') });
+    await prisma.tutoringAttendance.create({ data: { bookingId: pastBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    // 行政改課程的預設額度（8→10）——這筆報名有自己的覆寫值 11，本來就不吃
+    // 課程預設，這次異動不該影響它，也不該幫它多寫任何歷史列。
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+    expect(await prisma.tutoringQuotaChange.count({ where: { enrollmentId: enrollment.id } })).toBe(0);
+
+    const futureBooking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FUTURE_FRIDAYS[0] });
+    await prisma.tutoringAttendance.create({ data: { bookingId: futureBooking.id, status: 'PRESENT', markedById: marker.id } });
+
+    const { monthlyQuota, history } = await getTutoringDeductionLedger(enrollment.id);
+    expect(monthlyQuota).toBe(11); // 覆寫值，跟課程預設的異動無關
+    expect(history.filter((h) => h.kind === 'GRANT').map((h) => h.amount)).toEqual([11, 11]); // 兩個月都還是 11（無歷史列，回退用目前的靜態值）
   });
 });
 
@@ -675,7 +902,7 @@ describe('sendMissedSessionReminders', () => {
     await subscribeStudentForTest(student.id);
     const marker = await createMarker();
     const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: FRIDAY });
-    await saveTutoringAttendance(marker.id, [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
 
     const result = await sendMissedSessionReminders(DAY_AFTER_FRIDAY);
 

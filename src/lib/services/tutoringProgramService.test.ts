@@ -49,6 +49,24 @@ describe('program CRUD', () => {
   it('rejects deleting a nonexistent program with PROGRAM_NOT_FOUND', async () => {
     await expect(deleteProgram('nonexistent-program-id')).rejects.toThrow('PROGRAM_NOT_FOUND');
   });
+
+  it('throws PROGRAM_HAS_RECORDS and does not delete when the program still has a window', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'program-delete-block-window-lin@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+
+    await expect(deleteProgram(program.id)).rejects.toThrow('PROGRAM_HAS_RECORDS');
+    expect(await prisma.tutoringProgram.findUnique({ where: { id: program.id } })).not.toBeNull();
+  });
+
+  it('throws PROGRAM_HAS_RECORDS and does not delete when the program still has an enrollment', async () => {
+    const student = await createStudent({ name: '小明', email: 'program-delete-block-enrollment-ming@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await expect(deleteProgram(program.id)).rejects.toThrow('PROGRAM_HAS_RECORDS');
+    expect(await prisma.tutoringProgram.findUnique({ where: { id: program.id } })).not.toBeNull();
+  });
 });
 
 describe('window CRUD', () => {
@@ -163,6 +181,18 @@ describe('window CRUD', () => {
     await expect(deleteWindow('nonexistent-window-id')).rejects.toThrow('WINDOW_NOT_FOUND');
   });
 
+  it('throws WINDOW_HAS_BOOKINGS and does not delete when the window still has a booking', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'window-delete-block-booking-lin@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    const student = await createStudent({ name: '小明', email: 'window-delete-block-booking-ming@example.com', password: 'x' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) }); // Friday
+
+    await expect(deleteWindow(window.id)).rejects.toThrow('WINDOW_HAS_BOOKINGS');
+    expect(await prisma.tutoringWindow.findUnique({ where: { id: window.id } })).not.toBeNull();
+  });
+
   it('rejects adding a duplicate window closure with CLOSURE_ALREADY_EXISTS', async () => {
     const teacher = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '英文' });
     const program = await createProgram({ name: '英文個別輔導' });
@@ -222,8 +252,24 @@ describe('enrollment CRUD', () => {
     await expect(updateEnrollment('nonexistent-enrollment-id', { active: false })).rejects.toThrow('ENROLLMENT_NOT_FOUND');
   });
 
+  it('rejects updating monthlyQuota on a nonexistent enrollment with ENROLLMENT_NOT_FOUND', async () => {
+    await expect(updateEnrollment('nonexistent-enrollment-id', { monthlyQuota: 5 })).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
   it('rejects deleting a nonexistent enrollment with ENROLLMENT_NOT_FOUND', async () => {
     await expect(deleteEnrollment('nonexistent-enrollment-id')).rejects.toThrow('ENROLLMENT_NOT_FOUND');
+  });
+
+  it('throws ENROLLMENT_HAS_BOOKINGS and does not delete when the enrollment still has a booking', async () => {
+    const teacher = await createTeacher({ name: '林老師', email: 'enrollment-delete-block-booking-lin@example.com', password: 'x', subjects: '英文' });
+    const student = await createStudent({ name: '小美', email: 'enrollment-delete-block-booking-mei@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+    await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2099, 0, 2)) }); // Friday
+
+    await expect(deleteEnrollment(enrollment.id)).rejects.toThrow('ENROLLMENT_HAS_BOOKINGS');
+    expect(await prisma.tutoringEnrollment.findUnique({ where: { id: enrollment.id } })).not.toBeNull();
   });
 
   it('rejects creating a duplicate enrollment with ALREADY_ENROLLED', async () => {
@@ -232,6 +278,109 @@ describe('enrollment CRUD', () => {
     await createEnrollment({ studentId: student.id, programId: program.id });
 
     await expect(createEnrollment({ studentId: student.id, programId: program.id })).rejects.toThrow('ALREADY_ENROLLED');
+  });
+});
+
+describe('updateEnrollment quota change history', () => {
+  it('records a baseline row for the old value plus a row for the new value on the first real quota change', async () => {
+    const student = await createStudent({ name: '小美', email: 'quota-history-first@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id }); // monthlyQuota null → 用課程預設 8
+
+    await updateEnrollment(enrollment.id, { monthlyQuota: 11 });
+
+    const changes = await prisma.tutoringQuotaChange.findMany({
+      where: { enrollmentId: enrollment.id },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+    expect(changes.map((c) => c.monthlyQuota)).toEqual([8, 11]);
+    expect(changes[0].effectiveFrom).toEqual(new Date(0)); // 舊值基準列蓋住所有既有歷史月份
+  });
+
+  it('does not write history when the update leaves the effective quota unchanged', async () => {
+    const student = await createStudent({ name: '小美', email: 'quota-history-noop@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id, monthlyQuota: 11 });
+
+    await updateEnrollment(enrollment.id, { monthlyQuota: 11 }); // 設成同一個值
+    await updateEnrollment(enrollment.id, { active: false }); // 不涉及 monthlyQuota
+
+    const count = await prisma.tutoringQuotaChange.count({ where: { enrollmentId: enrollment.id } });
+    expect(count).toBe(0);
+  });
+
+  it('only adds one row (no repeated baseline) for a second real quota change', async () => {
+    const student = await createStudent({ name: '小美', email: 'quota-history-second@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await updateEnrollment(enrollment.id, { monthlyQuota: 11 });
+    await updateEnrollment(enrollment.id, { monthlyQuota: 13 });
+
+    const changes = await prisma.tutoringQuotaChange.findMany({ where: { enrollmentId: enrollment.id } });
+    expect(changes.map((c) => c.monthlyQuota).sort((a, b) => a - b)).toEqual([8, 11, 13]);
+  });
+
+  it('treats clearing the override back to null as a real change when it differs from the program default', async () => {
+    const student = await createStudent({ name: '小美', email: 'quota-history-clear@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id, monthlyQuota: 11 });
+
+    await updateEnrollment(enrollment.id, { monthlyQuota: null });
+
+    const changes = await prisma.tutoringQuotaChange.findMany({
+      where: { enrollmentId: enrollment.id },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+    expect(changes.map((c) => c.monthlyQuota)).toEqual([11, 8]); // 基準列記舊值 11，新列記回退後的課程預設 8
+  });
+});
+
+describe('updateProgram defaultMonthlyQuota change history', () => {
+  it('records history for every null-quota enrollment under the program on a real default change, but not for an enrollment with its own override', async () => {
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const studentA = await createStudent({ name: '小美', email: 'program-quota-history-a@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'program-quota-history-b@example.com', password: 'x' });
+    const studentC = await createStudent({ name: '小明', email: 'program-quota-history-c@example.com', password: 'x' });
+    const nullQuotaA = await createEnrollment({ studentId: studentA.id, programId: program.id }); // monthlyQuota null → 吃課程預設
+    const nullQuotaB = await createEnrollment({ studentId: studentB.id, programId: program.id }); // monthlyQuota null → 吃課程預設
+    const overridden = await createEnrollment({ studentId: studentC.id, programId: program.id, monthlyQuota: 20 }); // 有自己的覆寫值
+
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+
+    for (const enrollment of [nullQuotaA, nullQuotaB]) {
+      const changes = await prisma.tutoringQuotaChange.findMany({
+        where: { enrollmentId: enrollment.id },
+        orderBy: { effectiveFrom: 'asc' },
+      });
+      expect(changes.map((c) => c.monthlyQuota)).toEqual([8, 10]);
+      expect(changes[0].effectiveFrom).toEqual(new Date(0)); // 舊值基準列蓋住所有既有歷史月份
+    }
+    // 有自己覆寫值的報名不吃課程預設，這次異動不該幫它補任何歷史列
+    expect(await prisma.tutoringQuotaChange.count({ where: { enrollmentId: overridden.id } })).toBe(0);
+  });
+
+  it('does not write history when the update leaves defaultMonthlyQuota unchanged or does not touch it', async () => {
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const student = await createStudent({ name: '小美', email: 'program-quota-history-noop@example.com', password: 'x' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await updateProgram(program.id, { defaultMonthlyQuota: 8 }); // 設成同一個值
+    await updateProgram(program.id, { active: false }); // 不涉及 defaultMonthlyQuota
+
+    expect(await prisma.tutoringQuotaChange.count({ where: { enrollmentId: enrollment.id } })).toBe(0);
+  });
+
+  it('only adds one row (no repeated baseline) for a second real default change', async () => {
+    const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
+    const student = await createStudent({ name: '小美', email: 'program-quota-history-second@example.com', password: 'x' });
+    const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
+
+    await updateProgram(program.id, { defaultMonthlyQuota: 10 });
+    await updateProgram(program.id, { defaultMonthlyQuota: 12 });
+
+    const changes = await prisma.tutoringQuotaChange.findMany({ where: { enrollmentId: enrollment.id } });
+    expect(changes.map((c) => c.monthlyQuota).sort((a, b) => a - b)).toEqual([8, 10, 12]);
   });
 });
 
@@ -282,7 +431,7 @@ describe('listEnrollments 批次額度＝逐筆 getMonthlyQuotaStatus（對照�
     const sa = await createStudent({ name: '甲生', email: `batch-quota-a-${Date.now()}@example.com`, password: 'x' });
     const ea = await createEnrollment({ studentId: sa.id, programId: program.id });
     const ba = await createBooking({ enrollmentId: ea.id, windowId: window.id, date: todayUtc });
-    await saveTutoringAttendance(marker.id, [{ bookingId: ba.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
+    await saveTutoringAttendance(window.id, marker.id, [{ bookingId: ba.id, status: 'PRESENT', checkInTime: '16:00', checkOutTime: '17:00' }]);
 
     // B：quota 0＋quotaReview → 今天一筆 PENDING_ADMIN → pendingOverQuota=1
     const sb = await createStudent({ name: '乙生', email: `batch-quota-b-${Date.now()}@example.com`, password: 'x' });

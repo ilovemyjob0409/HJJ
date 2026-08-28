@@ -3,20 +3,16 @@ import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser, notifyUsers, notifyAdmins } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { taipeiDateKey } from '@/lib/taipeiDate';
+
+// 重新匯出：許多檔案已經是用 `import { taipeiDateKey } from
+// '@/lib/services/tutoringBookingService'`，保留這個路徑可用，實作則搬到
+// 零依賴的 @/lib/taipeiDate（見該檔註解：pastDate.ts 等純模組需要它，不能
+// 牽動這支檔案的 db/prisma/web-push 依賴鏈）。
+export { taipeiDateKey };
 
 export function utcDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-const TAIPEI_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Asia/Taipei',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-export function taipeiDateKey(date: Date): string {
-  return TAIPEI_DATE_FMT.format(date);
 }
 
 export function daysRemainingInTaipeiMonth(now: Date): number {
@@ -57,6 +53,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: st
           tx.tutoringEnrollment.findUnique({ where: { id: input.enrollmentId } }),
         ]);
         if (!window) throw new Error('WINDOW_NOT_FOUND');
+        if (!window.active) throw new Error('WINDOW_INACTIVE');
         if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
         if (!enrollment.active) throw new Error('ENROLLMENT_INACTIVE');
         if (window.programId !== enrollment.programId) throw new Error('PROGRAM_MISMATCH');
@@ -168,23 +165,33 @@ export async function cancelBooking(bookingId: string, studentId: string): Promi
   if (booking.enrollment.studentId !== studentId) throw new Error('NOT_OWNER');
 
   // 收費規範：未到場不扣堂——取消一律不計次，保留紀錄（狀態 CANCELLED）
-  // 讓學生的預約紀錄看得到這筆取消。
-  await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
+  // 讓學生的預約紀錄看得到這筆取消。已點名（有出席紀錄）的預約不可取消——
+  // classifyQuotaBookings 直接跳過 CANCELLED，取消一筆已到場的預約會讓額度
+  // 悄悄空出一格，但月結報表（listMonthlyAttendanceSummary）仍照出席紀錄
+  // 認列，兩邊對不起來（同 revokeMakeup 的 MAKEUP_HAS_ATTENDANCE 顧慮）。
+  // 用條件式 updateMany（同 reviewBooking 的寫法）在單一陳述式內完成「檢查
+  // 沒有出席紀錄＋寫入」，避免查完到寫入之間才被點名的競態。
+  const result = await prisma.tutoringBooking.updateMany({
+    where: { id: bookingId, attendance: null },
+    data: { status: 'CANCELLED' },
+  });
+  if (result.count === 0) throw new Error('BOOKING_HAS_ATTENDANCE');
   // 老師只收過「確定成立」的預約通知——取消「待審中」的預約不用通知老師
   //（他從未被告知這筆預約存在）。
   if (booking.status === 'BOOKED') await notifyStaffBookingChange(bookingId, 'CANCELLED');
 }
 
 // 行政取消：與學生取消同語意，一律不計次（收費規範沒有「計次取消」——
-// 扣堂只看有無到場）。CANCELLED_LATE 僅存在於歷史資料，不再產生。
+// 扣堂只看有無到場）。CANCELLED_LATE 僅存在於歷史資料，不再產生。已點名
+// 的預約同樣擋下（見 cancelBooking 的 BOOKING_HAS_ATTENDANCE 說明）。
 export async function adminCancelBooking(bookingId: string): Promise<void> {
-  try {
-    await prisma.tutoringBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-      throw new Error('BOOKING_NOT_FOUND');
-    }
-    throw err;
+  const result = await prisma.tutoringBooking.updateMany({
+    where: { id: bookingId, attendance: null },
+    data: { status: 'CANCELLED' },
+  });
+  if (result.count === 0) {
+    const exists = await prisma.tutoringBooking.findUnique({ where: { id: bookingId }, select: { id: true } });
+    throw new Error(exists ? 'BOOKING_HAS_ATTENDANCE' : 'BOOKING_NOT_FOUND');
   }
 }
 
@@ -351,8 +358,22 @@ export async function getMonthlyQuotaStatus(
   return { locked, upcoming, quota, pendingOverQuota };
 }
 
+// 同一天、同一星期可能有 2 個以上作用中窗口（例如一場下午、一場晚上，
+// 不同老師）——這種情況前端要顯示選擇器讓學生自己挑，不能合併容量、
+// 也不能自動選一個（見 AvailabilityDay 註解與 2026-08-28 產品決策）。
+export interface AvailabilityWindowOption {
+  windowId: string;
+  startTime: string;
+  endTime: string;
+  teacherNames: string[];
+  capacity: number;
+  remaining: number;
+}
+
 export interface AvailabilityDay {
   date: string;
+  // 相容單一窗口的既有呼叫端：永遠等於 windows[0]（時間最早的那個）。
+  // 只有 1 個窗口時維持這個形狀不變，不加 windows 欄位。
   windowId: string;
   capacity: number;
   remaining: number;
@@ -362,12 +383,23 @@ export interface AvailabilityDay {
   myBookingId: string | null;
   myBookingStatus: 'BOOKED' | 'PENDING_ADMIN' | null;
   myBookingCount: number;
+  // 只有這天有 2 個以上作用中窗口時才會出現：每個窗口各自的時段/老師/剩餘
+  // 名額，前端要顯示選擇器。只有 1 個窗口時是 undefined，行為與過去完全
+  // 相同（不顯示選擇器，直接用上面的 windowId 預約）——regression-safe。
+  windows?: AvailabilityWindowOption[];
 }
 
 export async function listAvailability(enrollmentId: string, days = 14): Promise<AvailabilityDay[]> {
   const enrollment = await prisma.tutoringEnrollment.findUnique({ where: { id: enrollmentId } });
   if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
-  const windows = await prisma.tutoringWindow.findMany({ where: { programId: enrollment.programId, active: true } });
+  const windows = await prisma.tutoringWindow.findMany({
+    where: { programId: enrollment.programId, active: true },
+    include: {
+      teacher: { select: { user: { select: { name: true } } } },
+      teacher2: { select: { user: { select: { name: true } } } },
+    },
+    orderBy: [{ startTime: 'asc' }, { id: 'asc' }],
+  });
   const todayKey = taipeiDateKey(new Date());
   const [ty, tm, td] = todayKey.split('-').map(Number);
 
@@ -398,26 +430,43 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
   const result: AvailabilityDay[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(Date.UTC(ty, tm - 1, td + i));
-    const window = windows.find((w) => w.weekday === d.getUTCDay());
-    if (!window) continue;
+    const dayWindows = windows.filter((w) => w.weekday === d.getUTCDay());
+    if (dayWindows.length === 0) continue;
 
-    const closure = await prisma.tutoringWindowClosure.findUnique({
-      where: { windowId_date: { windowId: window.id, date: d } },
-    });
-    if (closure) continue;
+    // 一個星期可能有 2 個以上作用中窗口；逐一算各自的停開日／剩餘名額，
+    // 該天全部窗口都停開才整天跳過（比照過去單一窗口停開就跳過的行為）。
+    const options: AvailabilityWindowOption[] = [];
+    for (const window of dayWindows) {
+      const closure = await prisma.tutoringWindowClosure.findUnique({
+        where: { windowId_date: { windowId: window.id, date: d } },
+      });
+      if (closure) continue;
 
-    const booked = await prisma.tutoringBooking.count({
-      where: { windowId: window.id, date: d, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
-    });
+      const booked = await prisma.tutoringBooking.count({
+        where: { windowId: window.id, date: d, status: { in: ['BOOKED', 'PENDING_ADMIN'] } },
+      });
+      options.push({
+        windowId: window.id,
+        startTime: window.startTime,
+        endTime: window.endTime,
+        teacherNames: [window.teacher.user.name, window.teacher2?.user.name].filter((n): n is string => !!n),
+        capacity: window.capacity,
+        remaining: Math.max(0, window.capacity - booked),
+      });
+    }
+    if (options.length === 0) continue;
+
+    const [primary] = options;
     const mine = mineByDate.get(utcDateKey(d));
     result.push({
       date: utcDateKey(d),
-      windowId: window.id,
-      capacity: window.capacity,
-      remaining: Math.max(0, window.capacity - booked),
+      windowId: primary.windowId,
+      capacity: primary.capacity,
+      remaining: primary.remaining,
       myBookingId: mine?.id ?? null,
       myBookingStatus: mine?.status ?? null,
       myBookingCount: mine?.count ?? 0,
+      ...(options.length > 1 ? { windows: options } : {}),
     });
   }
   return result;
@@ -500,6 +549,32 @@ export async function getTutoringDeductionLedger(
   if (!enrollment) throw new Error('ENROLLMENT_NOT_FOUND');
   const quota = enrollment.monthlyQuota ?? enrollment.program.defaultMonthlyQuota;
 
+  // 每個月實際生效的額度可能跟現在的靜態值不同（行政事後調整過
+  // monthlyQuota）——按 effectiveFrom 由舊到新找「該月當時生效的額度」，而
+  // 不是拿目前的靜態值回頭套用改寫過去。完全沒有異動紀錄的報名（多數既有
+  // 資料）就回退用目前的靜態值，等同今天的行為。
+  const quotaChanges = await prisma.tutoringQuotaChange.findMany({
+    where: { enrollmentId },
+    orderBy: [{ effectiveFrom: 'asc' }, { createdAt: 'asc' }],
+    select: { monthlyQuota: true, effectiveFrom: true },
+  });
+  // 已知限制（非 bug）：這裡比對的粒度是「月」（monthKey 只到 YYYY-MM），
+  // 但 recordQuotaChange 寫入的 effectiveFrom 是行政異動當下的完整日期
+  // （幾乎不會剛好是月初）。結果是月中異動額度會套用到「整個當月」，包含
+  // 異動之前已經發生、原本該用舊額度計算的那幾天——本次任務只解決「跨月」
+  // 誤改寫的問題（見 getTutoringDeductionLedger 上方測試），沒有把帳本做成
+  // 日粒度；那是另一個產品決策，需求文件也明確定調此帳本是月粒度。見
+  // tutoringBookingService.test.ts 中 'documents current month-granularity
+  // limitation' 測試對此行為的釘選。
+  const quotaForMonth = (monthKey: string): number => {
+    let result = quota;
+    for (const change of quotaChanges) {
+      if (utcDateKey(change.effectiveFrom).slice(0, 7) > monthKey) break;
+      result = change.monthlyQuota;
+    }
+    return result;
+  };
+
   const bookings = await prisma.tutoringBooking.findMany({
     where: { enrollmentId },
     select: {
@@ -521,6 +596,7 @@ export async function getTutoringDeductionLedger(
 
   const history: TutoringLedgerRow[] = [];
   for (const [monthKey, rows] of Array.from(monthGroups.entries())) {
+    const monthQuota = quotaForMonth(monthKey);
     // 有出席紀錄（非缺席）才扣堂——判斷邏輯跟 getMonthlyQuotaStatus 一致
     const isCounted = (b: (typeof rows)[number]) =>
       b.kind === 'REGULAR' &&
@@ -529,7 +605,7 @@ export async function getTutoringDeductionLedger(
       b.attendance != null &&
       b.attendance.status !== 'ABSENT';
     const countedInMonth = rows.filter(isCounted).length;
-    let runningAfter = quota - countedInMonth;
+    let runningAfter = monthQuota - countedInMonth;
     for (const b of rows) {
       const counted = isCounted(b);
       const remainingAfter = runningAfter;
@@ -545,13 +621,13 @@ export async function getTutoringDeductionLedger(
         remainingAfter,
       });
     }
-    // 處理完這個月所有扣堂後 runningAfter 會加回到 quota 本身——那就是這個月
-    // 核發當下（尚未扣任何一堂）的剩餘堂數。
+    // 處理完這個月所有扣堂後 runningAfter 會加回到 monthQuota 本身——那就是
+    // 這個月核發當下（尚未扣任何一堂）的剩餘堂數。
     history.push({
       id: `grant-${monthKey}`,
       date: new Date(`${monthKey}-01T00:00:00.000Z`),
       kind: 'GRANT',
-      amount: quota,
+      amount: monthQuota,
       status: null,
       checkInTime: null,
       remainingAfter: runningAfter,

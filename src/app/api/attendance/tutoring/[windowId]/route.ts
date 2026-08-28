@@ -39,7 +39,14 @@ export async function POST(req: NextRequest, { params }: { params: { windowId: s
   if (!Array.isArray(body.records) || body.records.length === 0) {
     return NextResponse.json({ error: 'records required' }, { status: 400 });
   }
-  await saveTutoringAttendance(session.user.id, body.records);
+  try {
+    await saveTutoringAttendance(params.windowId, session.user.id, body.records);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'BOOKING_NOT_IN_WINDOW') {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    throw err;
+  }
   return NextResponse.json({ success: true });
 }
 
@@ -60,6 +67,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { windowId:
   if (!Array.isArray(body.clear)) {
     return NextResponse.json({ error: 'clear required' }, { status: 400 });
   }
-  await clearTutoringAttendance(body.clear);
+  try {
+    await clearTutoringAttendance(params.windowId, body.clear);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'BOOKING_NOT_IN_WINDOW') {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    throw err;
+  }
   return NextResponse.json({ success: true });
 }

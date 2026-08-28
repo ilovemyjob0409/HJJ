@@ -80,7 +80,35 @@ export interface UpdateProgramInput {
 
 export async function updateProgram(id: string, input: UpdateProgramInput) {
   try {
-    return await prisma.tutoringProgram.update({ where: { id }, data: input });
+    if (input.defaultMonthlyQuota === undefined) {
+      return await prisma.tutoringProgram.update({ where: { id }, data: input });
+    }
+    // 異動 defaultMonthlyQuota：getMonthlyQuotaStatus／getTutoringDeductionLedger
+    // 都是用 enrollment.monthlyQuota ?? program.defaultMonthlyQuota 當生效額度，
+    // 多數報名的 monthlyQuota 是 null（吃課程預設），改這個值等同改了那些報名
+    // 的生效額度——要比照 updateEnrollment 幫「真的受影響」的每一筆報名補寫
+    // TutoringQuotaChange 歷史列，不然一樣會讓帳本回頭改寫過去月份，正是
+    // TutoringQuotaChange 原本要修的問題，只是這次的入口是課程預設值而不是
+    // 報名個別覆寫值。已經有自己 monthlyQuota 覆寫值的報名不吃預設，不受這次
+    // 異動影響，不補列（沿用同一支 recordQuotaChange，一筆一筆呼叫，不重複
+    // 實作判斷邏輯）。程式更新與所有受影響報名的歷史列寫入包在同一個交易，
+    // 理由同 updateEnrollment：中途掛掉會讓靜態值變了但部分/全部歷史列沒寫。
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.tutoringProgram.findUniqueOrThrow({ where: { id } });
+      const oldDefault = existing.defaultMonthlyQuota;
+      const newDefault = input.defaultMonthlyQuota!;
+      const updated = await tx.tutoringProgram.update({ where: { id }, data: input });
+      if (newDefault !== oldDefault) {
+        const affected = await tx.tutoringEnrollment.findMany({
+          where: { programId: id, monthlyQuota: null },
+          select: { id: true },
+        });
+        for (const enrollment of affected) {
+          await recordQuotaChange(tx, enrollment.id, oldDefault, newDefault);
+        }
+      }
+      return updated;
+    });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       throw new Error('PROGRAM_NOT_FOUND');
@@ -89,7 +117,18 @@ export async function updateProgram(id: string, input: UpdateProgramInput) {
   }
 }
 
+// Blocks deletion when the program still has a window or a student
+// enrollment referencing it — both are required references (a window and
+// an enrollment must each belong to a program) and represent real
+// configuration/history that would otherwise be silently orphaned.
 export async function deleteProgram(id: string) {
+  const [windowCount, enrollmentCount] = await Promise.all([
+    prisma.tutoringWindow.count({ where: { programId: id } }),
+    prisma.tutoringEnrollment.count({ where: { programId: id } }),
+  ]);
+  if (windowCount > 0 || enrollmentCount > 0) {
+    throw new Error('PROGRAM_HAS_RECORDS');
+  }
   try {
     return await prisma.tutoringProgram.delete({ where: { id } });
   } catch (err) {
@@ -148,7 +187,14 @@ export async function updateWindow(id: string, input: UpdateWindowInput) {
   }
 }
 
+// Blocks deletion when the window still has bookings referencing it — a
+// booking must belong to a window, and those bookings are the student's
+// history/upcoming appointments and must survive.
 export async function deleteWindow(id: string) {
+  const bookingCount = await prisma.tutoringBooking.count({ where: { windowId: id } });
+  if (bookingCount > 0) {
+    throw new Error('WINDOW_HAS_BOOKINGS');
+  }
   try {
     return await prisma.tutoringWindow.delete({ where: { id } });
   } catch (err) {
@@ -279,7 +325,29 @@ export interface UpdateEnrollmentInput {
 
 export async function updateEnrollment(id: string, input: UpdateEnrollmentInput) {
   try {
-    return await prisma.tutoringEnrollment.update({ where: { id }, data: input });
+    if (input.monthlyQuota === undefined) {
+      return await prisma.tutoringEnrollment.update({ where: { id }, data: input });
+    }
+    // 有異動 monthlyQuota：讀舊的生效額度、更新靜態值、視情況補寫
+    // TutoringQuotaChange 歷史列（見 getTutoringDeductionLedger 的用法）全部包
+    // 在同一個交易裡——這幾步一定要同進退，不然中途掛掉會讓靜態值變了但
+    // 歷史列沒寫，帳本誤判「沒有歷史」而回頭用新值改寫過去月份，正是這個
+    // 功能原本要修的問題。這裡不是跟「其他併發請求」搶讀寫的 check-then-act
+    // 賽跑（不像訂位/額度審核那類），單一交易的原子性就夠，不需要
+    // runSerializableWithRetry 那層。
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.tutoringEnrollment.findUniqueOrThrow({
+        where: { id },
+        include: { program: { select: { defaultMonthlyQuota: true } } },
+      });
+      const oldEffective = existing.monthlyQuota ?? existing.program.defaultMonthlyQuota;
+      const newEffective = input.monthlyQuota ?? existing.program.defaultMonthlyQuota;
+      const updated = await tx.tutoringEnrollment.update({ where: { id }, data: input });
+      if (newEffective !== oldEffective) {
+        await recordQuotaChange(tx, id, oldEffective, newEffective);
+      }
+      return updated;
+    });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       throw new Error('ENROLLMENT_NOT_FOUND');
@@ -288,7 +356,39 @@ export async function updateEnrollment(id: string, input: UpdateEnrollmentInput)
   }
 }
 
+// 每次真的異動生效額度都補一筆歷史列。第一次異動要先補一筆「舊值」基準列
+// （effectiveFrom 用極早日期蓋住所有既有歷史月份）——不然變更前的月份重新
+// 打開帳本時，找不到任何 <= 該月的紀錄，會誤用新值回填過去。
+// 呼叫方一律傳交易內的 tx，確保 count 讀取與後續 create 都在同一個交易裡跟
+// 外層的更新綁在一起——兩個呼叫點：updateEnrollment（單一報名改自己的
+// monthlyQuota 覆寫值）與 updateProgram（改課程 defaultMonthlyQuota 時，對
+// 每一筆 monthlyQuota 是 null、實際吃預設值的報名各呼叫一次）。
+async function recordQuotaChange(
+  tx: Prisma.TransactionClient,
+  enrollmentId: string,
+  oldEffective: number,
+  newEffective: number
+) {
+  const priorChangeCount = await tx.tutoringQuotaChange.count({ where: { enrollmentId } });
+  if (priorChangeCount === 0) {
+    await tx.tutoringQuotaChange.create({
+      data: { enrollmentId, monthlyQuota: oldEffective, effectiveFrom: new Date(0) },
+    });
+  }
+  const [ty, tm, td] = taipeiDateKey(new Date()).split('-').map(Number);
+  await tx.tutoringQuotaChange.create({
+    data: { enrollmentId, monthlyQuota: newEffective, effectiveFrom: new Date(Date.UTC(ty, tm - 1, td)) },
+  });
+}
+
+// Blocks deletion when the enrollment still has bookings referencing it —
+// a booking must belong to an enrollment, and those bookings are the
+// student's history/upcoming appointments and must survive.
 export async function deleteEnrollment(id: string) {
+  const bookingCount = await prisma.tutoringBooking.count({ where: { enrollmentId: id } });
+  if (bookingCount > 0) {
+    throw new Error('ENROLLMENT_HAS_BOOKINGS');
+  }
   try {
     return await prisma.tutoringEnrollment.delete({ where: { id } });
   } catch (err) {

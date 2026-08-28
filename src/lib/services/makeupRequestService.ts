@@ -330,10 +330,15 @@ async function findOrCreateLeaveForArrangeTx(tx: Prisma.TransactionClient, input
 // 只代辦請假、暫不安排補課；家長之後仍可對這筆請假自行申請補課。
 // 與家長自行請假一致：直接核准、不發通知。
 export async function arrangeLeaveOnly(input: ArrangeBaseInput) {
-  return prisma.$transaction(async (tx) => {
-    if (await findExistingLeaveTx(tx, input)) throw new Error('ALREADY_ON_LEAVE');
-    return createLeaveForArrangeTx(tx, input);
-  });
+  return runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        if (await findExistingLeaveTx(tx, input)) throw new Error('ALREADY_ON_LEAVE');
+        return createLeaveForArrangeTx(tx, input);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
 }
 
 export async function arrangeInsertionMakeup(input: ArrangeBaseInput & { targetClassId: string; targetDate: Date }) {
@@ -420,14 +425,19 @@ export async function revokeMakeup(makeupRequestId: string) {
     where: { id: makeupRequestId },
     include: MAKEUP_NOTIFY_INCLUDE,
   });
-  await prisma.$transaction(async (tx) => {
-    const [classAttendance, oneOnOneAttendance] = await Promise.all([
-      tx.classAttendance.count({ where: { makeupRequestId } }),
-      tx.oneOnOneAttendance.count({ where: { makeupRequestId } }),
-    ]);
-    if (classAttendance > 0 || oneOnOneAttendance > 0) throw new Error('MAKEUP_HAS_ATTENDANCE');
-    await tx.makeupRequest.delete({ where: { id: makeupRequestId } });
-  });
+  await runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const [classAttendance, oneOnOneAttendance] = await Promise.all([
+          tx.classAttendance.count({ where: { makeupRequestId } }),
+          tx.oneOnOneAttendance.count({ where: { makeupRequestId } }),
+        ]);
+        if (classAttendance > 0 || oneOnOneAttendance > 0) throw new Error('MAKEUP_HAS_ATTENDANCE');
+        await tx.makeupRequest.delete({ where: { id: makeupRequestId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
   await notifyMakeup(makeup, 'REVOKED');
 }
 
@@ -469,11 +479,12 @@ export async function listOneOnOneSlotOptions(teacherId: string, slotDate: Date)
   return options.sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
-export function listAssignedOneOnOneForTeacher(teacherId: string) {
+export function listAssignedOneOnOneForTeacher(teacherId: string, now: Date = new Date()) {
   // 老師首頁「被指派」區塊：只列今天（含）以後；PENDING_ADMIN 也列出，
   // 因為時段在建立時就已為老師保留（SLOT_CONFLICT 檢查含 PENDING）。
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // "今天"以台北曆日為準（見 isBeforeToday 註解），不用伺服器當地午夜。
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const today = new Date(Date.UTC(y, m - 1, d));
   return prisma.makeupRequest.findMany({
     where: {
       type: 'ONE_ON_ONE',

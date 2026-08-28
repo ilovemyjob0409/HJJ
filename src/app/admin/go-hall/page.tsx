@@ -187,7 +187,11 @@ function AdminGoHallContent() {
         ? `此場次已有 ${viewing.registrations.length} 人報名，刪除將一併取消他們的報名，確定嗎？`
         : '確定要刪除此場次嗎？';
     if (!(await confirm(confirmMessage, { danger: true }))) return;
-    await fetch(`/api/go-hall-sessions/${viewing.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/go-hall-sessions/${viewing.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      showToast('刪除失敗，可能仍有出缺勤紀錄');
+      return;
+    }
     setViewing(null);
     showToast('已刪除');
     load();

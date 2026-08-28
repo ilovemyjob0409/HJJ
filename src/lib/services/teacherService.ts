@@ -63,20 +63,26 @@ export function listTeachersForBooking() {
   });
 }
 
-// Blocks deletion when the teacher still has classes assigned, or has
-// substitute-request history as the original teacher — both are required
-// references (a class must have a teacher, an original-teacher record
-// must survive). Availability is current state, not history, so it's
-// cleared as part of the delete, along with the underlying login
-// account. Optional references (one-on-one makeup requests, substitute
-// assignments) keep their own row but lose the teacher link.
+// Blocks deletion when the teacher still has classes assigned, has
+// substitute-request history as the original teacher, has a tutoring
+// window assigned (main or second teacher), has a go-hall session
+// assigned, or has an activity assignment — all are required references
+// (a class/window/session must have a teacher, an original-teacher
+// record and an activity assignment must survive). Availability is
+// current state, not history, so it's cleared as part of the delete,
+// along with the underlying login account. Optional references
+// (one-on-one makeup requests, substitute assignments) keep their own
+// row but lose the teacher link.
 export async function deleteTeacher(id: string) {
   const teacher = await prisma.teacher.findUniqueOrThrow({ where: { id } });
-  const [classCount, originalSubstituteCount] = await Promise.all([
+  const [classCount, originalSubstituteCount, tutoringWindowCount, goHallSessionCount, activityTeacherCount] = await Promise.all([
     prisma.class.count({ where: { teacherId: id } }),
     prisma.substituteRequest.count({ where: { originalTeacherId: id } }),
+    prisma.tutoringWindow.count({ where: { OR: [{ teacherId: id }, { teacherId2: id }] } }),
+    prisma.goHallSession.count({ where: { teacherId: id } }),
+    prisma.activityTeacher.count({ where: { teacherId: id } }),
   ]);
-  if (classCount > 0 || originalSubstituteCount > 0) {
+  if (classCount > 0 || originalSubstituteCount > 0 || tutoringWindowCount > 0 || goHallSessionCount > 0 || activityTeacherCount > 0) {
     throw new Error('TEACHER_HAS_RECORDS');
   }
 

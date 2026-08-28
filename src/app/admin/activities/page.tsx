@@ -218,7 +218,11 @@ export default function AdminActivitiesPage() {
         ? `已有 ${viewing.registrations.length} 人報名，刪除將一併取消他們的報名，確定嗎？`
         : '確定要刪除此活動嗎？';
     if (!(await confirm(confirmMessage, { danger: true }))) return;
-    await fetch(`/api/activities/${viewing.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/activities/${viewing.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      showToast('刪除失敗，可能仍有出缺勤紀錄');
+      return;
+    }
     setViewing(null);
     showToast('已刪除');
     load();

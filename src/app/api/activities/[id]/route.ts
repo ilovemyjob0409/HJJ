@@ -29,6 +29,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  await deleteActivity(params.id);
-  return NextResponse.json({ success: true });
+  try {
+    await deleteActivity(params.id);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'ACTIVITY_HAS_ATTENDANCE') {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    throw err;
+  }
 }

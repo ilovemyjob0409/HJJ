@@ -37,7 +37,7 @@ async function setup() {
   const student = await createStudent({ name: '小明', email: `enr-att-route-ming-${Date.now()}@example.com`, password: 'x' });
   const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
   const booking = await createBooking({ enrollmentId: enrollment.id, windowId: window.id, date: new Date(Date.UTC(2020, 0, 3)) });
-  await saveTutoringAttendance('marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
+  await saveTutoringAttendance(window.id, 'marker-1', [{ bookingId: booking.id, status: 'PRESENT', checkInTime: '17:00', checkOutTime: '19:00' }]);
   return { student, enrollment };
 }
 

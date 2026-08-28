@@ -3,6 +3,9 @@ import { prisma } from '@/lib/db';
 import { createTeacher, listTeachers, updateTeacher, deleteTeacher } from './teacherService';
 import { createClass } from './classService';
 import { createSubstituteRequest } from './substituteRequestService';
+import { createProgram, createWindow } from './tutoringProgramService';
+import { createSessions } from './goHallService';
+import { createActivity, createCategory } from './activityService';
 
 describe('createTeacher', () => {
   it('creates a User with role TEACHER and a linked Teacher record', async () => {
@@ -124,6 +127,42 @@ describe('deleteTeacher', () => {
     const otherTeacher = await createTeacher({ name: '林老師', email: 'teacher-delete-block-sub-lin@example.com', password: 'secret123', subjects: '數學' });
     await prisma.class.update({ where: { id: cls.id }, data: { teacherId: otherTeacher.id } });
     await createSubstituteRequest({ classId: cls.id, originalTeacherId: teacher.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '請假' });
+
+    await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
+    expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();
+  });
+
+  it('throws TEACHER_HAS_RECORDS and does not delete when the teacher is the main teacher of a tutoring window', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'teacher-delete-block-window-main-chen@example.com', password: 'secret123', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+
+    await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
+    expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();
+  });
+
+  it('throws TEACHER_HAS_RECORDS and does not delete when the teacher is the second teacher of a tutoring window', async () => {
+    const mainTeacher = await createTeacher({ name: '林老師', email: 'teacher-delete-block-window-main2-lin@example.com', password: 'secret123', subjects: '英文' });
+    const teacher = await createTeacher({ name: '陳老師', email: 'teacher-delete-block-window-second-chen@example.com', password: 'secret123', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: mainTeacher.id, teacherId2: teacher.id });
+
+    await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
+    expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();
+  });
+
+  it('throws TEACHER_HAS_RECORDS and does not delete when the teacher has a go-hall session assigned', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'teacher-delete-block-gohall-chen@example.com', password: 'secret123', subjects: '圍棋' });
+    await createSessions({ dates: [new Date(2026, 7, 1)], startTime: '14:00', endTime: '16:00', capacity: 8, teacherId: teacher.id });
+
+    await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
+    expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();
+  });
+
+  it('throws TEACHER_HAS_RECORDS and does not delete when the teacher has an activity assignment', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'teacher-delete-block-activity-chen@example.com', password: 'secret123', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 8, teacherIds: [teacher.id] });
 
     await expect(deleteTeacher(teacher.id)).rejects.toThrow('TEACHER_HAS_RECORDS');
     expect(await prisma.teacher.findUnique({ where: { id: teacher.id } })).not.toBeNull();
