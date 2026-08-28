@@ -53,7 +53,7 @@ interface StandaloneBillRow {
 
 const ERROR_MESSAGES: Record<string, string> = {
   BILL_NOT_FINALIZED: '這筆帳單非已定案狀態，無法通知',
-  ALREADY_PAID: '這筆帳單已繳清，不需催繳',
+  ALREADY_PAID: '這筆帳單已繳清，不需提醒繳費',
 };
 
 // 批次狀態徽章：草稿＝pendingBg／已定案＝approvedBg（本頁與草稿頁各自內嵌一份，
@@ -130,10 +130,10 @@ export default function AdminBillingPage() {
       const res = await fetch(`/api/admin/billing/bills/${billId}/remind`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showToast(ERROR_MESSAGES[data.error] ?? '催繳失敗，請稍後再試');
+        showToast(ERROR_MESSAGES[data.error] ?? '提醒繳費失敗，請稍後再試');
         return;
       }
-      showToast('已發送催繳通知');
+      showToast('已發送提醒繳費通知');
     } finally {
       setRemindingId(null);
     }
@@ -225,7 +225,7 @@ export default function AdminBillingPage() {
       render: (r) => {
         const { state } = getPaidState(r.amountDue, r.payments);
         return (
-          <div className="flex flex-wrap items-center justify-center gap-1">
+          <div className="flex flex-wrap items-center justify-center gap-1 whitespace-nowrap">
             <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(r.id)}>
               繳款
             </Button>
@@ -236,7 +236,7 @@ export default function AdminBillingPage() {
                 loading={remindingId === r.id}
                 onClick={() => remindStandaloneBill(r.id)}
               >
-                催繳
+                提醒繳費
               </Button>
             )}
             {!r.notifiedAt && (

@@ -91,7 +91,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   BATCH_FINALIZED: '這個批次已定案，無法修改',
   MISSING_PRICE: '尚有班級未設定單價，請先設定後再定案',
   BILL_NOT_FINALIZED: '尚有帳單非已定案狀態，無法通知',
-  ALREADY_PAID: '這筆帳單已繳清，不需催繳',
+  ALREADY_PAID: '這筆帳單已繳清，不需提醒繳費',
 };
 
 export default function AdminBillingBatchPage({ params }: { params: { batchId: string } }) {
@@ -281,10 +281,10 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
       const res = await fetch(`/api/admin/billing/bills/${billId}/remind`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showToast(ERROR_MESSAGES[data.error] ?? '催繳失敗，請稍後再試');
+        showToast(ERROR_MESSAGES[data.error] ?? '提醒繳費失敗，請稍後再試');
         return;
       }
-      showToast('已發送催繳通知');
+      showToast('已發送提醒繳費通知');
     } finally {
       setRemindingId(null);
     }
@@ -401,7 +401,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
         render: (b) => {
           const { state } = getPaidState(b.amountDue, b.payments);
           return (
-            <div className="flex flex-wrap items-center justify-center gap-1">
+            <div className="flex flex-wrap items-center justify-center gap-1 whitespace-nowrap">
               <Button className="px-2 py-1 text-xs" onClick={() => setPaymentBillId(b.id)}>
                 繳款
               </Button>
@@ -412,7 +412,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
                   loading={remindingId === b.id}
                   onClick={() => remindBill(b.id)}
                 >
-                  催繳
+                  提醒繳費
                 </Button>
               )}
               {!b.settledAsWithdrawal && (
