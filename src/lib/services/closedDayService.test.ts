@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { prisma } from '@/lib/db';
 import { seedNationalHolidays, listClosedDays, addClosedDay, removeClosedDay } from './closedDayService';
 
 describe('closedDayService', () => {
