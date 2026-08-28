@@ -1678,6 +1678,14 @@ const asAnon = () => sessionMock.mockResolvedValue(null);
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
+// createStudent() 回傳的物件沒有 userId 欄位（只有 Student.id）；
+// 這是既有測試檔（如 tutoring-enrollments/[id]/attendance/route.test.ts）
+// 共用的查法。
+async function studentUserId(studentId: string): Promise<string> {
+  const { userId } = await prisma.student.findUniqueOrThrow({ where: { id: studentId }, select: { userId: true } });
+  return userId;
+}
+
 async function billedStudent(name: string, email: string) {
   const teacher = await createTeacher({ name: '陳老師', email: `me-${Date.now()}-${Math.random()}@example.com`, password: 'x', subjects: '圍棋' });
   const student = await createStudent({ name, email, password: 'x' });
@@ -1702,7 +1710,7 @@ describe('GET /api/billing/me', () => {
     const other = await billedStudent('小華', `me-hua-${Date.now()}@example.com`);
     void other;
 
-    asStudent(me.userId);
+    asStudent(await studentUserId(me.id));
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -1718,7 +1726,7 @@ describe('GET /api/billing/me', () => {
     await enrollStudent(cls.id, student.id);
     await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] }); // 未定案
 
-    asStudent(student.userId);
+    asStudent(await studentUserId(student.id));
     const body = await (await GET()).json();
     expect(body.bills).toHaveLength(0);
   });
