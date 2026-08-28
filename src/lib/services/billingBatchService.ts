@@ -114,7 +114,7 @@ export async function listBatches() {
   });
 }
 
-const BILL_DETAIL_INCLUDE = {
+export const BILL_DETAIL_INCLUDE = {
   student: { select: { id: true, userId: true, user: { select: { name: true } } } },
   class: { select: { name: true } },
   tutoringEnrollment: { select: { program: { select: { name: true } }, feeTier: { select: { name: true } } } },
