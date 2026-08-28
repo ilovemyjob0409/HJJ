@@ -11,6 +11,7 @@ import { createStudent } from '@/lib/services/studentService';
 import { createClass, enrollStudent } from '@/lib/services/classService';
 import { createClassBatch, finalizeBatch } from '@/lib/services/billingBatchService';
 import { updateBillingSetting } from '@/lib/services/billingSettingService';
+import { setSiblings } from '@/lib/services/familyService';
 
 beforeEach(() => sessionMock.mockReset());
 
@@ -56,6 +57,30 @@ describe('GET /api/billing/me', () => {
     expect(body.paymentInfo).toBe('銀行帳戶 123');
     expect(body.bills).toHaveLength(1);
     expect(body.bills[0]).toMatchObject({ targetName: '週六班', amountDue: 2000, paid: 0, outstanding: 2000, state: 'UNPAID' });
+  });
+
+  it('merges sibling bills into both accounts with studentName and hasSiblings', async () => {
+    const me = await billedStudent('小明', `me-sib-a-${Date.now()}@example.com`);
+    const sibling = await billedStudent('小華', `me-sib-b-${Date.now()}@example.com`);
+    await setSiblings(me.id, [sibling.id]);
+
+    // 兩個帳號看到同一份合併清單，每筆都標學生姓名
+    for (const account of [me, sibling]) {
+      asStudent(await studentUserId(account.id));
+      const body = await (await GET()).json();
+      expect(body.hasSiblings).toBe(true);
+      expect(body.bills).toHaveLength(2);
+      expect(body.bills.map((b: { studentName: string }) => b.studentName).sort()).toEqual(['小明', '小華']);
+    }
+  });
+
+  it('reports hasSiblings false and keeps studentName for a student without a family group', async () => {
+    const solo = await billedStudent('小獨', `me-solo-${Date.now()}@example.com`);
+    asStudent(await studentUserId(solo.id));
+    const body = await (await GET()).json();
+    expect(body.hasSiblings).toBe(false);
+    expect(body.bills).toHaveLength(1);
+    expect(body.bills[0].studentName).toBe('小獨');
   });
 
   it('excludes draft bills', async () => {

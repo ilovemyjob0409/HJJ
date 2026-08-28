@@ -13,24 +13,33 @@ export async function GET() {
   }
   try {
     const student = await prisma.student.findUniqueOrThrow({ where: { userId: session.user.id } });
+    // 手足帳單合併顯示：同一 familyGroup 的帳單全部撈出來，兩個帳號看到同一份清單
+    // （家長不用切帳號逐一看）。沒有手足的帳號 memberIds 就只有自己，行為不變。
+    const memberIds = student.familyGroupId
+      ? (await prisma.student.findMany({ where: { familyGroupId: student.familyGroupId }, select: { id: true } })).map((s) => s.id)
+      : [student.id];
     const [setting, bills] = await Promise.all([
       getBillingSetting(),
       prisma.bill.findMany({
-        where: { studentId: student.id, status: 'FINALIZED' },
+        where: { studentId: { in: memberIds }, status: 'FINALIZED' },
         include: {
           payments: { orderBy: { paidOn: 'asc' } },
           class: { select: { name: true } },
           tutoringEnrollment: { select: { program: { select: { name: true } }, feeTier: { select: { name: true } } } },
+          student: { select: { user: { select: { name: true } } } },
         },
         orderBy: { periodStart: 'desc' },
       }),
     ]);
     return NextResponse.json({
       paymentInfo: setting.paymentInfo,
+      hasSiblings: memberIds.length > 1,
       bills: bills.map((b) => {
         const { paid, outstanding, state } = getPaidState(b.amountDue, b.payments);
         return {
           id: b.id,
+          studentName: b.student.user.name,
+          isSelf: b.studentId === student.id,
           targetName: billTargetName(b),
           periodStart: b.periodStart,
           periodEnd: b.periodEnd,
