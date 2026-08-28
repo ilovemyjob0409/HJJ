@@ -257,13 +257,13 @@ export default function AdminBillingPage() {
                 結算
               </Button>
             )}
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              className="px-2 py-1 text-xs"
               onClick={() => setExpandedStandaloneId((prev) => (prev === r.id ? null : r.id))}
-              className="cursor-pointer text-sm font-medium text-brandDark hover:underline"
             >
               {expandedStandaloneId === r.id ? '收合' : '明細'}
-            </button>
+            </Button>
           </div>
         );
       },

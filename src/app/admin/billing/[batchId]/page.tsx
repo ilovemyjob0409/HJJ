@@ -422,13 +422,13 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
                   結算
                 </Button>
               )}
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                className="px-2 py-1 text-xs"
                 onClick={() => setExpandedBillId((prev) => (prev === b.id ? null : b.id))}
-                className="cursor-pointer text-sm font-medium text-brandDark hover:underline"
               >
                 {expandedBillId === b.id ? '收合' : '明細'}
-              </button>
+              </Button>
             </div>
           );
         },
