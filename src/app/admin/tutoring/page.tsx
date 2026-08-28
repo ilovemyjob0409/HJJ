@@ -11,7 +11,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import WeekdayAlertModal, { WeekdayAlertInfo } from '@/components/WeekdayAlertModal';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
 import EnrollmentManager from './EnrollmentManager';
-import TutoringPolicyModal from './TutoringPolicyModal';
+import TutoringPolicyModal from '@/components/tutoring/TutoringPolicyModal';
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -53,6 +53,16 @@ interface TeacherOption {
 }
 
 const DEFAULT_WINDOW_FORM: WindowFormValues = { weekday: '0', startTime: '', endTime: '', capacity: '', teacherId: '', teacherId2: '' };
+
+function KebabIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="12" cy="5" r="1.6" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+      <circle cx="12" cy="19" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
 
 function WindowFieldInputs({
   values,
@@ -140,6 +150,8 @@ export default function AdminTutoringPage() {
   const [weekdayAlert, setWeekdayAlert] = useState<WeekdayAlertInfo | null>(null);
   const [editingWindowId, setEditingWindowId] = useState<string | null>(null);
   const [windowEditForm, setWindowEditForm] = useState<Record<string, WindowFormValues>>({});
+  const [openKebabId, setOpenKebabId] = useState<string | null>(null);
+  const [openClosuresId, setOpenClosuresId] = useState<Record<string, boolean>>({});
 
   async function load() {
     const [programsRes, teachersRes] = await Promise.all([fetch('/api/tutoring-programs'), fetch('/api/teachers')]);
@@ -149,6 +161,20 @@ export default function AdminTutoringPage() {
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    // React 18's delegated click handler and this listener both sit on `document`,
+    // so calling stopPropagation() in the toggle button's onClick does not stop this
+    // listener from also firing on the same click — it only blocks propagation to
+    // nodes further up the tree, not other listeners on the same node. Filtering by
+    // the click target instead of relying on stopPropagation sidesteps that.
+    function closeKebab(e: MouseEvent) {
+      if ((e.target as HTMLElement).closest('[data-kebab-root]')) return;
+      setOpenKebabId(null);
+    }
+    document.addEventListener('click', closeKebab);
+    return () => document.removeEventListener('click', closeKebab);
   }, []);
 
   async function createProgram() {
@@ -332,20 +358,25 @@ export default function AdminTutoringPage() {
         <TutoringPolicyModal />
       </div>
 
-      <Card className="mb-6">
-        <p className="mb-2 font-semibold text-ink">新增課程</p>
-        <div className="flex gap-2">
-          <Input placeholder="課程名稱，例如：英文個別輔導" value={newProgramName} onChange={(e) => setNewProgramName(e.target.value)} className="flex-1" />
-          <Button onClick={createProgram}>新增</Button>
-        </div>
-      </Card>
+      <details className="group mb-6">
+        <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-brandInk transition-colors hover:bg-brandDark [&::-webkit-details-marker]:hidden">
+          <span className="inline-block transition-transform group-open:rotate-45">＋</span>
+          新增課程
+        </summary>
+        <Card className="mt-3">
+          <div className="flex gap-2">
+            <Input placeholder="課程名稱，例如：英文個別輔導" value={newProgramName} onChange={(e) => setNewProgramName(e.target.value)} className="flex-1" />
+            <Button onClick={createProgram}>新增</Button>
+          </div>
+        </Card>
+      </details>
 
       {programs.map((program) => (
         <Card key={program.id} className="mb-4">
-          <details className="group">
+          <details className="group/program">
             <summary className="mb-3 flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
               <div className="flex items-center gap-2">
-                <span className="text-inkMuted transition-transform group-open:rotate-180">▾</span>
+                <span className="text-inkMuted transition-transform group-open/program:rotate-180">▾</span>
                 <p className="font-semibold text-ink">{program.name}</p>
               </div>
               <div className="flex gap-2">
@@ -382,64 +413,120 @@ export default function AdminTutoringPage() {
                   </div>
                 ) : (
                   <div key={window.id} className="rounded-lg border border-borderSubtle p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm text-ink">
-                        週{WEEKDAY_LABELS[window.weekday]} {window.startTime}-{window.endTime}・容量 {window.capacity}・
-                        {[window.teacher.user.name, window.teacher2?.user.name].filter(Boolean).join('／')}
-                        {!window.active && <span className="ml-2 text-xs text-inkMuted">（已停用）</span>}
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 min-w-[3rem] shrink-0 items-center justify-center rounded-lg bg-brand/15 px-2 text-sm font-bold text-brandDark">
+                        週{WEEKDAY_LABELS[window.weekday]}
                       </span>
-                      <div className="flex gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-ink">
+                          {window.startTime}–{window.endTime}
+                          {!window.active && <span className="ml-2 text-xs font-normal text-inkMuted">（已停用）</span>}
+                        </p>
+                        <p className="mt-0.5 text-xs text-inkMuted">
+                          容量 {window.capacity}・{[window.teacher.user.name, window.teacher2?.user.name].filter(Boolean).join('／')}
+                        </p>
+                      </div>
+                      <div className="relative flex shrink-0 items-center gap-2" data-kebab-root>
                         <Link
                           href={`/admin/tutoring/windows/${window.id}/attendance`}
                           className="inline-flex items-center justify-center gap-2 rounded-lg border border-borderStrong bg-card px-2 py-1 text-xs font-semibold text-ink transition-colors hover:bg-stripe"
                         >
                           查看出缺勤
                         </Link>
-                        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => startEditWindow(window)}>
-                          編輯
-                        </Button>
-                        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => toggleWindowActive(window)}>
-                          {window.active ? '停用' : '啟用'}
-                        </Button>
-                        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => deleteWindow(window)}>
-                          刪除
-                        </Button>
+                        <button
+                          type="button"
+                          aria-label="更多操作"
+                          onClick={() => setOpenKebabId((prev) => (prev === window.id ? null : window.id))}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-inkMuted hover:bg-stripe"
+                        >
+                          <KebabIcon className="h-4 w-4" />
+                        </button>
+                        {openKebabId === window.id && (
+                          <div className="absolute right-0 top-9 z-20 min-w-[8rem] rounded-lg border border-borderStrong bg-card p-1 shadow-lg">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                startEditWindow(window);
+                                setOpenKebabId(null);
+                              }}
+                              className="block w-full rounded-md px-3 py-1.5 text-left text-sm text-ink hover:bg-stripe"
+                            >
+                              編輯
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                toggleWindowActive(window);
+                                setOpenKebabId(null);
+                              }}
+                              className="block w-full rounded-md px-3 py-1.5 text-left text-sm text-ink hover:bg-stripe"
+                            >
+                              {window.active ? '停用' : '啟用'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                deleteWindow(window);
+                                setOpenKebabId(null);
+                              }}
+                              className="block w-full rounded-md px-3 py-1.5 text-left text-sm text-rejected hover:bg-stripe"
+                            >
+                              刪除
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-inkMuted">停開日：</span>
-                      {window.closures.map((c) => (
-                        <span key={c.id} className="flex items-center gap-1 rounded-full bg-stripe px-2 py-0.5 text-xs text-inkMuted">
-                          {c.date.slice(0, 10)}
-                          <button onClick={() => removeClosure(c.id)} className="text-rejected">
-                            ✕
-                          </button>
-                        </span>
-                      ))}
-                      <Input
-                        type="date"
-                        value={closureDate[window.id] ?? ''}
-                        onChange={(e) => setClosureDate((prev) => ({ ...prev, [window.id]: e.target.value }))}
-                        className="w-36 py-1 text-xs"
-                      />
-                      <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => addClosure(window)}>
-                        加入停開日
-                      </Button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpenClosuresId((prev) => ({ ...prev, [window.id]: !prev[window.id] }))}
+                      className="mt-2 flex w-full items-center gap-1 border-t border-borderSubtle pt-2 text-left text-xs font-semibold text-inkMuted hover:text-ink"
+                    >
+                      停開日
+                      {window.closures.length > 0 && <span className="font-normal">・{window.closures.length}</span>}
+                      <span className={`ml-auto transition-transform ${openClosuresId[window.id] ? 'rotate-180' : ''}`}>▾</span>
+                    </button>
+                    {openClosuresId[window.id] && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-stripe p-2">
+                        {window.closures.map((c) => (
+                          <span key={c.id} className="flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-xs text-inkMuted">
+                            {c.date.slice(0, 10)}
+                            <button onClick={() => removeClosure(c.id)} className="text-rejected">
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                        <Input
+                          type="date"
+                          value={closureDate[window.id] ?? ''}
+                          onChange={(e) => setClosureDate((prev) => ({ ...prev, [window.id]: e.target.value }))}
+                          className="w-36 py-1 text-xs"
+                        />
+                        <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => addClosure(window)}>
+                          加入停開日
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )
               )}
 
-              <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-borderStrong p-3">
-                <WindowFieldInputs
-                  values={windowForm[program.id] ?? DEFAULT_WINDOW_FORM}
-                  onChange={(patch) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...(prev[program.id] ?? DEFAULT_WINDOW_FORM), ...patch } }))}
-                  teachers={teachers}
-                />
-                <Button className="px-3 py-1 text-xs" onClick={() => createWindow(program.id)}>
+              <details className="group/addwin">
+                <summary className="inline-flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-lg border border-borderStrong bg-card px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-stripe [&::-webkit-details-marker]:hidden">
+                  <span className="inline-block transition-transform group-open/addwin:rotate-45">＋</span>
                   新增窗口
-                </Button>
-              </div>
+                </summary>
+                <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-borderStrong p-3">
+                  <WindowFieldInputs
+                    values={windowForm[program.id] ?? DEFAULT_WINDOW_FORM}
+                    onChange={(patch) => setWindowForm((prev) => ({ ...prev, [program.id]: { ...(prev[program.id] ?? DEFAULT_WINDOW_FORM), ...patch } }))}
+                    teachers={teachers}
+                  />
+                  <Button className="px-3 py-1 text-xs" onClick={() => createWindow(program.id)}>
+                    新增
+                  </Button>
+                </div>
+              </details>
             </div>
           </details>
         </Card>

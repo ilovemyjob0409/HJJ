@@ -9,6 +9,7 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { attendanceDisplayStatus } from '@/lib/attendanceDisplay';
 import TutoringBookingCalendar from '@/components/tutoring/TutoringBookingCalendar';
 import TutoringQuotaBar from '@/components/tutoring/TutoringQuotaBar';
+import TutoringPolicyModal from '@/components/tutoring/TutoringPolicyModal';
 
 interface Enrollment {
   id: string;
@@ -79,7 +80,10 @@ export default function StudentTutoringPage() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">個別輔導預約</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold text-ink">個別輔導預約</h1>
+        <TutoringPolicyModal />
+      </div>
 
       {loading ? (
         <Card>
