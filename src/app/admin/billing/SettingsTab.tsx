@@ -25,6 +25,19 @@ interface TierFormValues {
 
 const EMPTY_TIER_FORM: TierFormValues = { name: '', sessionsPerWeek: '', monthlyFee: '' };
 
+interface DiscountItemRow {
+  id: string;
+  name: string;
+  amount: number;
+}
+
+interface DiscountFormValues {
+  name: string;
+  amount: string;
+}
+
+const EMPTY_DISCOUNT_FORM: DiscountFormValues = { name: '', amount: '' };
+
 export default function SettingsTab() {
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -39,6 +52,11 @@ export default function SettingsTab() {
   const [editingTierId, setEditingTierId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<TierFormValues>(EMPTY_TIER_FORM);
   const [tierInUseAlertOpen, setTierInUseAlertOpen] = useState(false);
+  const [discountItems, setDiscountItems] = useState<DiscountItemRow[]>([]);
+  const [newDiscount, setNewDiscount] = useState<DiscountFormValues>(EMPTY_DISCOUNT_FORM);
+  const [addingDiscount, setAddingDiscount] = useState(false);
+  const [editingDiscountId, setEditingDiscountId] = useState<string | null>(null);
+  const [discountEditForm, setDiscountEditForm] = useState<DiscountFormValues>(EMPTY_DISCOUNT_FORM);
 
   async function load() {
     setLoading(true);
@@ -49,6 +67,7 @@ export default function SettingsTab() {
         setFeeTiers(data.feeTiers);
         setDeductionCap(String(data.deductionCap));
         setPaymentInfo(data.paymentInfo);
+        setDiscountItems(data.discountItems ?? []);
       }
     } finally {
       setLoading(false);
@@ -172,6 +191,119 @@ export default function SettingsTab() {
     load();
   }
 
+  async function createDiscountItem() {
+    if (!newDiscount.name.trim() || newDiscount.amount.trim() === '') {
+      showToast('請填寫完整的優惠項目資訊');
+      return;
+    }
+    setAddingDiscount(true);
+    try {
+      const res = await fetch('/api/admin/billing/discount-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newDiscount.name.trim(), amount: Number(newDiscount.amount) }),
+      });
+      if (!res.ok) {
+        showToast('新增失敗，請稍後再試');
+        return;
+      }
+      setNewDiscount(EMPTY_DISCOUNT_FORM);
+      showToast('已新增優惠項目');
+      load();
+    } finally {
+      setAddingDiscount(false);
+    }
+  }
+
+  function startEditDiscountItem(row: DiscountItemRow) {
+    setDiscountEditForm({ name: row.name, amount: String(row.amount) });
+    setEditingDiscountId(row.id);
+  }
+
+  async function saveEditDiscountItem(id: string) {
+    if (!discountEditForm.name.trim() || discountEditForm.amount.trim() === '') {
+      showToast('請填寫完整的優惠項目資訊');
+      return;
+    }
+    const res = await fetch(`/api/admin/billing/discount-items/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: discountEditForm.name.trim(), amount: Number(discountEditForm.amount) }),
+    });
+    if (!res.ok) {
+      showToast('更新失敗，請稍後再試');
+      return;
+    }
+    setEditingDiscountId(null);
+    showToast('已更新優惠項目');
+    load();
+  }
+
+  async function deleteDiscountItem(row: DiscountItemRow) {
+    if (!(await confirm(`確定要刪除「${row.name}」嗎？`, { danger: true }))) return;
+    const res = await fetch(`/api/admin/billing/discount-items/${row.id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      showToast('刪除失敗，請稍後再試');
+      return;
+    }
+    showToast('已刪除');
+    load();
+  }
+
+  const discountColumns: Column<DiscountItemRow>[] = [
+    {
+      header: '名稱',
+      render: (r) =>
+        editingDiscountId === r.id ? (
+          <Input
+            value={discountEditForm.name}
+            onChange={(e) => setDiscountEditForm((f) => ({ ...f, name: e.target.value }))}
+            className="w-full py-1 text-sm"
+          />
+        ) : (
+          r.name
+        ),
+    },
+    {
+      header: '優惠金額',
+      render: (r) =>
+        editingDiscountId === r.id ? (
+          <Input
+            type="number"
+            min={0}
+            value={discountEditForm.amount}
+            onChange={(e) => setDiscountEditForm((f) => ({ ...f, amount: e.target.value }))}
+            className="w-24 py-1 text-sm"
+          />
+        ) : (
+          `${r.amount.toLocaleString('en-US')} 元`
+        ),
+    },
+    {
+      header: '操作',
+      render: (r) =>
+        editingDiscountId === r.id ? (
+          <div className="flex justify-center gap-1">
+            <Button className="px-2 py-1 text-xs" onClick={() => saveEditDiscountItem(r.id)}>
+              儲存
+            </Button>
+            <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => setEditingDiscountId(null)}>
+              取消
+            </Button>
+          </div>
+        ) : (
+          <div className="flex justify-center gap-1">
+            <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => startEditDiscountItem(r)}>
+              編輯
+            </Button>
+            <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => deleteDiscountItem(r)}>
+              刪除
+            </Button>
+          </div>
+        ),
+    },
+  ];
+
   const columns: Column<FeeTierRow>[] = [
     {
       header: '名稱',
@@ -278,6 +410,36 @@ export default function SettingsTab() {
           </label>
           <Button onClick={createTier} loading={addingTier}>
             新增級距
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="mb-6">
+        <p className="mb-3 font-bold text-ink">優惠項目</p>
+        <p className="mb-3 text-xs text-inkMuted">僅在單獨開單時可勾選套用到單一帳單（例如首次報名的企業特約），不會長期掛在學生身上</p>
+        <DataTable columns={discountColumns} rows={discountItems} keyField={(r) => r.id} loading={loading} emptyText="目前沒有優惠項目" />
+        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-borderStrong p-3">
+          <label className="text-xs text-inkMuted">
+            名稱
+            <Input
+              placeholder="例如：台積電特約"
+              value={newDiscount.name}
+              onChange={(e) => setNewDiscount((f) => ({ ...f, name: e.target.value }))}
+              className="mt-1 block"
+            />
+          </label>
+          <label className="text-xs text-inkMuted">
+            優惠金額
+            <Input
+              type="number"
+              min={0}
+              value={newDiscount.amount}
+              onChange={(e) => setNewDiscount((f) => ({ ...f, amount: e.target.value }))}
+              className="mt-1 block w-24"
+            />
+          </label>
+          <Button onClick={createDiscountItem} loading={addingDiscount}>
+            新增優惠項目
           </Button>
         </div>
       </Card>

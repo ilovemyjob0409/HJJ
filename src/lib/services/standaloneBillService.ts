@@ -28,6 +28,15 @@ async function findOverlappingTutoringBill(tutoringEnrollmentId: string, periodS
   });
 }
 
+// 優惠項目只在單獨開單時勾選套用（如「台積電特約」——只有首次報名才有，不是學生
+// 長期屬性，不掛在 Student／Enrollment 上）。名稱與金額在這裡凍結進 detail 快照，
+// 之後改 DiscountItem 主表的金額不會動到已開的帳單。
+async function resolveDiscounts(discountItemIds?: string[]): Promise<{ name: string; amount: number }[]> {
+  if (!discountItemIds || discountItemIds.length === 0) return [];
+  const items = await prisma.discountItem.findMany({ where: { id: { in: discountItemIds } } });
+  return items.map((i) => ({ name: i.name, amount: i.amount }));
+}
+
 type Deduction = { previousRemaining: number; cap: number; deducted: number } | null;
 
 // 單一 (studentId, classId) 版的 createClassBatch 迴圈內邏輯：同一批 import、同一段
@@ -53,21 +62,24 @@ async function computeClassBillCore(studentId: string, classId: string, periodSt
 }
 
 export async function previewStandaloneClassBill(input: {
-  studentId: string; classId: string; periodStart: Date; periodEnd: Date;
+  studentId: string; classId: string; periodStart: Date; periodEnd: Date; discountItemIds?: string[];
 }) {
-  const [core, existing] = await Promise.all([
+  const [core, existing, discounts] = await Promise.all([
     computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd),
     findOverlappingClassBill(input.studentId, input.classId, input.periodStart, input.periodEnd),
+    resolveDiscounts(input.discountItemIds),
   ]);
+  const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
+  const netAmountDue = Math.max(0, core.amountDue - discountTotal);
   const detail = core.unitPrice === null
-    ? { sessionDates: core.entries, deduction: null, formula: '（請先設定班級單價）' }
-    : buildClassBillDetail(core.entries, core.deduction, core.billed, core.unitPrice);
+    ? { sessionDates: core.entries, deduction: null, discounts, formula: '（請先設定班級單價）' }
+    : { ...buildClassBillDetail(core.entries, core.deduction, core.billed, core.unitPrice), discounts };
   return {
     sessionsTotal: core.open,
     deductedSessions: core.deducted,
     billedSessions: core.billed,
     unitPrice: core.unitPrice,
-    amountDue: core.amountDue,
+    amountDue: netAmountDue,
     detail,
     // 重疊只警示不擋：單獨開單本來就是補開用，由行政自行判斷（跟批次的「略過」不同）。
     overlapWarning: existing ? overlapMessage(existing) : null,
@@ -76,14 +88,19 @@ export async function previewStandaloneClassBill(input: {
 
 export async function createStandaloneClassBill(input: {
   studentId: string; classId: string; periodStart: Date; periodEnd: Date;
-  billedSessions: number; amountDue: number; note?: string; notifyNow: boolean;
+  billedSessions: number; amountDue: number; note?: string; notifyNow: boolean; discountItemIds?: string[];
 }): Promise<{ billId: string }> {
-  const core = await computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd);
+  const [core, discounts] = await Promise.all([
+    computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd),
+    resolveDiscounts(input.discountItemIds),
+  ]);
   if (core.unitPrice === null) throw new Error('MISSING_PRICE');
+  const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
+  const netAmountDue = Math.max(0, core.amountDue - discountTotal);
 
   // amountDue 由呼叫端傳入（行政可能微調過）；detail 重算但 formula 以傳入值為準，
-  // 與 preview 算出的值不同時附註「（手動調整）」。
-  const adjusted = input.billedSessions !== core.billed || input.amountDue !== core.amountDue;
+  // 與試算（已扣優惠）算出的值不同時附註「（手動調整）」。
+  const adjusted = input.billedSessions !== core.billed || input.amountDue !== netAmountDue;
   const amount = input.amountDue.toLocaleString('en-US');
   const baseFormula = core.deduction
     ? `${core.open} − ${core.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${amount} 元`
@@ -91,6 +108,7 @@ export async function createStandaloneClassBill(input: {
   const detail = {
     sessionDates: core.entries,
     deduction: core.deduction,
+    discounts,
     formula: adjusted ? `${baseFormula}（手動調整）` : baseFormula,
   } as unknown as Prisma.InputJsonValue;
 
@@ -119,37 +137,46 @@ export async function createStandaloneClassBill(input: {
 }
 
 export async function previewStandaloneTutoringBill(input: {
-  enrollmentId: string; periodStart: Date; periodEnd: Date;
+  enrollmentId: string; periodStart: Date; periodEnd: Date; discountItemIds?: string[];
 }) {
-  const [enrollment, existing] = await Promise.all([
+  const [enrollment, existing, discounts] = await Promise.all([
     prisma.tutoringEnrollment.findUniqueOrThrow({
       where: { id: input.enrollmentId },
       select: { feeTier: { select: { monthlyFee: true } } },
     }),
     findOverlappingTutoringBill(input.enrollmentId, input.periodStart, input.periodEnd),
+    resolveDiscounts(input.discountItemIds),
   ]);
   if (!enrollment.feeTier) throw new Error('NO_FEE_TIER');
   const prorationRatio = computeTutoringProration(input.periodStart, input.periodEnd);
-  const amountDue = Math.round(enrollment.feeTier.monthlyFee * prorationRatio);
+  const grossAmountDue = Math.round(enrollment.feeTier.monthlyFee * prorationRatio);
+  const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   return {
     monthlyFee: enrollment.feeTier.monthlyFee,
     prorationRatio,
-    amountDue,
+    amountDue: Math.max(0, grossAmountDue - discountTotal),
+    discounts,
     overlapWarning: existing ? overlapMessage(existing) : null,
   };
 }
 
 export async function createStandaloneTutoringBill(input: {
   enrollmentId: string; periodStart: Date; periodEnd: Date; amountDue: number; note?: string; notifyNow: boolean;
+  discountItemIds?: string[];
 }): Promise<{ billId: string }> {
-  const enrollment = await prisma.tutoringEnrollment.findUniqueOrThrow({
-    where: { id: input.enrollmentId },
-    select: { studentId: true, feeTier: { select: { name: true, monthlyFee: true } } },
-  });
+  const [enrollment, discounts] = await Promise.all([
+    prisma.tutoringEnrollment.findUniqueOrThrow({
+      where: { id: input.enrollmentId },
+      select: { studentId: true, feeTier: { select: { name: true, monthlyFee: true } } },
+    }),
+    resolveDiscounts(input.discountItemIds),
+  ]);
   if (!enrollment.feeTier) throw new Error('NO_FEE_TIER');
   const prorationRatio = computeTutoringProration(input.periodStart, input.periodEnd);
-  const computedAmountDue = Math.round(enrollment.feeTier.monthlyFee * prorationRatio);
-  const adjusted = input.amountDue !== computedAmountDue;
+  const grossAmountDue = Math.round(enrollment.feeTier.monthlyFee * prorationRatio);
+  const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
+  const netExpected = Math.max(0, grossAmountDue - discountTotal);
+  const adjusted = input.amountDue !== netExpected;
   const amount = input.amountDue.toLocaleString('en-US');
   const ratioText = prorationRatio < 1 ? `（折算 ${Math.round(prorationRatio * 100)}%）` : '';
   const formula = `月費（${enrollment.feeTier.name}）${ratioText} ＝ ${amount} 元${adjusted ? '（手動調整）' : ''}`;
@@ -159,7 +186,7 @@ export async function createStandaloneTutoringBill(input: {
       batchId: null, studentId: enrollment.studentId, tutoringEnrollmentId: input.enrollmentId,
       periodStart: input.periodStart, periodEnd: input.periodEnd,
       monthlyFee: enrollment.feeTier.monthlyFee, prorationRatio, amountDue: input.amountDue,
-      detail: { sessionDates: [], deduction: null, formula },
+      detail: { sessionDates: [], deduction: null, discounts, formula },
       status: 'FINALIZED', note: input.note,
     },
   });

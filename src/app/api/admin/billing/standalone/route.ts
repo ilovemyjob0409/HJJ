@@ -26,24 +26,29 @@ export async function POST(req: NextRequest) {
   try {
     const periodStart = new Date(body.periodStart);
     const periodEnd = new Date(body.periodEnd);
+    const discountItemIds: string[] | undefined = Array.isArray(body.discountItemIds) ? body.discountItemIds : undefined;
     if (body.kind === 'CLASS') {
       if (!body.studentId || !body.classId) return NextResponse.json({ error: 'MISSING_FIELDS' }, { status: 400 });
       if (body.preview) {
-        return NextResponse.json(await previewStandaloneClassBill({ studentId: body.studentId, classId: body.classId, periodStart, periodEnd }));
+        return NextResponse.json(
+          await previewStandaloneClassBill({ studentId: body.studentId, classId: body.classId, periodStart, periodEnd, discountItemIds })
+        );
       }
       const result = await createStandaloneClassBill({
         studentId: body.studentId, classId: body.classId, periodStart, periodEnd,
-        billedSessions: body.billedSessions, amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow,
+        billedSessions: body.billedSessions, amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow, discountItemIds,
       });
       return NextResponse.json(result);
     }
     if (!body.enrollmentId) return NextResponse.json({ error: 'MISSING_FIELDS' }, { status: 400 });
     if (body.preview) {
-      return NextResponse.json(await previewStandaloneTutoringBill({ enrollmentId: body.enrollmentId, periodStart, periodEnd }));
+      return NextResponse.json(
+        await previewStandaloneTutoringBill({ enrollmentId: body.enrollmentId, periodStart, periodEnd, discountItemIds })
+      );
     }
     const result = await createStandaloneTutoringBill({
       enrollmentId: body.enrollmentId, periodStart, periodEnd,
-      amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow,
+      amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow, discountItemIds,
     });
     return NextResponse.json(result);
   } catch (e) {

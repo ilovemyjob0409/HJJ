@@ -58,6 +58,16 @@ INSERT INTO "BillingSetting" ("id", "deductionCap", "paymentInfo")
 VALUES ('main', 2, '')
 ON CONFLICT ("id") DO NOTHING;
 
+-- 4b) 優惠項目主表（如「台積電特約」）：只在單獨開單時勾選套用到單一帳單，
+-- 名稱與金額凍結進 Bill.detail 快照，不跟 Bill 建關聯。
+CREATE TABLE IF NOT EXISTS "DiscountItem" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "amount" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "DiscountItem_pkey" PRIMARY KEY ("id")
+);
+
 -- 5) 收費批次
 CREATE TABLE IF NOT EXISTS "BillingBatch" (
     "id" TEXT NOT NULL,
@@ -177,11 +187,12 @@ INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '202
 INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-12-25', '行憲紀念日', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
 INSERT INTO "ClosedDay" (id, date, name, source) VALUES (gen_random_uuid(), '2027-12-31', '補假', 'NATIONAL') ON CONFLICT (date) DO NOTHING;
 
--- 驗證：應回傳六張新表的列數（BillingSetting 應為 1，其餘應為 0）
+-- 驗證：應回傳七張新表的列數（BillingSetting 應為 1，其餘應為 0；DiscountItem 初始無資料，正常也是 0）
 SELECT
   (SELECT count(*) FROM "ClosedDay")        AS closed_days,
   (SELECT count(*) FROM "TutoringFeeTier")  AS tutoring_fee_tiers,
   (SELECT count(*) FROM "BillingSetting")   AS billing_settings,
+  (SELECT count(*) FROM "DiscountItem")     AS discount_items,
   (SELECT count(*) FROM "BillingBatch")     AS billing_batches,
   (SELECT count(*) FROM "Bill")             AS bills,
   (SELECT count(*) FROM "BillPayment")      AS bill_payments;

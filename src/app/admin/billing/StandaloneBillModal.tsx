@@ -26,6 +26,12 @@ interface EnrollmentOption {
   active: boolean;
 }
 
+interface DiscountItemOption {
+  id: string;
+  name: string;
+  amount: number;
+}
+
 type Target = { kind: 'CLASS'; classId: string } | { kind: 'TUTORING'; enrollmentId: string };
 
 interface ClassPreview {
@@ -64,6 +70,8 @@ export default function StandaloneBillModal({
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [enrollments, setEnrollments] = useState<EnrollmentOption[]>([]);
+  const [discountItems, setDiscountItems] = useState<DiscountItemOption[]>([]);
+  const [selectedDiscountIds, setSelectedDiscountIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [studentId, setStudentId] = useState('');
   const [target, setTarget] = useState<Target | null>(null);
@@ -88,6 +96,7 @@ export default function StandaloneBillModal({
     setTutoringPreview(null);
     setBilledSessionsDraft('');
     setAmountDueDraft('');
+    setSelectedDiscountIds([]);
   }, [open]);
 
   useEffect(() => {
@@ -101,7 +110,16 @@ export default function StandaloneBillModal({
     fetch('/api/tutoring-enrollments')
       .then((r) => (r.ok ? r.json() : []))
       .then(setEnrollments);
+    fetch('/api/admin/billing/settings')
+      .then((r) => (r.ok ? r.json() : { discountItems: [] }))
+      .then((data) => setDiscountItems(data.discountItems ?? []));
   }, [open]);
+
+  function toggleDiscountItem(id: string) {
+    setSelectedDiscountIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setClassPreview(null);
+    setTutoringPreview(null);
+  }
 
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -134,8 +152,8 @@ export default function StandaloneBillModal({
     try {
       const body =
         target.kind === 'CLASS'
-          ? { kind: 'CLASS', preview: true, periodStart, periodEnd, studentId, classId: target.classId }
-          : { kind: 'TUTORING', preview: true, periodStart, periodEnd, enrollmentId: target.enrollmentId };
+          ? { kind: 'CLASS', preview: true, periodStart, periodEnd, studentId, classId: target.classId, discountItemIds: selectedDiscountIds }
+          : { kind: 'TUTORING', preview: true, periodStart, periodEnd, enrollmentId: target.enrollmentId, discountItemIds: selectedDiscountIds };
       const res = await fetch('/api/admin/billing/standalone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -183,8 +201,18 @@ export default function StandaloneBillModal({
               billedSessions: Number(billedSessionsDraft),
               amountDue,
               notifyNow,
+              discountItemIds: selectedDiscountIds,
             }
-          : { kind: 'TUTORING', preview: false, periodStart, periodEnd, enrollmentId: target.enrollmentId, amountDue, notifyNow };
+          : {
+              kind: 'TUTORING',
+              preview: false,
+              periodStart,
+              periodEnd,
+              enrollmentId: target.enrollmentId,
+              amountDue,
+              notifyNow,
+              discountItemIds: selectedDiscountIds,
+            };
       const res = await fetch('/api/admin/billing/standalone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -278,6 +306,23 @@ export default function StandaloneBillModal({
                 收費區間訖
                 <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
               </label>
+              {discountItems.length > 0 && (
+                <div>
+                  <p className="mb-1 text-sm font-medium text-ink">優惠項目（僅套用於這張帳單，可複選）</p>
+                  <div className="flex flex-col gap-1 rounded-lg border border-borderSubtle p-2">
+                    {discountItems.map((d) => (
+                      <label key={d.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm text-ink hover:bg-stripe">
+                        <input
+                          type="checkbox"
+                          checked={selectedDiscountIds.includes(d.id)}
+                          onChange={() => toggleDiscountItem(d.id)}
+                        />
+                        {d.name}（－{d.amount.toLocaleString('en-US')} 元）
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
               <Button variant="secondary" disabled={!canPreview} loading={previewing} onClick={runPreview}>
                 試算
               </Button>

@@ -658,6 +658,16 @@ model BillingSetting {
   paymentInfo  String @default("") // 學生端繳費資訊卡文字（銀行帳戶等）
 }
 
+// 優惠項目主表（如「台積電特約」）：只在單獨開單時勾選套用到單一帳單，
+// 不掛在學生或報名上長期生效——套用時的名稱與金額凍結進 Bill.detail 快照，
+// 這裡不需要跟 Bill 建關聯，之後改這張表的金額也不會動到已開的帳單。
+model DiscountItem {
+  id        String   @id @default(cuid())
+  name      String
+  amount    Int
+  createdAt DateTime @default(now())
+}
+
 enum BillingKind {
   CLASS
   TUTORING

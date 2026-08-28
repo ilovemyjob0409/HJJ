@@ -5,6 +5,7 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 export interface BillDetailJson {
   sessionDates: { dateKey: string; closed: boolean; closedName?: string }[];
   deduction: { previousRemaining: number; cap: number; deducted: number } | null;
+  discounts?: { name: string; amount: number }[];
   formula: string;
 }
 
@@ -33,6 +34,15 @@ export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) 
           上期剩餘 {detail.deduction.previousRemaining} 堂｜折抵上限 {detail.deduction.cap} 堂 → 本期折抵 {detail.deduction.deducted}{' '}
           堂，其餘 {detail.deduction.previousRemaining - detail.deduction.deducted} 堂保留至本期繼續使用
         </p>
+      )}
+      {detail.discounts && detail.discounts.length > 0 && (
+        <div className="mb-1 border-t border-borderSubtle pt-2">
+          {detail.discounts.map((d, i) => (
+            <p key={i} className="text-rejected">
+              － {d.name} {d.amount.toLocaleString('en-US')} 元
+            </p>
+          ))}
+        </div>
       )}
       <p className="font-bold text-ink">{detail.formula}</p>
     </div>
