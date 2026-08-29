@@ -304,6 +304,14 @@ export default function EnrollmentManager() {
     { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
     {
+      header: '收費級距',
+      render: (r) => {
+        const tier = feeTiers.find((t) => t.id === r.feeTierId);
+        return tier ? tier.name : <span className="text-inkMuted">未指定</span>;
+      },
+      sortValue: (r) => feeTiers.find((t) => t.id === r.feeTierId)?.name ?? '',
+    },
+    {
       header: '本月狀態',
       render: (r) => (
         <>
