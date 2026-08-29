@@ -831,6 +831,20 @@ function StudentsContent() {
                 <div>
                   <p className="mb-1 text-xs font-medium text-inkMuted">手足帳號</p>
                   <div className="rounded-lg bg-background p-3">
+                    {(() => {
+                      // editing 是開彈窗當下的快照，手足設定可能在同一次編輯 session 裡
+                      // 剛被存檔（FamilySiblingModal 存檔後呼叫 load() 重抓 students）——
+                      // 用 students 裡對應該生的最新一筆，顯示才會跟著更新，不用重開彈窗。
+                      const current = students.find((s) => s.id === editing?.id) ?? editing;
+                      const siblingNames = current?.familyGroupId
+                        ? students.filter((s) => s.id !== current.id && s.familyGroupId === current.familyGroupId).map((s) => s.user.name)
+                        : [];
+                      return (
+                        <p className="mb-2 text-sm text-ink">
+                          {siblingNames.length > 0 ? `目前手足：${siblingNames.join('、')}` : '尚未設定手足'}
+                        </p>
+                      );
+                    })()}
                     <Button type="button" variant="secondary" onClick={() => editing && setFamilyModalStudent(editing)}>
                       設定手足
                     </Button>
