@@ -13,6 +13,25 @@ export interface BillDetailJson {
   netFormula?: string;
 }
 
+// netFormula 是凍結進 detail 的完整字串（「毛額 － 優惠1 － 優惠2 ＝ 最終金額」），
+// 但優惠名稱與金額要標紅——用 discounts 陣列裡的 name/amount 組出跟 buildNetFormula
+// 完全一樣的片段（－ 名稱 金額 元），在字串裡找出來拆開上色，其餘文字維持預設色。
+function renderNetFormula(netFormula: string, discounts: { name: string; amount: number }[]) {
+  if (discounts.length === 0) return netFormula;
+  const segments: { text: string; highlight: boolean }[] = [];
+  let rest = netFormula;
+  for (const d of discounts) {
+    const marker = `－ ${d.name} ${d.amount.toLocaleString('en-US')} 元`;
+    const idx = rest.indexOf(marker);
+    if (idx === -1) continue;
+    if (idx > 0) segments.push({ text: rest.slice(0, idx), highlight: false });
+    segments.push({ text: marker, highlight: true });
+    rest = rest.slice(idx + marker.length);
+  }
+  if (rest) segments.push({ text: rest, highlight: false });
+  return segments.map((s, i) => (s.highlight ? <span key={i} className="text-rejected">{s.text}</span> : <span key={i}>{s.text}</span>));
+}
+
 export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) {
   return (
     <div className="rounded-lg border border-borderSubtle bg-cream/40 px-4 py-3 text-sm leading-relaxed">
@@ -41,7 +60,7 @@ export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) 
       )}
       <p className="font-bold text-ink">{detail.formula}</p>
       {detail.netFormula ? (
-        <p className="mt-1 font-bold text-ink">{detail.netFormula}</p>
+        <p className="mt-1 font-bold text-ink">{renderNetFormula(detail.netFormula, detail.discounts ?? [])}</p>
       ) : (
         // 舊格式相容：netFormula 是後來才加的欄位，優惠項目上線初期建立的帳單只有
         // discounts 陣列、沒有 netFormula——這裡逐項列出，不能讓舊帳單的優惠資訊憑空消失。
