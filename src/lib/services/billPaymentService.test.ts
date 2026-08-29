@@ -4,7 +4,8 @@ import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createClassBatch, finalizeBatch, getBatchDetail } from './billingBatchService';
-import { addPayment, deletePayment } from './billPaymentService';
+import { setSiblings } from './familyService';
+import { addPayment, deletePayment, getPendingBillSummaryForStudent } from './billPaymentService';
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
@@ -41,5 +42,47 @@ describe('addPayment / deletePayment', () => {
   it('rejects non-positive amounts and draft bills', async () => {
     const { bill } = await finalizedBillFixture();
     await expect(addPayment(bill.id, { amount: 0, paidOn: D(2026, 9, 3), method: 'CASH' }, 'admin-1')).rejects.toThrow('INVALID_AMOUNT');
+  });
+});
+
+describe('getPendingBillSummaryForStudent', () => {
+  it('sums outstanding across unpaid and partial bills, skipping paid ones', async () => {
+    const { bill } = await finalizedBillFixture(); // amountDue 2000，未繳
+    await addPayment(bill.id, { amount: 2000, paidOn: D(2026, 9, 3), method: 'CASH' }, 'admin-1');
+    const studentId = (await prisma.bill.findUniqueOrThrow({ where: { id: bill.id } })).studentId;
+
+    // 繳清後不列入
+    expect(await getPendingBillSummaryForStudent(studentId)).toEqual({ outstanding: 0, count: 0 });
+
+    // 再開一批（10 月），部分繳 500 → 待繳 1500、1 筆
+    const cls = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId } });
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 10, 1), periodEnd: D(2026, 10, 31), classIds: [cls.classId] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const octBill = (await getBatchDetail(batchId)).bills[0];
+    await addPayment(octBill.id, { amount: 500, paidOn: D(2026, 10, 3), method: 'CASH' }, 'admin-1');
+
+    expect(await getPendingBillSummaryForStudent(studentId)).toEqual({ outstanding: octBill.amountDue - 500, count: 1 });
+  });
+
+  it('merges sibling bills and ignores draft batches', async () => {
+    const { bill } = await finalizedBillFixture(); // 哥哥的 9 月帳單 2000
+    const studentId = (await prisma.bill.findUniqueOrThrow({ where: { id: bill.id } })).studentId;
+    const sibling = await createStudent({ name: '小華', email: `pay-sib-${Date.now()}@example.com`, password: 'x' });
+    await setSiblings(studentId, [sibling.id]);
+
+    // 手足報同一班並開 10 月批次但「不定案」→ 草稿不列入
+    const cls = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId } });
+    await enrollStudent(cls.classId, sibling.id);
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 10, 1), periodEnd: D(2026, 10, 31), classIds: [cls.classId] });
+
+    // 草稿批次不算，只有哥哥的已定案帳單
+    expect(await getPendingBillSummaryForStudent(sibling.id)).toEqual({ outstanding: bill.amountDue, count: 1 });
+
+    // 定案後：哥哥 9 月＋兩人 10 月，共 3 筆，從任一手足查都一樣
+    await finalizeBatch(batchId, { notifyNow: false });
+    const octBills = (await getBatchDetail(batchId)).bills;
+    const total = bill.amountDue + octBills.reduce((s, b) => s + b.amountDue, 0);
+    expect(await getPendingBillSummaryForStudent(sibling.id)).toEqual({ outstanding: total, count: 3 });
+    expect(await getPendingBillSummaryForStudent(studentId)).toEqual({ outstanding: total, count: 3 });
   });
 });

@@ -4,8 +4,10 @@ const sessionMock = vi.fn();
 vi.mock('next-auth', () => ({ getServerSession: (...args: unknown[]) => sessionMock(...args) }));
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 
+import { NextRequest } from 'next/server';
 import { GET as listBatchesGET, POST as createBatchPOST } from './batches/route';
 import { POST as addPaymentPOST } from './bills/[id]/payments/route';
+import { GET as overviewGET } from './overview/route';
 import { prisma } from '@/lib/db';
 import { createTeacher } from '@/lib/services/teacherService';
 import { createStudent } from '@/lib/services/studentService';
@@ -79,6 +81,37 @@ describe('POST /api/admin/billing/batches', () => {
     expect(body).toHaveProperty('batchId');
     expect(body).toHaveProperty('skipped');
     expect(body.skipped).toEqual([]);
+  });
+});
+
+describe('GET /api/admin/billing/overview', () => {
+  const overviewReq = (qs: string) => new NextRequest(`http://localhost/api/admin/billing/overview${qs}`);
+
+  it('403 when not logged in or for a STUDENT', async () => {
+    asAnon();
+    expect((await overviewGET(overviewReq('?start=2026-09-01&end=2026-09-30'))).status).toBe(403);
+    asStudent();
+    expect((await overviewGET(overviewReq('?start=2026-09-01&end=2026-09-30'))).status).toBe(403);
+  });
+
+  it('400 when start/end missing or malformed', async () => {
+    asAdmin();
+    expect((await overviewGET(overviewReq(''))).status).toBe(400);
+    expect((await overviewGET(overviewReq('?start=2026-09-01'))).status).toBe(400);
+    expect((await overviewGET(overviewReq('?start=abc&end=2026-09-30'))).status).toBe(400);
+  });
+
+  it('200 for ADMIN with summary and bills of the range', async () => {
+    const { cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    asAdmin();
+    const res = await overviewGET(overviewReq('?start=2026-09-01&end=2026-09-30'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary).toEqual({ totalDue: 2000, totalPaid: 0, totalOutstanding: 2000, count: 1 });
+    expect(body.bills).toHaveLength(1);
+    expect(body.bills[0]).toMatchObject({ source: 'CLASS', studentName: '小明', targetName: '週六基礎班', state: 'UNPAID' });
   });
 });
 

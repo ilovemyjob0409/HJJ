@@ -16,13 +16,15 @@ import PaymentModal from './PaymentModal';
 import SettleModal from './SettleModal';
 import ClosedDaysTab from './ClosedDaysTab';
 import SettingsTab from './SettingsTab';
+import OverviewTab from './OverviewTab';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
 
-type TabKey = 'batches' | 'closedDays' | 'settings';
+type TabKey = 'batches' | 'overview' | 'closedDays' | 'settings';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'batches', label: '批次' },
+  { key: 'overview', label: '總覽' },
   { key: 'closedDays', label: '停課日' },
   { key: 'settings', label: '設定' },
 ];
@@ -339,6 +341,7 @@ export default function AdminBillingPage() {
         </>
       )}
 
+      {tab === 'overview' && <OverviewTab />}
       {tab === 'closedDays' && <ClosedDaysTab />}
       {tab === 'settings' && <SettingsTab />}
 
