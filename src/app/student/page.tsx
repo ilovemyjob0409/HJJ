@@ -74,7 +74,7 @@ export default async function StudentDashboard() {
             <div>
               <p className="text-sm text-inkMuted">待繳帳單</p>
               {billSummary.count > 0 ? (
-                <p className="mt-1 text-2xl font-bold text-pending">{billSummary.outstanding.toLocaleString('en-US')} 元</p>
+                <p className="mt-1 text-2xl font-bold text-brand">{billSummary.outstanding.toLocaleString('en-US')} 元</p>
               ) : (
                 <p className="mt-1 text-sm text-ink">目前沒有待繳帳單</p>
               )}
