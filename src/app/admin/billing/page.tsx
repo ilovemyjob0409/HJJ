@@ -44,7 +44,9 @@ interface StandaloneBillRow {
   id: string;
   student: { id: string; user: { name: string } };
   class: { name: string } | null;
+  classId: string | null;
   tutoringEnrollment: { program: { name: string } } | null;
+  billedSessions: number | null;
   periodStart: string;
   periodEnd: string;
   amountDue: number;
@@ -57,6 +59,8 @@ interface StandaloneBillRow {
 const ERROR_MESSAGES: Record<string, string> = {
   BILL_NOT_FINALIZED: '這筆帳單非已定案狀態，無法通知',
   ALREADY_PAID: '這筆帳單已繳清，不需提醒繳費',
+  BILL_HAS_PAYMENTS: '這筆帳單已有繳款紀錄，請先處理繳款後再刪除',
+  BILL_CREDITS_SESSIONS: '這筆班級帳單已把堂數計入學生總堂數，無法直接刪除，請聯絡工程處理',
 };
 
 // 批次狀態徽章：草稿＝pendingBg／已定案＝approvedBg（本頁與草稿頁各自內嵌一份，
@@ -101,6 +105,7 @@ export default function AdminBillingPage() {
   const [settleBillId, setSettleBillId] = useState<string | null>(null);
   const [remindingId, setRemindingId] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function loadBatches() {
     setBatchesLoading(true);
@@ -160,6 +165,23 @@ export default function AdminBillingPage() {
       await loadStandalone();
     } finally {
       setNotifyingId(null);
+    }
+  }
+
+  async function deleteStandaloneBill(billId: string) {
+    if (!(await confirm('確定要刪除這筆帳單嗎？此動作無法復原。', { danger: true }))) return;
+    setDeletingId(billId);
+    try {
+      const res = await fetch(`/api/admin/billing/bills/${billId}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(ERROR_MESSAGES[data.error] ?? '刪除失敗，請稍後再試');
+        return;
+      }
+      showToast('已刪除帳單');
+      await loadStandalone();
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -234,6 +256,10 @@ export default function AdminBillingPage() {
           : state !== 'PAID'
             ? { key: 'remind', label: '提醒繳費', loading: remindingId === r.id, onClick: () => remindStandaloneBill(r.id) }
             : null;
+        // 刪除鈕預先擋掉班級帳單已充值堂數的情況（跟服務層的 BILL_CREDITS_SESSIONS
+        // 是同一條規則，這裡先隱藏選項給更直接的引導；已有繳款的情況沒有預先擋，
+        // 讓伺服器的 BILL_HAS_PAYMENTS 錯誤訊息說明原因即可）。
+        const canDelete = !(r.classId && (r.billedSessions ?? 0) > 0);
         return (
           <div className="flex justify-center">
             <ActionMenu
@@ -241,6 +267,9 @@ export default function AdminBillingPage() {
                 { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(r.id) },
                 ...(notifyItem ? [notifyItem] : []),
                 ...(r.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(r.id) }]),
+                ...(canDelete
+                  ? [{ key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingId === r.id, onClick: () => deleteStandaloneBill(r.id) }]
+                  : []),
               ]}
             />
           </div>

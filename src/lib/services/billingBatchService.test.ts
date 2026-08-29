@@ -7,8 +7,9 @@ import { addClosedDay } from './closedDayService';
 import { updateBillingSetting } from './billingSettingService';
 import { createProgram } from './tutoringProgramService';
 import { seedDefaultFeeTiers, listFeeTiers, setEnrollmentFeeTier } from './tutoringFeeTierService';
-import { createClassBatch, createTutoringBatch, listBatches, getBatchDetail, updateDraftBill, deleteDraftBatch, finalizeBatch } from './billingBatchService';
+import { createClassBatch, createTutoringBatch, listBatches, getBatchDetail, updateDraftBill, deleteDraftBatch, deleteBill, finalizeBatch } from './billingBatchService';
 import { notifyBills } from './billNotifyService';
+import { addPayment } from './billPaymentService';
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
@@ -207,5 +208,55 @@ describe('finalizeBatch', () => {
     await prisma.bill.updateMany({ where: { batchId }, data: { unitPrice: 500, amountDue: 2000 } });
     await finalizeBatch(batchId, { notifyNow: false });
     await expect(finalizeBatch(batchId, { notifyNow: false })).rejects.toThrow('BATCH_FINALIZED');
+  });
+});
+
+describe('deleteBill', () => {
+  it('deletes a draft bill with no side effects to check', async () => {
+    const { cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+
+    await deleteBill(bill.id);
+    expect(await prisma.bill.findUnique({ where: { id: bill.id } })).toBeNull();
+  });
+
+  it('deletes a finalized tutoring bill (no session-credit side effect) when unpaid', async () => {
+    await seedDefaultFeeTiers();
+    const tiers = await listFeeTiers();
+    const student = await createStudent({ name: '小華', email: `bb-del-t-${Date.now()}@example.com`, password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
+    await setEnrollmentFeeTier(enrollment.id, tiers[0].id);
+    const { batchId } = await createTutoringBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), programIds: [program.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+
+    await deleteBill(bill.id);
+    expect(await prisma.bill.findUnique({ where: { id: bill.id } })).toBeNull();
+  });
+
+  it('refuses to delete a bill that already has a payment', async () => {
+    const { cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+    await addPayment(bill.id, { amount: 500, paidOn: D(2026, 9, 3), method: 'CASH' }, 'admin-1');
+
+    await expect(deleteBill(bill.id)).rejects.toThrow('BILL_HAS_PAYMENTS');
+    expect(await prisma.bill.findUnique({ where: { id: bill.id } })).not.toBeNull();
+  });
+
+  it('refuses to delete a finalized class bill that already credited sessions to the enrollment', async () => {
+    const { student, cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+
+    await expect(deleteBill(bill.id)).rejects.toThrow('BILL_CREDITS_SESSIONS');
+    expect(await prisma.bill.findUnique({ where: { id: bill.id } })).not.toBeNull();
+    // 堂數確實已充值進去（這正是擋刪除的原因），沒有因為刪除失敗而被動到
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(enrollment.totalSessions).toBe(4);
   });
 });

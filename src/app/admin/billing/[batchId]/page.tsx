@@ -94,6 +94,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILL_NOT_FINALIZED: '尚有帳單非已定案狀態，無法通知',
   ALREADY_PAID: '這筆帳單已繳清，不需提醒繳費',
   PARTIAL_TOPUP_FAILURE: '定案成功，但部分學生的堂數補登失敗，請檢查該生報名狀態後手動補登',
+  BILL_HAS_PAYMENTS: '這筆帳單已有繳款紀錄，請先處理繳款後再刪除',
+  BILL_CREDITS_SESSIONS: '這筆班級帳單已把堂數計入學生總堂數，無法直接刪除，請聯絡工程處理',
 };
 
 export default function AdminBillingBatchPage({ params }: { params: { batchId: string } }) {
@@ -178,12 +180,13 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
   }
 
   async function deleteBill(bill: BillRow) {
-    if (!(await confirm('確定要刪除這筆帳單嗎？', { danger: true }))) return;
+    if (!(await confirm('確定要刪除這筆帳單嗎？此動作無法復原。', { danger: true }))) return;
     setDeletingBillId(bill.id);
     try {
       const res = await fetch(`/api/admin/billing/bills/${bill.id}`, { method: 'DELETE' });
       if (!res.ok) {
-        showToast('刪除失敗，請稍後再試');
+        const data = await res.json().catch(() => ({}));
+        showToast(ERROR_MESSAGES[data.error] ?? '刪除失敗，請稍後再試');
         return;
       }
       showToast('已刪除');
@@ -414,6 +417,10 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
             b.notifiedAt && state !== 'PAID'
               ? { key: 'remind', label: '提醒繳費', loading: remindingId === b.id, onClick: () => remindBill(b.id) }
               : null;
+          // 刪除鈕預先擋掉班級帳單已充值堂數的情況（跟服務層的 BILL_CREDITS_SESSIONS
+          // 是同一條規則，這裡先隱藏選項給更直接的引導；已有繳款的情況沒有預先擋，
+          // 讓伺服器的 BILL_HAS_PAYMENTS 錯誤訊息說明原因即可）。
+          const canDelete = !(b.classId && (b.billedSessions ?? 0) > 0);
           return (
             <div className="flex justify-center">
               <ActionMenu
@@ -421,6 +428,9 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
                   { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(b.id) },
                   ...(remindItem ? [remindItem] : []),
                   ...(b.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(b.id) }]),
+                  ...(canDelete
+                    ? [{ key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingBillId === b.id, onClick: () => deleteBill(b) }]
+                    : []),
                 ]}
               />
             </div>

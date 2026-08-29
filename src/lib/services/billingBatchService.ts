@@ -178,9 +178,17 @@ export async function updateDraftBill(billId: string, input: { billedSessions?: 
   await prisma.bill.update({ where: { id: billId }, data });
 }
 
-export async function deleteDraftBill(billId: string): Promise<void> {
-  const bill = await prisma.bill.findUniqueOrThrow({ where: { id: billId }, select: { status: true } });
-  if (bill.status === 'FINALIZED') throw new Error('BILL_FINALIZED');
+// 草稿帳單刪除永遠安全（定案前不會有堂數充值或通知）；已定案帳單則要擋兩種
+// 不可逆的情況：已有繳款紀錄（刪了帳單錢會對不到）、班級帳單已把 billedSessions
+// 充進學生總堂數（addEnrollmentSessions，見 finalizeBatch／createStandaloneClassBill）
+// ——單刪帳單列不會把那些堂數扣回來，需要人工介入，不在這裡自動處理。
+export async function deleteBill(billId: string): Promise<void> {
+  const bill = await prisma.bill.findUniqueOrThrow({
+    where: { id: billId },
+    select: { status: true, classId: true, billedSessions: true, payments: { select: { id: true } } },
+  });
+  if (bill.payments.length > 0) throw new Error('BILL_HAS_PAYMENTS');
+  if (bill.status === 'FINALIZED' && bill.classId && (bill.billedSessions ?? 0) > 0) throw new Error('BILL_CREDITS_SESSIONS');
   await prisma.bill.delete({ where: { id: billId } });
 }
 
