@@ -33,3 +33,25 @@ export async function addPayment(
 export async function deletePayment(paymentId: string): Promise<void> {
   await prisma.billPayment.delete({ where: { id: paymentId } });
 }
+
+// 首頁儀表板的待繳摘要。手足帳單合併計算（同 /api/billing/me 的邏輯：同一
+// familyGroup 全算進來，家長看哪個帳號數字都一樣）；只算已定案帳單。
+export async function getPendingBillSummaryForStudent(studentId: string): Promise<{ outstanding: number; count: number }> {
+  const student = await prisma.student.findUniqueOrThrow({ where: { id: studentId }, select: { id: true, familyGroupId: true } });
+  const memberIds = student.familyGroupId
+    ? (await prisma.student.findMany({ where: { familyGroupId: student.familyGroupId }, select: { id: true } })).map((s) => s.id)
+    : [student.id];
+  const bills = await prisma.bill.findMany({
+    where: { studentId: { in: memberIds }, status: 'FINALIZED' },
+    select: { amountDue: true, payments: { select: { amount: true } } },
+  });
+  let outstanding = 0;
+  let count = 0;
+  for (const b of bills) {
+    const state = getPaidState(b.amountDue, b.payments);
+    if (state.state === 'PAID') continue;
+    outstanding += state.outstanding;
+    count += 1;
+  }
+  return { outstanding, count };
+}

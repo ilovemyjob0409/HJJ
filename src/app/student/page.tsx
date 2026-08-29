@@ -6,6 +6,7 @@ import { listLeaveRequestsForStudent } from '@/lib/services/leaveRequestService'
 import { listRegistrationsForStudent } from '@/lib/services/goHallService';
 import { hasActiveClassEnrollment, listStudentEnrolledClasses } from '@/lib/services/classService';
 import { getMyTickets } from '@/lib/services/goHallTicketService';
+import { getPendingBillSummaryForStudent } from '@/lib/services/billPaymentService';
 import { getPointBalances } from '@/lib/services/pointService';
 import { listEnrollments } from '@/lib/services/tutoringProgramService';
 import Card from '@/components/ui/Card';
@@ -23,7 +24,7 @@ export const dynamic = 'force-dynamic';
 export default async function StudentDashboard() {
   const session = await getServerSession(authOptions);
   const student = session ? await prisma.student.findUnique({ where: { userId: session.user.id } }) : null;
-  const [leaves, myRegistrations, myClasses, tickets, tutoringEnrollments, showLeave] = student
+  const [leaves, myRegistrations, myClasses, tickets, tutoringEnrollments, showLeave, billSummary] = student
     ? await Promise.all([
         listLeaveRequestsForStudent(student.id),
         listRegistrationsForStudent(student.id),
@@ -31,8 +32,9 @@ export default async function StudentDashboard() {
         getMyTickets(student.id),
         listEnrollments(student.id),
         hasActiveClassEnrollment(student.id),
+        getPendingBillSummaryForStudent(student.id),
       ])
-    : [[], [], [], { balance: 0, activePassEndDate: null }, [], false];
+    : [[], [], [], { balance: 0, activePassEndDate: null }, [], false, { outstanding: 0, count: 0 }];
   const balances = student ? await getPointBalances(student.id) : { regular: 0, redeemOnly: 0 };
 
   const goHallRows = myRegistrations.map((r) => ({
@@ -64,6 +66,29 @@ export default async function StudentDashboard() {
           )}
         </div>
       </Card>
+
+      {/* 待繳帳單摘要：手足合併金額（跟繳費頁同一套邏輯），繳清也保留卡片讓家長安心 */}
+      <Link href="/student/billing">
+        <Card className="mb-6 transition-shadow hover:shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm text-inkMuted">待繳帳單</p>
+              {billSummary.count > 0 ? (
+                <p className="mt-1 text-2xl font-bold text-rejected">{billSummary.outstanding.toLocaleString('en-US')} 元</p>
+              ) : (
+                <p className="mt-1 text-sm text-ink">目前沒有待繳帳單</p>
+              )}
+            </div>
+            {billSummary.count > 0 ? (
+              <p className="text-sm text-inkMuted">共 {billSummary.count} 筆</p>
+            ) : (
+              <span className="inline-block whitespace-nowrap rounded-full bg-approvedBg px-3 py-1 text-xs font-semibold text-approved">
+                繳清
+              </span>
+            )}
+          </div>
+        </Card>
+      </Link>
 
       <Link href="/student/points">
         <Card className="mb-6 transition-shadow hover:shadow-md">
