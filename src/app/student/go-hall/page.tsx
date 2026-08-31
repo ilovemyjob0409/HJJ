@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { isBeforeToday } from '@/lib/pastDate';
+import { scrollToRow } from '@/components/ui/scrollToRow';
 
 interface RosterEntry {
   id: string;
@@ -85,7 +86,7 @@ function StudentGoHallContent() {
 
   useEffect(() => {
     if (!highlightId || myRegistrations.length === 0) return;
-    document.getElementById(highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    scrollToRow(highlightId);
     const registration = myRegistrations.find((r) => r.id === highlightId);
     if (registration) openRoster(registration.session.id);
   }, [highlightId, myRegistrations]);

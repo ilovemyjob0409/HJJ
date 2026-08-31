@@ -16,6 +16,7 @@ import { isBeforeToday } from '@/lib/pastDate';
 import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
 import { matchesSessionSearch } from './sessionSearch';
 import TicketManager, { QUALIFICATION_LABEL } from './TicketManager';
+import { scrollToRow } from '@/components/ui/scrollToRow';
 
 function defaultMonth(): string {
   const now = new Date();
@@ -97,7 +98,7 @@ function AdminGoHallContent() {
 
   useEffect(() => {
     if (!highlightId || sessions.length === 0) return;
-    document.getElementById(highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    scrollToRow(highlightId);
     openRoster(highlightId);
   }, [highlightId, sessions]);
 

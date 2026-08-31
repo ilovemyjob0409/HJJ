@@ -2,7 +2,9 @@
 
 import { Fragment, ReactNode, useState } from 'react';
 import { getCellClass } from './dataTableCellClass';
+import { buildSortOptions, isActionColumn, parseSortValue, sortStateToValue } from './dataTableCard';
 import { SortState, nextSortState, sortRows } from './dataTableSort';
+import Select from './Select';
 
 export interface Column<T> {
   header: ReactNode;
@@ -32,6 +34,8 @@ interface DataTableProps<T> {
   // 受控排序：有傳 onSortChange 就不自己排序 rows（信任呼叫端已經排好），只負責顯示狀態與回報點擊
   sort?: SortState | null;
   onSortChange?: (next: SortState | null) => void;
+  // 手機（< md）版型：預設 'card' 一筆一張卡不橫滑；欄位少、本來就塞得下的表格可指定 'table' 維持橫滑。桌機一律維持表格
+  mobileLayout?: 'card' | 'table';
 }
 
 function SortIcon({ direction }: { direction: 'asc' | 'desc' | null }) {
@@ -98,14 +102,14 @@ export default function DataTable<T>({
   emptyText,
   sort,
   onSortChange,
+  mobileLayout = 'card',
 }: DataTableProps<T>) {
   const [internalSort, setInternalSort] = useState<SortState | null>(null);
   const controlled = onSortChange !== undefined;
   const activeSort = controlled ? (sort ?? null) : internalSort;
   const displayRows = controlled ? rows : sortRows(rows, columns, internalSort);
 
-  function handleSortClick(columnIndex: number) {
-    const next = nextSortState(activeSort, columnIndex);
+  function applySort(next: SortState | null) {
     if (controlled) {
       onSortChange!(next);
     } else {
@@ -113,8 +117,102 @@ export default function DataTable<T>({
     }
   }
 
+  function handleSortClick(columnIndex: number) {
+    applySort(nextSortState(activeSort, columnIndex));
+  }
+
+  const cardMode = mobileLayout === 'card';
+  const sortOptions = cardMode ? buildSortOptions(columns) : [];
+  const fieldColumns = cardMode ? columns.filter((col) => !isActionColumn(col.header)) : [];
+  const actionColumns = cardMode ? columns.filter((col) => isActionColumn(col.header)) : [];
+
+  const mobileCards = cardMode && (
+    <div className="md:hidden">
+      {sortOptions.length > 0 && !loading && displayRows.length > 1 && (
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <span className="text-xs text-inkMuted">排序</span>
+          <Select
+            aria-label="排序"
+            value={sortStateToValue(activeSort)}
+            onChange={(e) => applySort(parseSortValue(e.target.value))}
+            className="py-1.5 text-xs"
+          >
+            <option value="">預設順序</option>
+            {sortOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {loading ? (
+        <div className="flex flex-col gap-2.5" aria-hidden>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-borderSubtle bg-card p-4">
+              <div className="skeleton-shimmer h-4 w-1/2 rounded" />
+              <div className="skeleton-shimmer mt-2 h-4 w-3/4 rounded" />
+              <div className="skeleton-shimmer mt-2 h-4 w-2/3 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : displayRows.length === 0 ? (
+        emptyText ? (
+          <div className="rounded-lg border border-borderSubtle bg-card px-4 py-6 text-center text-sm text-inkMuted">
+            {emptyText}
+          </div>
+        ) : null
+      ) : (
+        <div className="animate-fade-in flex flex-col gap-2.5">
+          {displayRows.map((row, index) => {
+            const key = keyField(row);
+            const customClass = rowClassName?.(row) ?? '';
+            const hasBaseBackground = customClass.split(/\s+/).some((c) => c.startsWith('bg-'));
+            const stripeClass = hasBaseBackground ? '' : index % 2 === 1 ? 'bg-stripe' : 'bg-card';
+            return (
+              <div
+                key={key}
+                data-row-key={key}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={`rounded-lg border border-borderSubtle p-3 ${onRowClick ? 'cursor-pointer' : ''} ${stripeClass} ${customClass}`}
+              >
+                {fieldColumns.map((col, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3 py-1 text-sm">
+                    <span className="shrink-0 text-inkMuted">{col.header}</span>
+                    <div className="min-w-0 text-right text-ink">{col.render(row)}</div>
+                  </div>
+                ))}
+                {actionColumns.length > 0 && (
+                  <div className="mt-2 flex items-center justify-end gap-3 border-t border-borderSubtle pt-2">
+                    {actionColumns.map((col, i) => (
+                      <Fragment key={i}>{col.render(row)}</Fragment>
+                    ))}
+                  </div>
+                )}
+                {renderExpanded && expandedKey === key && (
+                  <div className="animate-fade-in mt-2 border-t border-borderSubtle pt-2 text-left">
+                    {renderExpanded(row)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {footer}
+    </div>
+  );
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-borderSubtle">
+    <>
+      {mobileCards}
+      <div
+        className={
+          cardMode
+            ? 'hidden overflow-x-auto rounded-lg border border-borderSubtle md:block'
+            : 'overflow-x-auto rounded-lg border border-borderSubtle'
+        }
+      >
       <table className="w-full table-auto border-collapse text-sm md:table-fixed">
         <thead>
           <tr className="border-b border-brandDark bg-brand text-center text-brandInk">
@@ -208,8 +306,9 @@ export default function DataTable<T>({
             })}
           </tbody>
         )}
-      </table>
-      {footer}
-    </div>
+        </table>
+        {footer}
+      </div>
+    </>
   );
 }

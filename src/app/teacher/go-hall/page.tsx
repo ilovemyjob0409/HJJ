@@ -7,6 +7,7 @@ import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { scrollToRow } from '@/components/ui/scrollToRow';
 
 interface RosterEntry {
   id: string;
@@ -54,7 +55,7 @@ function TeacherGoHallContent() {
 
   useEffect(() => {
     if (!highlightId || sessions.length === 0) return;
-    document.getElementById(highlightId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    scrollToRow(highlightId);
     openRoster(highlightId);
   }, [highlightId, sessions]);
 

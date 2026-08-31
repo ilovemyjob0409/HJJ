@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import ArrangeMakeupForm from './ArrangeMakeupForm';
 import LeaveRequestList, { LeaveRequestListHandle } from './LeaveRequestList';
+import { scrollToRow } from '@/components/ui/scrollToRow';
 
 interface PendingRow {
   id: string;
@@ -92,7 +93,7 @@ function AdminMakeupRequestsContent() {
     // so the existing scroll-to-row behavior keeps working unchanged.
     const match = mergedRows.find((r) => r.key === highlightId);
     if (!match) return;
-    document.getElementById(`${match.source}-${match.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    scrollToRow(`${match.source}-${match.key}`);
   }, [highlightId, mergedRows.length]);
 
   async function decide(row: MergedRow, decision: 'APPROVED' | 'REJECTED') {

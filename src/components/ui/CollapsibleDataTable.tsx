@@ -17,6 +17,7 @@ interface CollapsibleDataTableProps<T> {
   emptyText?: string;
   expandedKey?: string | null;
   renderExpanded?: (row: T) => ReactNode;
+  mobileLayout?: 'card' | 'table';
 }
 
 export default function CollapsibleDataTable<T>({
@@ -31,6 +32,7 @@ export default function CollapsibleDataTable<T>({
   emptyText,
   expandedKey,
   renderExpanded,
+  mobileLayout,
 }: CollapsibleDataTableProps<T>) {
   const [expanded, setExpanded] = useState(false);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -50,6 +52,7 @@ export default function CollapsibleDataTable<T>({
       emptyText={emptyText}
       expandedKey={expandedKey}
       renderExpanded={renderExpanded}
+      mobileLayout={mobileLayout}
       sort={sort}
       onSortChange={setSort}
       footer={
