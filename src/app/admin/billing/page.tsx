@@ -287,7 +287,12 @@ export default function AdminBillingPage() {
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-ink">收費</h1>
-        <Button onClick={() => setWizardOpen(true)}>＋ 開新批次</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => setWizardOpen(true)}>＋ 開新批次</Button>
+          <Button variant="secondary" onClick={() => setStandaloneModalOpen(true)}>
+            單獨開單
+          </Button>
+        </div>
       </div>
 
       <div className="mb-4 flex gap-1 border-b border-borderSubtle">
@@ -307,12 +312,6 @@ export default function AdminBillingPage() {
 
       {tab === 'batches' && (
         <>
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <Button variant="secondary" onClick={() => setStandaloneModalOpen(true)}>
-              單獨開單
-            </Button>
-          </div>
-
           <Card className="mb-6">
             <DataTable
               columns={batchColumns}
