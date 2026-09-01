@@ -241,7 +241,7 @@ export default function NotificationBell() {
         )}
       </button>
       {open && (
-        <div className="animate-fade-in absolute right-0 top-full z-20 mt-2 w-80 max-w-[90vw] rounded-lg border border-borderStrong bg-card shadow-md">
+        <div className="animate-modal-in absolute right-0 top-full z-20 mt-2 w-80 max-w-[90vw] origin-top-right rounded-lg border border-borderStrong bg-card shadow-md">
           <div className="flex items-center justify-between border-b border-borderSubtle px-3 py-2">
             <p className="text-sm font-semibold text-ink">通知</p>
             <button
