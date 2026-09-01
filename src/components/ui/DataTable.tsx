@@ -4,6 +4,7 @@ import { Fragment, ReactNode, useState } from 'react';
 import { getCellClass } from './dataTableCellClass';
 import { buildSortOptions, isActionColumn, parseSortValue, sortStateToValue } from './dataTableCard';
 import { SortState, nextSortState, sortRows } from './dataTableSort';
+import { useMobileTableLayout } from './mobileTableLayout';
 import Select from './Select';
 
 export interface Column<T> {
@@ -34,7 +35,8 @@ interface DataTableProps<T> {
   // 受控排序：有傳 onSortChange 就不自己排序 rows（信任呼叫端已經排好），只負責顯示狀態與回報點擊
   sort?: SortState | null;
   onSortChange?: (next: SortState | null) => void;
-  // 手機（< md）版型：預設 'card' 一筆一張卡不橫滑；欄位少、本來就塞得下的表格可指定 'table' 維持橫滑。桌機一律維持表格
+  // 手機（< md）版型：'card' 一筆一張卡不橫滑、'table' 維持橫滑；沒傳就吃 MobileTableLayoutProvider
+  // 的區段預設（行政後台是 table、其餘是 card）。桌機一律維持表格
   mobileLayout?: 'card' | 'table';
 }
 
@@ -102,8 +104,9 @@ export default function DataTable<T>({
   emptyText,
   sort,
   onSortChange,
-  mobileLayout = 'card',
+  mobileLayout,
 }: DataTableProps<T>) {
+  const sectionLayout = useMobileTableLayout();
   const [internalSort, setInternalSort] = useState<SortState | null>(null);
   const controlled = onSortChange !== undefined;
   const activeSort = controlled ? (sort ?? null) : internalSort;
@@ -121,7 +124,7 @@ export default function DataTable<T>({
     applySort(nextSortState(activeSort, columnIndex));
   }
 
-  const cardMode = mobileLayout === 'card';
+  const cardMode = (mobileLayout ?? sectionLayout) === 'card';
   const sortOptions = cardMode ? buildSortOptions(columns) : [];
   const fieldColumns = cardMode ? columns.filter((col) => !isActionColumn(col.header)) : [];
   const actionColumns = cardMode ? columns.filter((col) => isActionColumn(col.header)) : [];
