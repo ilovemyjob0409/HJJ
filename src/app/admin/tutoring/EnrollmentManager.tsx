@@ -22,6 +22,8 @@ interface EnrollmentRow {
   id: string;
   studentId: string;
   studentName: string;
+  studentNumber: string | null;
+  email: string;
   programId: string;
   programName: string;
   defaultDurationMinutes: number;
@@ -274,7 +276,13 @@ export default function EnrollmentManager() {
 
   const q = listSearch.trim().toLowerCase();
   const filteredEnrollments = q
-    ? enrollments.filter((r) => r.studentName.toLowerCase().includes(q) || r.programName.toLowerCase().includes(q))
+    ? enrollments.filter(
+        (r) =>
+          r.studentName.toLowerCase().includes(q) ||
+          (r.studentNumber ?? '').toLowerCase().includes(q) ||
+          r.email.toLowerCase().includes(q) ||
+          r.programName.toLowerCase().includes(q)
+      )
     : enrollments;
 
   const allChecked = filteredEnrollments.length > 0 && filteredEnrollments.every((r) => checkedIds[r.id]);
@@ -302,6 +310,8 @@ export default function EnrollmentManager() {
       ),
     },
     { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
+    { header: '學號', render: (r) => r.studentNumber ?? '-', sortValue: (r) => r.studentNumber ?? null },
+    { header: '帳號', render: (r) => r.email, sortValue: (r) => r.email },
     { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
     {
       header: '收費級距',
@@ -358,7 +368,7 @@ export default function EnrollmentManager() {
     <>
       <div className="mb-2 mt-6 flex items-center gap-3">
         <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">學生報名管理</h2>
-        <CollapsibleSearchInput placeholder="搜尋學生或課程" value={listSearch} onChange={setListSearch} />
+        <CollapsibleSearchInput placeholder="搜尋學生、學號、帳號或課程" value={listSearch} onChange={setListSearch} />
       </div>
       {!addOpen ? (
         <div className="mb-4 flex gap-2">

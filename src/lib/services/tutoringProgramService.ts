@@ -260,6 +260,8 @@ export interface EnrollmentSummary {
   id: string;
   studentId: string;
   studentName: string;
+  studentNumber: string | null;
+  email: string;
   programId: string;
   programName: string;
   defaultDurationMinutes: number;
@@ -275,7 +277,7 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
   const enrollments = await prisma.tutoringEnrollment.findMany({
     where: studentId ? { studentId } : {},
     include: {
-      student: { select: { user: { select: { name: true } } } },
+      student: { select: { studentNumber: true, user: { select: { name: true, email: true } } } },
       program: { select: { name: true, defaultDurationMinutes: true, defaultMonthlyQuota: true } },
     },
     orderBy: { student: { user: { name: 'asc' } } },
@@ -307,6 +309,8 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
       id: e.id,
       studentId: e.studentId,
       studentName: e.student.user.name,
+      studentNumber: e.student.studentNumber,
+      email: e.student.user.email,
       programId: e.programId,
       programName: e.program.name,
       defaultDurationMinutes: e.program.defaultDurationMinutes,

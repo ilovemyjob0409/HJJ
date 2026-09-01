@@ -222,13 +222,21 @@ describe('window CRUD', () => {
 
 describe('enrollment CRUD', () => {
   it('creates an enrollment and lists it with the program default quota', async () => {
-    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x', studentNumber: 'S1234' });
     const program = await createProgram({ name: '英文個別輔導', defaultMonthlyQuota: 8 });
     const enrollment = await createEnrollment({ studentId: student.id, programId: program.id });
 
     const list = await listEnrollments();
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ studentName: '小明', programName: '英文個別輔導', monthlyQuota: 8, locked: 0, upcoming: 0 });
+    expect(list[0]).toMatchObject({
+      studentName: '小明',
+      studentNumber: 'S1234',
+      email: 'ming@example.com',
+      programName: '英文個別輔導',
+      monthlyQuota: 8,
+      locked: 0,
+      upcoming: 0,
+    });
 
     const filtered = await listEnrollments(student.id);
     expect(filtered).toHaveLength(1);
