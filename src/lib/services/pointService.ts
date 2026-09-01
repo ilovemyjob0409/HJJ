@@ -178,6 +178,48 @@ export async function listStudentPointSummaries() {
   }));
 }
 
+// 老師給點頁的「班級」選項：自己帶的圍棋班級＋任教時段（含第二老師）的個輔方案。
+// 個輔沒有班級實體，以方案為分組——同行政集點總表把方案併入班級欄的口徑；
+// 一個方案有多個時段時去重，只出現一次。
+export async function listTeacherAwardClasses(teacherId: string) {
+  const studentSelect = {
+    select: { student: { select: { id: true, user: { select: { name: true } } } } },
+    orderBy: { student: { user: { name: 'asc' as const } } },
+  };
+  const [classes, windows] = await Promise.all([
+    prisma.class.findMany({
+      where: { teacherId, active: true },
+      select: { id: true, name: true, subject: true, enrollments: studentSelect },
+      orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
+    }),
+    prisma.tutoringWindow.findMany({
+      where: { active: true, program: { active: true }, OR: [{ teacherId }, { teacherId2: teacherId }] },
+      select: {
+        program: {
+          select: { id: true, name: true, enrollments: { where: { active: true }, ...studentSelect } },
+        },
+      },
+    }),
+  ]);
+  const programs = new Map(windows.map((w) => [w.program.id, w.program]));
+  return [
+    ...classes.map((c) => ({
+      id: c.id,
+      name: c.name,
+      subject: c.subject,
+      students: c.enrollments.map((e) => ({ id: e.student.id, name: e.student.user.name })),
+    })),
+    ...Array.from(programs.values())
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        subject: '個別輔導',
+        students: p.enrollments.map((e) => ({ id: e.student.id, name: e.student.user.name })),
+      })),
+  ];
+}
+
 export async function adjustPoints(input: { studentId: string; bucket: PointBucket; amount: number; reason: string }) {
   if (!Number.isInteger(input.amount) || input.amount === 0) return Promise.reject(new Error('INVALID_AMOUNT'));
   if (!input.reason.trim()) return Promise.reject(new Error('REASON_REQUIRED'));

@@ -13,6 +13,7 @@ import {
   redeemPoints,
   adjustPoints,
   listStudentPointSummaries,
+  listTeacherAwardClasses,
 } from './pointService';
 
 async function setup() {
@@ -264,5 +265,74 @@ describe('listStudentPointSummaries', () => {
 
     const hua2 = summaries.find((s) => s.id === student.id);
     expect(hua2?.classes).toEqual([]);
+  });
+});
+
+describe('listTeacherAwardClasses', () => {
+  function makeClass(teacherId: string, name: string, overrides: { active?: boolean } = {}) {
+    return prisma.class.create({
+      data: { name, subject: '圍棋', level: '基礎', teacherId, weekday: 3, startTime: '18:00', endTime: '19:30', ...overrides },
+    });
+  }
+
+  it('returns the teacher own active classes with enrolled students, excluding inactive and other teachers classes', async () => {
+    const { teacher, student } = await setup();
+    const other = await createTeacher({ name: '別的老師', email: 'pt-award-other@example.com', password: 'x', subjects: '圍棋' });
+    const mine = await makeClass(teacher.id, '週三基礎');
+    await makeClass(teacher.id, '已刪除班', { active: false });
+    await makeClass(other.id, '別人的班');
+    await prisma.classEnrollment.create({ data: { studentId: student.id, classId: mine.id } });
+
+    const options = await listTeacherAwardClasses(teacher.id);
+
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({ id: mine.id, name: '週三基礎', subject: '圍棋' });
+    expect(options[0].students).toEqual([{ id: student.id, name: '小明' }]);
+  });
+
+  it('includes tutoring programs taught via active windows (main or second teacher), deduped across windows', async () => {
+    const { teacher, student } = await setup();
+    const second = await createTeacher({ name: '第二老師', email: 'pt-award-second@example.com', password: 'x', subjects: '英文' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await prisma.tutoringWindow.create({
+      data: { programId: program.id, weekday: 1, startTime: '16:00', endTime: '18:00', capacity: 8, teacherId: teacher.id },
+    });
+    await prisma.tutoringWindow.create({
+      data: { programId: program.id, weekday: 5, startTime: '16:00', endTime: '18:00', capacity: 8, teacherId: teacher.id, teacherId2: second.id },
+    });
+    await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
+
+    const asMain = await listTeacherAwardClasses(teacher.id);
+    expect(asMain).toHaveLength(1);
+    expect(asMain[0]).toMatchObject({ id: program.id, name: '英文個別輔導', subject: '個別輔導' });
+    expect(asMain[0].students).toEqual([{ id: student.id, name: '小明' }]);
+
+    const asSecond = await listTeacherAwardClasses(second.id);
+    expect(asSecond).toHaveLength(1);
+    expect(asSecond[0].id).toBe(program.id);
+  });
+
+  it('excludes inactive windows, inactive programs, and inactive tutoring enrollments', async () => {
+    const { teacher, student } = await setup();
+    const inactiveWindowProgram = await createProgram({ name: '停用時段方案' });
+    await prisma.tutoringWindow.create({
+      data: { programId: inactiveWindowProgram.id, weekday: 1, startTime: '16:00', endTime: '18:00', capacity: 8, teacherId: teacher.id, active: false },
+    });
+    const inactiveProgram = await createProgram({ name: '停用方案' });
+    await prisma.tutoringProgram.update({ where: { id: inactiveProgram.id }, data: { active: false } });
+    await prisma.tutoringWindow.create({
+      data: { programId: inactiveProgram.id, weekday: 2, startTime: '16:00', endTime: '18:00', capacity: 8, teacherId: teacher.id },
+    });
+    const liveProgram = await createProgram({ name: '英文個別輔導' });
+    await prisma.tutoringWindow.create({
+      data: { programId: liveProgram.id, weekday: 3, startTime: '16:00', endTime: '18:00', capacity: 8, teacherId: teacher.id },
+    });
+    await prisma.tutoringEnrollment.create({ data: { programId: liveProgram.id, studentId: student.id, active: false } });
+
+    const options = await listTeacherAwardClasses(teacher.id);
+
+    expect(options).toHaveLength(1);
+    expect(options[0].id).toBe(liveProgram.id);
+    expect(options[0].students).toEqual([]);
   });
 });
