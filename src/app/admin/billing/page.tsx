@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -108,6 +108,36 @@ export default function AdminBillingPage() {
   const [remindingId, setRemindingId] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const tabIndicatorRef = useRef<HTMLSpanElement>(null);
+  const indicatorPositionedRef = useRef(false);
+
+  // 子導航滑動底線定位：量測 active 分頁鈕，同 AppShell nav pill 的手法。
+  // ResizeObserver 盯著各鈕——webfont 串流進來後字寬會變，底線要跟著校正。
+  useLayoutEffect(() => {
+    const bar = tabBarRef.current;
+    const indicator = tabIndicatorRef.current;
+    if (!bar || !indicator) return;
+    const positionIndicator = () => {
+      const activeBtn = bar.querySelector<HTMLButtonElement>('button[data-active="true"]');
+      if (!activeBtn) return;
+      indicator.style.opacity = '1';
+      indicator.style.width = `${activeBtn.offsetWidth}px`;
+      indicator.style.transform = `translateX(${activeBtn.offsetLeft}px)`;
+      if (!indicatorPositionedRef.current) {
+        indicator.style.transitionDuration = '0s';
+        requestAnimationFrame(() => {
+          indicator.style.transitionDuration = '';
+        });
+        indicatorPositionedRef.current = true;
+      }
+    };
+    positionIndicator();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(positionIndicator);
+    bar.querySelectorAll('button').forEach((b) => observer.observe(b));
+    return () => observer.disconnect();
+  }, [tab]);
 
   async function loadBatches() {
     setBatchesLoading(true);
@@ -295,14 +325,21 @@ export default function AdminBillingPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex gap-1 border-b border-borderSubtle">
+      <div ref={tabBarRef} className="relative mb-4 flex gap-1 border-b border-borderSubtle">
+        {/* 滑動底線：同 AppShell nav pill 的作法——絕對定位、量測 active 鈕的
+            offsetLeft/offsetWidth 移動，首次掛載直接定位不滑入。 */}
+        <span
+          ref={tabIndicatorRef}
+          className="pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-brand opacity-0 transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        />
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
+            data-active={tab === t.key}
             onClick={() => setTab(t.key)}
             className={`cursor-pointer whitespace-nowrap px-4 py-2 text-sm font-semibold transition-colors ${
-              tab === t.key ? 'border-b-2 border-brand text-brandDark' : 'text-inkMuted hover:text-ink'
+              tab === t.key ? 'text-brandDark' : 'text-inkMuted hover:text-ink'
             }`}
           >
             {t.label}
@@ -311,7 +348,7 @@ export default function AdminBillingPage() {
       </div>
 
       {tab === 'batches' && (
-        <>
+        <div key="batches" className="animate-rise-in">
           <Card className="mb-6">
             <DataTable
               columns={batchColumns}
@@ -339,12 +376,24 @@ export default function AdminBillingPage() {
               renderExpanded={(r) => <BillDetailBlock detail={r.detail} />}
             />
           </Card>
-        </>
+        </div>
       )}
 
-      {tab === 'overview' && <OverviewTab />}
-      {tab === 'closedDays' && <ClosedDaysTab />}
-      {tab === 'settings' && <SettingsTab />}
+      {tab === 'overview' && (
+        <div key="overview" className="animate-rise-in">
+          <OverviewTab />
+        </div>
+      )}
+      {tab === 'closedDays' && (
+        <div key="closedDays" className="animate-rise-in">
+          <ClosedDaysTab />
+        </div>
+      )}
+      {tab === 'settings' && (
+        <div key="settings" className="animate-rise-in">
+          <SettingsTab />
+        </div>
+      )}
 
       <BatchWizardModal open={wizardOpen} onClose={() => setWizardOpen(false)} />
       <StandaloneBillModal
