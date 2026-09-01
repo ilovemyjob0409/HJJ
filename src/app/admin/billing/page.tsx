@@ -23,8 +23,8 @@ import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
 type TabKey = 'batches' | 'overview' | 'closedDays' | 'settings';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'batches', label: '批次' },
   { key: 'overview', label: '總覽' },
+  { key: 'batches', label: '批次' },
   { key: 'closedDays', label: '停課日' },
   { key: 'settings', label: '設定' },
 ];
@@ -95,7 +95,7 @@ export default function AdminBillingPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [tab, setTab] = useState<TabKey>('batches');
+  const [tab, setTab] = useState<TabKey>('overview');
   const [batches, setBatches] = useState<BatchRow[]>([]);
   const [batchesLoading, setBatchesLoading] = useState(true);
   const [standaloneBills, setStandaloneBills] = useState<StandaloneBillRow[]>([]);
@@ -285,7 +285,10 @@ export default function AdminBillingPage() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">收費</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold text-ink">收費</h1>
+        <Button onClick={() => setWizardOpen(true)}>＋ 開新批次</Button>
+      </div>
 
       <div className="mb-4 flex gap-1 border-b border-borderSubtle">
         {TABS.map((t) => (
@@ -305,7 +308,6 @@ export default function AdminBillingPage() {
       {tab === 'batches' && (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <Button onClick={() => setWizardOpen(true)}>＋ 開新批次</Button>
             <Button variant="secondary" onClick={() => setStandaloneModalOpen(true)}>
               單獨開單
             </Button>
