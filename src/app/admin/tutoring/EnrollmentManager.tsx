@@ -79,6 +79,8 @@ export default function EnrollmentManager() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[] | null>(null);
   const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0); // 彈窗內預約成功後刷新出缺勤表格
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false); // 批量處理模式：開啟才顯示核取方塊與批量工具列
+  const [bulkTierOpen, setBulkTierOpen] = useState(false); // 套用收費級距彈窗
   const [batchAddOpen, setBatchAddOpen] = useState(false);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -240,6 +242,7 @@ export default function EnrollmentManager() {
         return;
       }
       showToast(`已套用收費級距至 ${ids.length} 位學生`);
+      setBulkTierOpen(false);
       setCheckedIds({});
       setBulkFeeTierId('');
       load();
@@ -288,27 +291,30 @@ export default function EnrollmentManager() {
   const allChecked = filteredEnrollments.length > 0 && filteredEnrollments.every((r) => checkedIds[r.id]);
   const checkedCount = Object.values(checkedIds).filter(Boolean).length;
 
+  // 核取方塊欄只在批量處理模式顯示（進入模式才長出來，平常清單保持乾淨）
+  const checkboxColumn: Column<EnrollmentRow> = {
+    header: (
+      <input
+        type="checkbox"
+        aria-label="全選"
+        checked={allChecked}
+        onChange={() =>
+          setCheckedIds(allChecked ? {} : Object.fromEntries(filteredEnrollments.map((r) => [r.id, true])))
+        }
+      />
+    ),
+    render: (r) => (
+      <input
+        type="checkbox"
+        checked={!!checkedIds[r.id]}
+        onChange={() => setCheckedIds((prev) => ({ ...prev, [r.id]: !prev[r.id] }))}
+        onClick={(e) => e.stopPropagation()}
+      />
+    ),
+  };
+
   const columns: Column<EnrollmentRow>[] = [
-    {
-      header: (
-        <input
-          type="checkbox"
-          aria-label="全選"
-          checked={allChecked}
-          onChange={() =>
-            setCheckedIds(allChecked ? {} : Object.fromEntries(filteredEnrollments.map((r) => [r.id, true])))
-          }
-        />
-      ),
-      render: (r) => (
-        <input
-          type="checkbox"
-          checked={!!checkedIds[r.id]}
-          onChange={() => setCheckedIds((prev) => ({ ...prev, [r.id]: !prev[r.id] }))}
-          onClick={(e) => e.stopPropagation()}
-        />
-      ),
-    },
+    ...(bulkMode ? [checkboxColumn] : []),
     { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     { header: '學號', render: (r) => r.studentNumber ?? '-', sortValue: (r) => r.studentNumber ?? null },
     { header: '帳號', render: (r) => r.email, sortValue: (r) => r.email },
@@ -373,8 +379,19 @@ export default function EnrollmentManager() {
       {!addOpen ? (
         <div className="mb-4 flex gap-2">
           <Button onClick={() => setAddOpen(true)}>＋ 新增報名</Button>
-          <Button variant="secondary" onClick={() => setBatchAddOpen(true)}>
-            批量加堂
+          <Button
+            variant={bulkMode ? 'primary' : 'secondary'}
+            onClick={() => {
+              if (bulkMode) {
+                setBulkMode(false);
+                setCheckedIds({});
+                setBulkFeeTierId('');
+              } else {
+                setBulkMode(true);
+              }
+            }}
+          >
+            批量處理
           </Button>
         </div>
       ) : (
@@ -487,22 +504,29 @@ export default function EnrollmentManager() {
         </div>
       </Card>
       )}
-      {checkedCount > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-borderSubtle bg-stripe px-3 py-2">
+      {bulkMode && (
+        <div className="animate-rise-in mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-borderSubtle bg-stripe px-3 py-2">
           <span className="text-sm text-ink">已選 {checkedCount} 位學生</span>
-          <Select value={bulkFeeTierId} onChange={(e) => setBulkFeeTierId(e.target.value)} className="w-56 py-1 text-sm">
-            <option value="">未指定</option>
-            {feeTiers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}・{t.monthlyFee.toLocaleString('en-US')} 元/月
-              </option>
-            ))}
-          </Select>
-          <Button className="px-3 py-1 text-xs" loading={bulkApplying} onClick={applyBulkFeeTier}>
+          <Button className="px-3 py-1 text-xs" disabled={checkedCount === 0} onClick={() => setBulkTierOpen(true)}>
             套用收費級距
           </Button>
-          <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => setCheckedIds({})}>
-            取消選取
+          <Button
+            className="px-3 py-1 text-xs"
+            disabled={!enrollments.some((r) => r.active && checkedIds[r.id])}
+            onClick={() => setBatchAddOpen(true)}
+          >
+            加堂
+          </Button>
+          <Button
+            variant="secondary"
+            className="px-3 py-1 text-xs"
+            onClick={() => {
+              setBulkMode(false);
+              setCheckedIds({});
+              setBulkFeeTierId('');
+            }}
+          >
+            結束批量處理
           </Button>
         </div>
       )}
@@ -627,9 +651,42 @@ export default function EnrollmentManager() {
           </div>
         )}
       </Modal>
+      <Modal open={bulkTierOpen} onClose={() => setBulkTierOpen(false)} title="套用收費級距" maxWidthClassName="max-w-md">
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="mb-1 text-sm text-ink">已選 {checkedCount} 位學生</p>
+            <p className="text-sm text-inkMuted">
+              {enrollments
+                .filter((r) => checkedIds[r.id])
+                .map((r) => `${r.studentName}（${r.programName}）`)
+                .join('、')}
+            </p>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium text-inkMuted">收費級距</p>
+            <Select
+              value={bulkFeeTierId}
+              onChange={(e) => setBulkFeeTierId(e.target.value)}
+              className="w-full min-w-0 text-sm"
+            >
+              <option value="">未指定</option>
+              {feeTiers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}・{t.monthlyFee.toLocaleString('en-US')} 元/月
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex justify-end">
+            <Button loading={bulkApplying} onClick={applyBulkFeeTier}>
+              套用
+            </Button>
+          </div>
+        </div>
+      </Modal>
       <BatchAddSessionsModal
         open={batchAddOpen}
-        enrollments={enrollments.filter((r) => r.active)}
+        enrollments={enrollments.filter((r) => r.active && checkedIds[r.id])}
         feeTiers={feeTiers}
         onClose={() => setBatchAddOpen(false)}
         onSaved={load}
