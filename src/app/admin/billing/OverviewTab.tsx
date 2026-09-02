@@ -273,9 +273,13 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
   const paymentBill = data?.bills.find((r) => r.id === paymentBillId) ?? null;
   const settleBill = data?.bills.find((r) => r.id === settleBillId) ?? null;
 
+  // 來源鈕／區間切換時讓統計卡與清單重新 rise-in（同分頁切換的動效慣例）；
+  // 刻意不含搜尋字串——打字逐鍵重播進場動畫會變成閃爍
+  const filterMotionKey = `${sourceFilter ?? 'all'}|${rangeOpen ? `${startDate}~${endDate}` : 'no-range'}`;
+
   return (
     <>
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div key={`stats-${filterMotionKey}`} className="animate-rise-in mb-6 grid gap-4 sm:grid-cols-3">
         {stats.map((s) => (
           <Card key={s.label}>
             <p className="text-sm text-inkMuted">{s.label}</p>
@@ -347,22 +351,24 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
           {rangeInvalid && <p className="pb-2 text-xs text-rejected">起日不能晚於訖日</p>}
         </div>
       )}
-      <Card>
-        <CollapsibleDataTable
-          columns={columns}
-          rows={filteredBills}
-          keyField={(r) => r.id}
-          maxRows={3}
-          loading={loading}
-          emptyText={
-            isFiltered ? '沒有符合篩選的帳單' : rangeOpen ? '這段區間內沒有已定案的帳單' : '目前沒有已定案的帳單'
-          }
-          onRowClick={(r) => setExpandedBillId((prev) => (prev === r.id ? null : r.id))}
-          rowClassName={() => 'cursor-pointer'}
-          expandedKey={expandedBillId}
-          renderExpanded={(r) => <BillDetailBlock detail={r.detail} />}
-        />
-      </Card>
+      <div key={`list-${filterMotionKey}`} className="animate-rise-in">
+        <Card>
+          <CollapsibleDataTable
+            columns={columns}
+            rows={filteredBills}
+            keyField={(r) => r.id}
+            maxRows={3}
+            loading={loading}
+            emptyText={
+              isFiltered ? '沒有符合篩選的帳單' : rangeOpen ? '這段區間內沒有已定案的帳單' : '目前沒有已定案的帳單'
+            }
+            onRowClick={(r) => setExpandedBillId((prev) => (prev === r.id ? null : r.id))}
+            rowClassName={() => 'cursor-pointer'}
+            expandedKey={expandedBillId}
+            renderExpanded={(r) => <BillDetailBlock detail={r.detail} />}
+          />
+        </Card>
+      </div>
 
       <PaymentModal bill={paymentBill} onClose={() => setPaymentBillId(null)} onChanged={reload} />
       <SettleModal bill={settleBill} onClose={() => setSettleBillId(null)} onChanged={reload} />
