@@ -4,27 +4,17 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import DataTable, { Column } from '@/components/ui/DataTable';
-import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
-import { useToast } from '@/components/ui/Toast';
-import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
-import { getPaidState } from '@/lib/billingCalc';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 import BatchWizardModal from './BatchWizardModal';
 import StandaloneBillModal from './StandaloneBillModal';
-import PaymentModal from './PaymentModal';
-import SettleModal from './SettleModal';
 import ClosedDaysTab from './ClosedDaysTab';
 import SettingsTab from './SettingsTab';
 import OverviewTab from './OverviewTab';
-import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
-import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
 
-type TabKey = 'batches' | 'overview' | 'closedDays' | 'settings';
+type TabKey = 'overview' | 'closedDays' | 'settings';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '總覽' },
-  { key: 'batches', label: '批次' },
   { key: 'closedDays', label: '停課日' },
   { key: 'settings', label: '設定' },
 ];
@@ -42,72 +32,14 @@ interface BatchRow {
   totalOutstanding: number | null;
 }
 
-interface StandaloneBillRow {
-  id: string;
-  student: { id: string; user: { name: string } };
-  class: { name: string } | null;
-  classId: string | null;
-  tutoringEnrollment: { program: { name: string } } | null;
-  billedSessions: number | null;
-  periodStart: string;
-  periodEnd: string;
-  amountDue: number;
-  detail: BillDetailJson;
-  payments: { id: string; amount: number; paidOn: string; method: 'CASH' | 'TRANSFER'; note: string | null }[];
-  notifiedAt: string | null;
-  settledAsWithdrawal: boolean;
-}
-
-const ERROR_MESSAGES: Record<string, string> = {
-  BILL_NOT_FINALIZED: '這筆帳單非已定案狀態，無法通知',
-  ALREADY_PAID: '這筆帳單已繳清，不需提醒繳費',
-  BILL_HAS_PAYMENTS: '這筆帳單已有繳款紀錄，請先處理繳款後再刪除',
-  BILL_CREDITS_SESSIONS: '這筆班級帳單已把堂數計入學生總堂數，無法直接刪除，請聯絡工程處理',
-};
-
-// 批次狀態徽章：草稿＝pendingBg／已定案＝approvedBg（本頁與草稿頁各自內嵌一份，
-// 只有這兩處用得到，沒有獨立拆共用檔）。
-// 不 export：page.tsx 只能有 Next.js 認可的特殊具名匯出（否則 next build 的
-// 型別檢查會報錯），這兩個純內部元件保持模組私有即可。
-function BatchStatusBadge({ status }: { status: 'DRAFT' | 'FINALIZED' }) {
-  return status === 'DRAFT' ? (
-    <span className="inline-block whitespace-nowrap rounded-full bg-pendingBg px-3 py-1 text-xs font-semibold text-pending">草稿</span>
-  ) : (
-    <span className="inline-block whitespace-nowrap rounded-full bg-approvedBg px-3 py-1 text-xs font-semibold text-approved">
-      已定案
-    </span>
-  );
-}
-
-const PAID_STATE_CONFIG: Record<'UNPAID' | 'PARTIAL' | 'PAID', { label: string; bg: string; text: string }> = {
-  UNPAID: { label: '未繳', bg: 'bg-rejectedBg', text: 'text-rejected' },
-  PARTIAL: { label: '部分繳', bg: 'bg-pendingBg', text: 'text-pending' },
-  PAID: { label: '繳清', bg: 'bg-approvedBg', text: 'text-approved' },
-};
-
-function PaidStateBadge({ amountDue, payments }: { amountDue: number; payments: { amount: number }[] }) {
-  const { state } = getPaidState(amountDue, payments);
-  const { label, bg, text } = PAID_STATE_CONFIG[state];
-  return <span className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${bg} ${text}`}>{label}</span>;
-}
-
 export default function AdminBillingPage() {
   const router = useRouter();
-  const { showToast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
   const [tab, setTab] = useState<TabKey>('overview');
   const [batches, setBatches] = useState<BatchRow[]>([]);
-  const [batchesLoading, setBatchesLoading] = useState(true);
-  const [standaloneBills, setStandaloneBills] = useState<StandaloneBillRow[]>([]);
-  const [standaloneLoading, setStandaloneLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [standaloneModalOpen, setStandaloneModalOpen] = useState(false);
-  const [expandedStandaloneId, setExpandedStandaloneId] = useState<string | null>(null);
-  const [paymentBillId, setPaymentBillId] = useState<string | null>(null);
-  const [settleBillId, setSettleBillId] = useState<string | null>(null);
-  const [remindingId, setRemindingId] = useState<string | null>(null);
-  const [notifyingId, setNotifyingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 單獨開單建立成功後讓總覽 refetch（總覽自己管資料，這裡只發刷新訊號）
+  const [overviewRefreshKey, setOverviewRefreshKey] = useState(0);
   const tabBarRef = useRef<HTMLDivElement>(null);
   const tabIndicatorRef = useRef<HTMLSpanElement>(null);
   const indicatorPositionedRef = useRef(false);
@@ -139,179 +71,16 @@ export default function AdminBillingPage() {
     return () => observer.disconnect();
   }, [tab]);
 
-  async function loadBatches() {
-    setBatchesLoading(true);
-    try {
-      const res = await fetch('/api/admin/billing/batches');
-      setBatches(res.ok ? await res.json() : []);
-    } finally {
-      setBatchesLoading(false);
-    }
-  }
-
-  async function loadStandalone() {
-    setStandaloneLoading(true);
-    try {
-      const res = await fetch('/api/admin/billing/standalone');
-      setStandaloneBills(res.ok ? await res.json() : []);
-    } finally {
-      setStandaloneLoading(false);
-    }
-  }
-
+  // 批次分頁已移除：批次帳單的個別操作都在總覽的收費清單表；這裡只剩
+  // 「草稿批次」需要一個回得去的入口（草稿不會出現在總覽，放著會變孤兒）。
   useEffect(() => {
-    loadBatches();
-    loadStandalone();
+    fetch('/api/admin/billing/batches')
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setBatches)
+      .catch(() => setBatches([]));
   }, []);
 
-  async function remindStandaloneBill(billId: string) {
-    setRemindingId(billId);
-    try {
-      const res = await fetch(`/api/admin/billing/bills/${billId}/remind`, { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showToast(ERROR_MESSAGES[data.error] ?? '提醒繳費失敗，請稍後再試');
-        return;
-      }
-      showToast('已發送提醒繳費通知');
-    } finally {
-      setRemindingId(null);
-    }
-  }
-
-  async function notifyStandaloneBill(billId: string) {
-    if (!(await confirm('確定要通知這筆帳單的家長嗎？'))) return;
-    setNotifyingId(billId);
-    try {
-      const res = await fetch('/api/admin/billing/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billIds: [billId] }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showToast(ERROR_MESSAGES[data.error] ?? '通知失敗，請稍後再試');
-        return;
-      }
-      showToast('已通知');
-      await loadStandalone();
-    } finally {
-      setNotifyingId(null);
-    }
-  }
-
-  async function deleteStandaloneBill(billId: string) {
-    if (!(await confirm('確定要刪除這筆帳單嗎？此動作無法復原。', { danger: true }))) return;
-    setDeletingId(billId);
-    try {
-      const res = await fetch(`/api/admin/billing/bills/${billId}`, { method: 'DELETE' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showToast(ERROR_MESSAGES[data.error] ?? '刪除失敗，請稍後再試');
-        return;
-      }
-      showToast('已刪除帳單');
-      await loadStandalone();
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  const batchColumns: Column<BatchRow>[] = [
-    { header: '種類', render: (r) => KIND_LABEL[r.kind] },
-    {
-      header: '收費區間',
-      width: 'w-64',
-      render: (r) => (
-        <span className="whitespace-nowrap">
-          {formatDateWithWeekday(r.periodStart)} ～ {formatDateWithWeekday(r.periodEnd)}
-        </span>
-      ),
-      sortValue: (r) => r.periodStart,
-    },
-    { header: '狀態', render: (r) => <BatchStatusBadge status={r.status} /> },
-    {
-      header: '總應收',
-      render: (r) => (r.totalDue === null ? '—' : `${r.totalDue.toLocaleString('en-US')} 元`),
-      sortValue: (r) => r.totalDue,
-    },
-    {
-      header: '已收',
-      render: (r) => (r.totalPaid === null ? '—' : <span className="text-approved">{r.totalPaid.toLocaleString('en-US')} 元</span>),
-    },
-    {
-      header: '未收',
-      render: (r) =>
-        r.totalOutstanding === null ? (
-          '—'
-        ) : (
-          <span className={r.totalOutstanding > 0 ? 'font-semibold text-rejected' : ''}>
-            {r.totalOutstanding.toLocaleString('en-US')} 元
-          </span>
-        ),
-    },
-  ];
-
-  const standaloneColumns: Column<StandaloneBillRow>[] = [
-    { header: '學生', render: (r) => r.student.user.name, sortValue: (r) => r.student.user.name },
-    { header: '項目', render: (r) => r.class?.name ?? r.tutoringEnrollment?.program.name ?? '-' },
-    {
-      header: '區間',
-      width: 'w-64',
-      render: (r) => (
-        <span className="whitespace-nowrap">
-          {formatDateWithWeekday(r.periodStart)} ～ {formatDateWithWeekday(r.periodEnd)}
-        </span>
-      ),
-      sortValue: (r) => r.periodStart,
-    },
-    { header: '應繳', render: (r) => `${r.amountDue.toLocaleString('en-US')} 元`, sortValue: (r) => r.amountDue },
-    { header: '繳費狀態', render: (r) => <PaidStateBadge amountDue={r.amountDue} payments={r.payments} /> },
-    {
-      header: '通知',
-      render: (r) =>
-        r.notifiedAt ? (
-          <span className="text-ink">已通知・{formatTimestampWithWeekdayTaipei(r.notifiedAt)}</span>
-        ) : (
-          <span className="text-inkMuted">未通知</span>
-        ),
-      sortValue: (r) => r.notifiedAt,
-    },
-    {
-      header: '操作',
-      render: (r) => {
-        const { state } = getPaidState(r.amountDue, r.payments);
-        // 單一狀態驅動的通知類動作：未通知過＝通知；已通知過但未繳清＝提醒繳費；
-        // 已通知且已繳清＝不放進選單。不是「按過」這種前端暫時狀態，是系統實際判定。
-        const notifyItem: ActionMenuItem | null = !r.notifiedAt
-          ? { key: 'notify', label: '通知', loading: notifyingId === r.id, onClick: () => notifyStandaloneBill(r.id) }
-          : state !== 'PAID'
-            ? { key: 'remind', label: '提醒繳費', loading: remindingId === r.id, onClick: () => remindStandaloneBill(r.id) }
-            : null;
-        // 刪除鈕預先擋掉班級帳單已充值堂數的情況（跟服務層的 BILL_CREDITS_SESSIONS
-        // 是同一條規則，這裡先隱藏選項給更直接的引導；已有繳款的情況沒有預先擋，
-        // 讓伺服器的 BILL_HAS_PAYMENTS 錯誤訊息說明原因即可）。
-        const canDelete = !(r.classId && (r.billedSessions ?? 0) > 0);
-        return (
-          <div className="flex justify-center">
-            <ActionMenu
-              items={[
-                { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(r.id) },
-                ...(notifyItem ? [notifyItem] : []),
-                ...(r.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(r.id) }]),
-                ...(canDelete
-                  ? [{ key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingId === r.id, onClick: () => deleteStandaloneBill(r.id) }]
-                  : []),
-              ]}
-            />
-          </div>
-        );
-      },
-    },
-  ];
-
-  const standalonePaymentBill = standaloneBills.find((r) => r.id === paymentBillId) ?? null;
-  const standaloneSettleBill = standaloneBills.find((r) => r.id === settleBillId) ?? null;
+  const draftBatches = batches.filter((b) => b.status === 'DRAFT');
 
   return (
     <>
@@ -347,41 +116,23 @@ export default function AdminBillingPage() {
         ))}
       </div>
 
-      {tab === 'batches' && (
-        <div key="batches" className="animate-rise-in">
-          <Card className="mb-6">
-            <DataTable
-              columns={batchColumns}
-              rows={batches}
-              keyField={(r) => r.id}
-              onRowClick={(r) => router.push(`/admin/billing/${r.id}`)}
-              rowClassName={() => 'cursor-pointer'}
-              loading={batchesLoading}
-              emptyText="目前沒有收費批次"
-            />
-          </Card>
-
-          <h2 className="mb-2 font-bold text-ink">單獨開單帳單</h2>
-          <Card>
-            <CollapsibleDataTable
-              columns={standaloneColumns}
-              rows={standaloneBills}
-              keyField={(r) => r.id}
-              maxRows={3}
-              loading={standaloneLoading}
-              emptyText="目前沒有單獨開立的帳單"
-              onRowClick={(r) => setExpandedStandaloneId((prev) => (prev === r.id ? null : r.id))}
-              rowClassName={() => 'cursor-pointer'}
-              expandedKey={expandedStandaloneId}
-              renderExpanded={(r) => <BillDetailBlock detail={r.detail} />}
-            />
-          </Card>
-        </div>
-      )}
-
       {tab === 'overview' && (
         <div key="overview" className="animate-rise-in">
-          <OverviewTab />
+          {draftBatches.length > 0 && (
+            <Card className="mb-4">
+              <p className="mb-2 text-sm font-bold text-ink">草稿批次（尚未定案）</p>
+              <ul className="flex flex-col gap-1">
+                {draftBatches.map((b) => (
+                  <li key={b.id}>
+                    <Button variant="link" onClick={() => router.push(`/admin/billing/${b.id}`)}>
+                      {KIND_LABEL[b.kind]}・{formatDateWithWeekday(b.periodStart)} ～ {formatDateWithWeekday(b.periodEnd)} →
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          <OverviewTab refreshKey={overviewRefreshKey} />
         </div>
       )}
       {tab === 'closedDays' && (
@@ -401,12 +152,9 @@ export default function AdminBillingPage() {
         onClose={() => setStandaloneModalOpen(false)}
         onCreated={() => {
           setStandaloneModalOpen(false);
-          loadStandalone();
+          setOverviewRefreshKey((k) => k + 1);
         }}
       />
-      <PaymentModal bill={standalonePaymentBill} onClose={() => setPaymentBillId(null)} onChanged={loadStandalone} />
-      <SettleModal bill={standaloneSettleBill} onClose={() => setSettleBillId(null)} onChanged={loadStandalone} />
-      {ConfirmDialog}
     </>
   );
 }

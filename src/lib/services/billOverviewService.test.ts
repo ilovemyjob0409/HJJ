@@ -58,4 +58,12 @@ describe('getBillingOverview', () => {
     expect(none.summary.count).toBe(0);
     expect(none.bills).toEqual([]);
   });
+
+  it('returns all finalized bills when no range is given (default view)', async () => {
+    const { batchBill, standaloneId } = await overviewFixture();
+
+    const all = await getBillingOverview();
+    expect(all.summary).toEqual({ totalDue: 3000, totalPaid: 0, totalOutstanding: 3000, count: 2 });
+    expect(all.bills.map((b) => b.id)).toEqual([standaloneId, batchBill.id]); // 草稿批次帳單仍不列入
+  });
 });

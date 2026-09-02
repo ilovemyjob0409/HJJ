@@ -94,11 +94,22 @@ describe('GET /api/admin/billing/overview', () => {
     expect((await overviewGET(overviewReq('?start=2026-09-01&end=2026-09-30'))).status).toBe(403);
   });
 
-  it('400 when start/end missing or malformed', async () => {
+  it('400 when only one of start/end is given or a date is malformed', async () => {
     asAdmin();
-    expect((await overviewGET(overviewReq(''))).status).toBe(400);
     expect((await overviewGET(overviewReq('?start=2026-09-01'))).status).toBe(400);
+    expect((await overviewGET(overviewReq('?end=2026-09-30'))).status).toBe(400);
     expect((await overviewGET(overviewReq('?start=abc&end=2026-09-30'))).status).toBe(400);
+  });
+
+  it('200 with all finalized bills when no range is given (default view)', async () => {
+    const { cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    asAdmin();
+    const res = await overviewGET(overviewReq(''));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.summary.count).toBe(1);
   });
 
   it('200 for ADMIN with summary and bills of the range', async () => {
