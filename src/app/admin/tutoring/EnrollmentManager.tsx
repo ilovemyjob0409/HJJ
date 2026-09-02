@@ -81,6 +81,9 @@ export default function EnrollmentManager() {
   const [addOpen, setAddOpen] = useState(false);
   const [bulkMode, setBulkMode] = useState(false); // 批量處理模式：開啟才顯示核取方塊與批量工具列
   const [bulkTierOpen, setBulkTierOpen] = useState(false); // 套用收費級距彈窗
+  const [bulkQuotaOpen, setBulkQuotaOpen] = useState(false); // 批量每月堂數覆寫彈窗
+  const [bulkQuota, setBulkQuota] = useState('');
+  const [bulkQuotaApplying, setBulkQuotaApplying] = useState(false);
   const [batchAddOpen, setBatchAddOpen] = useState(false);
   const [bookingTarget, setBookingTarget] = useState<EnrollmentRow | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -248,6 +251,52 @@ export default function EnrollmentManager() {
       load();
     } finally {
       setBulkApplying(false);
+    }
+  }
+
+  // 批量每月堂數覆寫：送絕對值（空值＝null＝恢復課程預設），走既有的
+  // PATCH /api/tutoring-enrollments/[id]（updateEnrollment 會經過
+  // recordQuotaChange 留下生效歷史，同批量加堂的作法）。
+  async function applyBulkQuota() {
+    const targets = enrollments.filter((r) => checkedIds[r.id]);
+    if (targets.length === 0) return;
+    const raw = bulkQuota.trim();
+    const quota = raw === '' ? null : Number(raw);
+    if (quota !== null && (!Number.isInteger(quota) || quota < 0)) {
+      showToast('每月堂數需為 0 以上的整數，留空代表恢復課程預設');
+      return;
+    }
+    const desc = quota === null ? '恢復為課程預設' : `覆寫為 ${quota} 堂`;
+    if (!(await confirm(`確定要把 ${targets.length} 位學生的每月堂數${desc}嗎？`))) return;
+    setBulkQuotaApplying(true);
+    try {
+      const results = await Promise.all(
+        targets.map(async (r) => {
+          try {
+            const res = await fetch(`/api/tutoring-enrollments/${r.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ monthlyQuota: quota }),
+            });
+            return { name: r.studentName, ok: res.ok };
+          } catch {
+            return { name: r.studentName, ok: false };
+          }
+        })
+      );
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length === 0) {
+        showToast(`已為 ${targets.length} 位學生${quota === null ? '恢復預設每月堂數' : '覆寫每月堂數'}`);
+        setBulkQuotaOpen(false);
+        setCheckedIds({});
+        setBulkQuota('');
+        load();
+      } else {
+        showToast(`覆寫失敗：${failed.map((f) => f.name).join('、')}`);
+        if (failed.length < results.length) load();
+      }
+    } finally {
+      setBulkQuotaApplying(false);
     }
   }
 
@@ -520,6 +569,9 @@ export default function EnrollmentManager() {
           >
             加堂
           </Button>
+          <Button className="px-3 py-1 text-xs" disabled={checkedCount === 0} onClick={() => setBulkQuotaOpen(true)}>
+            覆寫
+          </Button>
           <Button
             variant="secondary"
             className="px-3 py-1 text-xs"
@@ -527,6 +579,7 @@ export default function EnrollmentManager() {
               setBulkMode(false);
               setCheckedIds({});
               setBulkFeeTierId('');
+              setBulkQuota('');
             }}
           >
             結束批量處理
@@ -682,6 +735,36 @@ export default function EnrollmentManager() {
           </div>
           <div className="flex justify-end">
             <Button loading={bulkApplying} onClick={applyBulkFeeTier}>
+              套用
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={bulkQuotaOpen} onClose={() => setBulkQuotaOpen(false)} title="每月堂數覆寫" maxWidthClassName="max-w-md">
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="mb-1 text-sm text-ink">已選 {checkedCount} 位學生</p>
+            <p className="text-sm text-inkMuted">
+              {enrollments
+                .filter((r) => checkedIds[r.id])
+                .map((r) => `${r.studentName}（${r.programName}）`)
+                .join('、')}
+            </p>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium text-inkMuted">每月堂數</p>
+            <Input
+              type="number"
+              min={0}
+              placeholder="預設"
+              value={bulkQuota}
+              onChange={(e) => setBulkQuota(e.target.value)}
+              className="w-24 py-1 text-sm"
+            />
+            <p className="mt-1 text-xs text-inkMuted">留空＝恢復課程預設；填數字＝覆寫為該堂數（絕對值，不是加減）。</p>
+          </div>
+          <div className="flex justify-end">
+            <Button loading={bulkQuotaApplying} onClick={applyBulkQuota}>
               套用
             </Button>
           </div>
