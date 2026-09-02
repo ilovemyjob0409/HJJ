@@ -278,7 +278,7 @@ export default function EnrollmentManager() {
   }
 
   const q = listSearch.trim().toLowerCase();
-  const filteredEnrollments = q
+  const searchedEnrollments = q
     ? enrollments.filter(
         (r) =>
           r.studentName.toLowerCase().includes(q) ||
@@ -287,6 +287,9 @@ export default function EnrollmentManager() {
           r.programName.toLowerCase().includes(q)
       )
     : enrollments;
+  // 停用的報名一律墊底（sort 是穩定排序，各組維持原本順序）；
+  // 使用者點欄位排序時 DataTable 會整個重排，這裡只管預設順序
+  const filteredEnrollments = [...searchedEnrollments].sort((a, b) => Number(b.active) - Number(a.active));
 
   const allChecked = filteredEnrollments.length > 0 && filteredEnrollments.every((r) => checkedIds[r.id]);
   const checkedCount = Object.values(checkedIds).filter(Boolean).length;
