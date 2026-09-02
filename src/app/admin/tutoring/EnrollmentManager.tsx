@@ -520,10 +520,10 @@ export default function EnrollmentManager() {
         open={editingRow !== null}
         onClose={() => setEditingEnrollment(null)}
         title={`${editingRow?.studentName ?? ''}・${editingRow?.programName ?? ''}`}
-        maxWidthClassName="max-w-4xl"
+        maxWidthClassName="max-w-5xl"
       >
         {editingRow && (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-[320px_minmax(0,1fr)]">
             <div className="flex flex-col gap-3">
               <div className="rounded-lg bg-stripe p-3">
                 <p className="text-xs font-medium text-inkMuted">本月狀態</p>
@@ -549,21 +549,28 @@ export default function EnrollmentManager() {
                 </div>
               </div>
               <div>
+                {/* select 獨占整行、儲存鈕另起一行靠右：級距名稱長時 select 的固有寬度
+                    會撐爆固定欄寬，同一行的儲存鈕會被擠出欄外（被右欄蓋住點不到）；
+                    select 本身仍要 min-w-0，避免超長名稱反過來撐寬整個左欄 */}
                 <p className="mb-1 text-xs font-medium text-inkMuted">收費級距</p>
-                <div className="flex items-center gap-1">
-                  <Select
-                    value={feeTierOverride[editingRow.id] ?? editingRow.feeTierId ?? ''}
-                    onChange={(e) => setFeeTierOverride((prev) => ({ ...prev, [editingRow.id]: e.target.value }))}
-                    className="flex-1 py-1 text-sm"
+                <Select
+                  value={feeTierOverride[editingRow.id] ?? editingRow.feeTierId ?? ''}
+                  onChange={(e) => setFeeTierOverride((prev) => ({ ...prev, [editingRow.id]: e.target.value }))}
+                  className="w-full min-w-0 py-1 text-sm"
+                >
+                  <option value="">未指定</option>
+                  {feeTiers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}・{t.monthlyFee.toLocaleString('en-US')} 元/月
+                    </option>
+                  ))}
+                </Select>
+                <div className="mt-1 flex justify-end">
+                  <Button
+                    variant="secondary"
+                    className="shrink-0 whitespace-nowrap px-2 py-1 text-xs"
+                    onClick={() => saveFeeTierOverride(editingRow)}
                   >
-                    <option value="">未指定</option>
-                    {feeTiers.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}・{t.monthlyFee.toLocaleString('en-US')} 元/月
-                      </option>
-                    ))}
-                  </Select>
-                  <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => saveFeeTierOverride(editingRow)}>
                     儲存
                   </Button>
                 </div>
