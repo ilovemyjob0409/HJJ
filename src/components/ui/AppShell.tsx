@@ -15,9 +15,9 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
   ADMIN: [
     { href: '/admin', label: '首頁', exact: true },
     { href: '/admin/attendance', label: '點名' },
-    { href: '/admin/teachers', label: '老師名單' },
-    { href: '/admin/students', label: '學生名單' },
-    { href: '/admin/classes', label: '班級名單' },
+    { href: '/admin/teachers', label: '老師管理' },
+    { href: '/admin/students', label: '學生管理' },
+    { href: '/admin/classes', label: '班級管理' },
     { href: '/admin/tutoring', label: '個別輔導' },
     { href: '/admin/makeup-requests', label: '請假管理' },
     { href: '/admin/billing', label: '收費' },

@@ -154,7 +154,7 @@ export default function TeachersPage() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">老師名單</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">老師管理</h1>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Input
           placeholder="搜尋姓名、帳號、科目或電話"

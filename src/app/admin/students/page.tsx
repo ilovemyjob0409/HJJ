@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
@@ -140,6 +141,10 @@ function StudentsContent() {
   // 未報名日期區塊預設收合，有需要再展開
   const [renewDatesOpen, setRenewDatesOpen] = useState(false);
   const [renewBusy, setRenewBusy] = useState(false);
+  // 換班彈窗：原班級、目標班級、送出中
+  const [transferTarget, setTransferTarget] = useState<ClassOption | null>(null);
+  const [transferToId, setTransferToId] = useState('');
+  const [transferBusy, setTransferBusy] = useState(false);
   // 未報名日期獨立調整彈窗（不綁續報）：目標班級、勾選狀態、已標記的日期
   const [nrTarget, setNrTarget] = useState<ClassOption | null>(null);
   const [nrDates, setNrDates] = useState<Record<string, boolean>>({});
@@ -235,6 +240,7 @@ function StudentsContent() {
       Object.fromEntries(s.enrollments.map((e) => [e.classId, e.feeOverride == null ? '' : String(e.feeOverride)]))
     );
     setRenewTarget(null);
+    setTransferTarget(null);
     setAddClassQuery('');
     setEditError('');
     setAdvancedOpen(false);
@@ -353,6 +359,74 @@ function StudentsContent() {
       load();
     } finally {
       setRenewBusy(false);
+    }
+  }
+
+  function openTransfer(cls: ClassOption) {
+    setTransferTarget(cls);
+    setTransferToId('');
+  }
+
+  async function handleTransferSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing || !transferTarget || !transferToId) return;
+    setTransferBusy(true);
+    try {
+      const res = await fetch(`/api/classes/${transferTarget.id}/enrollments/transfer`, {
+        method: 'POST',
+        body: JSON.stringify({ studentId: editing.id, toClassId: transferToId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: '' }));
+        showToast(
+          data.error === 'ALREADY_ENROLLED'
+            ? '學生已在目標班級，無法換班'
+            : data.error === 'TARGET_CLASS_INACTIVE'
+              ? '目標班級已停用'
+              : '換班失敗，請稍後再試'
+        );
+        return;
+      }
+      const created: { classId: string; totalSessions: number | null; feeOverride: number | null } = await res.json();
+      const fromId = transferTarget.id;
+      // 同步編輯表單狀態：舊班移除、新班帶轉移後的堂數與覆寫價，避免之後
+      // 按「儲存」把換班前的班級組合當成 diff 送回去（會退掉剛換入的班）。
+      setEditEnrollments((prev) => {
+        const rest = { ...prev };
+        delete rest[fromId];
+        return { ...rest, [created.classId]: created.totalSessions === null ? '' : String(created.totalSessions) };
+      });
+      setEditFeeOverrides((prev) => {
+        const rest = { ...prev };
+        delete rest[fromId];
+        return created.feeOverride == null ? rest : { ...rest, [created.classId]: String(created.feeOverride) };
+      });
+      setEditing(
+        (prev) =>
+          prev && {
+            ...prev,
+            enrollments: [
+              ...prev.enrollments.filter((en) => en.classId !== fromId),
+              {
+                classId: created.classId,
+                totalSessions: created.totalSessions,
+                usedSessions: 0,
+                remaining: created.totalSessions,
+                feeOverride: created.feeOverride,
+              },
+            ],
+          }
+      );
+      const toName = classes.find((c) => c.id === created.classId)?.name ?? '';
+      showToast(
+        created.totalSessions === null
+          ? `已換班至「${toName}」`
+          : `已換班至「${toName}」，剩餘 ${created.totalSessions} 堂一併轉移`
+      );
+      setTransferTarget(null);
+      load();
+    } finally {
+      setTransferBusy(false);
     }
   }
 
@@ -477,7 +551,7 @@ function StudentsContent() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">學生名單</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">學生管理</h1>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Input
           placeholder="搜尋姓名、帳號或家長電話"
@@ -749,6 +823,35 @@ function StudentsContent() {
                         },
                       },
                       {
+                        header: (
+                          <span className="flex items-center justify-center gap-1">
+                            換班
+                            <HintButton
+                              label="換班說明"
+                              active={openHintClassId === 'transfer-header'}
+                              onToggle={() => setOpenHintClassId((prev) => (prev === 'transfer-header' ? null : 'transfer-header'))}
+                            >
+                              直接把這筆報名搬到另一個班：剩餘堂數與覆寫價一併轉移，不用退班再重新報名。過去的出缺勤保留在原班；圍棋班的一對一補課額度會從換班日重新起算。
+                            </HintButton>
+                          </span>
+                        ),
+                        width: 'w-20',
+                        render: (c: EnrolledRow) => {
+                          if (c.rowKind === 'tutoring') return <span className="text-xs text-inkMuted">—</span>;
+                          const enrollment = editing?.enrollments.find((e) => e.classId === c.id);
+                          if (!enrollment) return <span className="text-xs text-inkMuted">儲存後可用</span>;
+                          return (
+                            <Button
+                              variant="link"
+                              onClick={() => openTransfer(c)}
+                              className="whitespace-nowrap text-xs"
+                            >
+                              換班
+                            </Button>
+                          );
+                        },
+                      },
+                      {
                         header: '',
                         width: 'w-20',
                         render: (c: EnrolledRow) =>
@@ -944,6 +1047,46 @@ function StudentsContent() {
             <Button type="submit" loading={renewBusy}>
               確認續報
               {Number(renewAmount) > 0 ? `（${Number(renewAmount)} 堂${renewSelectedDates.length > 0 ? `・${renewSelectedDates.length} 天未報名` : ''}）` : ''}
+            </Button>
+          </form>
+        )}
+      </Modal>
+      <Modal
+        open={transferTarget !== null}
+        onClose={() => setTransferTarget(null)}
+        title={`換班：${editing?.user.name ?? ''}（${transferTarget?.name ?? ''}）`}
+      >
+        {transferTarget && (
+          <form onSubmit={handleTransferSubmit} className="flex flex-col gap-3">
+            {(() => {
+              const enrollment = editing?.enrollments.find((e) => e.classId === transferTarget.id);
+              if (!enrollment) return null;
+              return (
+                <p className="text-sm text-ink">
+                  {enrollment.totalSessions === null
+                    ? '此班未追蹤堂數，換班後維持不追蹤。'
+                    : `目前已上 ${enrollment.usedSessions} 堂／剩餘 ${enrollment.remaining} 堂，剩餘堂數將轉移到新班並開新的一期。`}
+                </p>
+              );
+            })()}
+            <div>
+              <p className="mb-1 text-sm font-medium text-ink">目標班級</p>
+              <Select value={transferToId} onChange={(e) => setTransferToId(e.target.value)} required className="w-full">
+                <option value="">請選擇班級</option>
+                {classes
+                  .filter((c) => !(c.id in editEnrollments))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}（{c.subject}）
+                    </option>
+                  ))}
+              </Select>
+            </div>
+            <p className="text-xs text-inkMuted">
+              過去的出缺勤紀錄保留在原班；原班今天以後的點名會一併移除。圍棋班的一對一補課額度將從換班日重新起算。
+            </p>
+            <Button type="submit" loading={transferBusy} disabled={!transferToId}>
+              確認換班
             </Button>
           </form>
         )}

@@ -16,6 +16,7 @@ import {
   listNotRegisteredDates,
   setNotRegisteredDates,
   unenrollStudent,
+  transferEnrollment,
   listStudentEnrolledClasses,
   hasActiveClassEnrollment,
   deleteClass,
@@ -362,6 +363,120 @@ describe('unenrollStudent 退班抽離點名 — Taipei day boundary (server clo
 
     const remaining = await prisma.classAttendance.findMany({ where: { studentId: student.id }, select: { date: true } });
     expect(remaining.map((r) => r.date.toISOString().slice(0, 10))).toEqual(['2026-01-15']);
+  });
+});
+
+describe('transferEnrollment', () => {
+  async function setupTwoClasses() {
+    const teacher = await createTeacher({ name: '陳老師', email: `transfer-chen-${Date.now()}-${Math.random()}@example.com`, password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小轉', email: `transfer-ming-${Date.now()}-${Math.random()}@example.com`, password: 'x' });
+    const classA = await createClass({ name: '圍棋原班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+    const classB = await createClass({ name: '圍棋新班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 2, startTime: '19:00', endTime: '21:00' });
+    return { teacher, student, classA, classB };
+  }
+
+  it('moves the enrollment to the target class carrying the remaining quota as a fresh period', async () => {
+    const { student, classA, classB } = await setupTwoClasses();
+    await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: 12 }]);
+    const marker = await prisma.user.findFirstOrThrow();
+    const mk = (date: Date, status: string) =>
+      prisma.classAttendance.create({
+        data: { classId: classA.id, studentId: student.id, date, status: status as never, markedById: marker.id },
+      });
+    await mk(new Date('2020-01-06'), 'PRESENT'); // 過去扣堂
+    await mk(new Date('2020-01-13'), 'LATE'); // 過去扣堂
+    await mk(new Date('2020-01-20'), 'ON_LEAVE'); // 不扣堂
+    await mk(new Date('2020-01-27'), 'NOT_REGISTERED'); // 不扣堂
+    await mk(new Date('2030-01-07'), 'PRESENT'); // 未來：換班時抽離，不算已用
+
+    const result = await transferEnrollment(classA.id, classB.id, student.id);
+
+    expect(result.classId).toBe(classB.id);
+    expect(result.totalSessions).toBe(10); // 12 - 已用 2
+
+    expect(await prisma.classEnrollment.findMany({ where: { studentId: student.id, classId: classA.id } })).toHaveLength(0);
+    const periods = await prisma.enrollmentPeriod.findMany({ where: { enrollment: { studentId: student.id, classId: classB.id } } });
+    expect(periods.map((p) => p.sessions)).toEqual([10]);
+
+    // 舊班過去的點名保留、未來的抽離
+    const oldRows = await prisma.classAttendance.findMany({ where: { studentId: student.id, classId: classA.id } });
+    expect(oldRows.map((r) => r.date.toISOString().slice(0, 10)).sort()).toEqual([
+      '2020-01-06',
+      '2020-01-13',
+      '2020-01-20',
+      '2020-01-27',
+    ]);
+
+    // 新班堂數從轉入的剩餘開始倒數，尚未使用任何堂
+    const quota = await getClassEnrollmentQuota(classB.id, student.id);
+    expect(quota).toEqual({ totalSessions: 10, usedSessions: 0, remaining: 10, feeOverride: null });
+  });
+
+  it('carries feeOverride over to the new enrollment', async () => {
+    const { student, classA, classB } = await setupTwoClasses();
+    await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: 8, feeOverride: 450 }]);
+
+    const result = await transferEnrollment(classA.id, classB.id, student.id);
+
+    expect(result.totalSessions).toBe(8);
+    expect(result.feeOverride).toBe(450);
+  });
+
+  it('keeps an untracked enrollment untracked and creates no period', async () => {
+    const { student, classA, classB } = await setupTwoClasses();
+    await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: null }]);
+
+    const result = await transferEnrollment(classA.id, classB.id, student.id);
+
+    expect(result.totalSessions).toBeNull();
+    expect(await prisma.enrollmentPeriod.count()).toBe(0);
+  });
+
+  it('carries a negative remaining as-is (over-used quota stays visible)', async () => {
+    const { student, classA, classB } = await setupTwoClasses();
+    await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: 2 }]);
+    const marker = await prisma.user.findFirstOrThrow();
+    for (const day of ['2020-01-06', '2020-01-13', '2020-01-20']) {
+      await prisma.classAttendance.create({
+        data: { classId: classA.id, studentId: student.id, date: new Date(day), status: 'PRESENT', markedById: marker.id },
+      });
+    }
+
+    const result = await transferEnrollment(classA.id, classB.id, student.id);
+
+    expect(result.totalSessions).toBe(-1);
+  });
+
+  it('rejects when the student is already enrolled in the target class, changing nothing', async () => {
+    const { student, classA, classB } = await setupTwoClasses();
+    await setStudentEnrollments(student.id, [
+      { classId: classA.id, totalSessions: 12 },
+      { classId: classB.id, totalSessions: 5 },
+    ]);
+
+    await expect(transferEnrollment(classA.id, classB.id, student.id)).rejects.toThrow('ALREADY_ENROLLED');
+
+    const a = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: classA.id } } });
+    expect(a.totalSessions).toBe(12);
+    const b = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: classB.id } } });
+    expect(b.totalSessions).toBe(5);
+  });
+
+  it('rejects when the target class is soft-deleted, changing nothing', async () => {
+    const { student, classA, classB } = await setupTwoClasses();
+    await setStudentEnrollments(student.id, [{ classId: classA.id, totalSessions: 12 }]);
+    await prisma.class.update({ where: { id: classB.id }, data: { active: false } });
+
+    await expect(transferEnrollment(classA.id, classB.id, student.id)).rejects.toThrow('TARGET_CLASS_INACTIVE');
+
+    const a = await prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId: student.id, classId: classA.id } } });
+    expect(a.totalSessions).toBe(12);
+  });
+
+  it('rejects when the student is not enrolled in the source class', async () => {
+    const { student, classA, classB } = await setupTwoClasses();
+
+    await expect(transferEnrollment(classA.id, classB.id, student.id)).rejects.toThrow();
   });
 });
 

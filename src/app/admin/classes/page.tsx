@@ -217,7 +217,7 @@ export default function ClassesPage() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">班級名單</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">班級管理</h1>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Input
           placeholder="搜尋班名、科目、等級或老師"

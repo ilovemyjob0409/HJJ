@@ -135,7 +135,7 @@ export default function EnrollmentManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingEnrollmentId, attendanceRefreshKey]);
 
-  // 深連結：/admin/tutoring?student=<id>（學生名單「前往管理」）——
+  // 深連結：/admin/tutoring?student=<id>（學生管理「前往管理」）——
   // 報名載入後把清單篩到該學生；只有一筆報名就直接開編輯彈窗。
   // 只在第一次載入時處理，之後的 load()（增刪改後重抓）不再觸發。
   const deepLinkHandledRef = useRef(false);

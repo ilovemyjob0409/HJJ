@@ -372,6 +372,42 @@ export async function unenrollStudent(classId: string, studentId: string, now: D
   return enrollment;
 }
 
+// 換班：把報名（含剩餘堂數與覆寫價）從原班搬到新班，取代「退班＋重新報名」
+// 兩步。剩餘堂數 = totalSessions − 已用（扣堂語意同 getClassEnrollmentQuota：
+// 請假、未報名不扣；未來的點名隨換班抽離，不算已用，理由同 unenrollStudent）。
+// 新班以剩餘堂數開新的一期，帳本從「轉入 N 堂」起算；圍棋一對一補課額度
+// 以最新期別起算（見 makeupRequestService），因此也從換班日重新計。
+export async function transferEnrollment(fromClassId: string, toClassId: string, studentId: string, now: Date = new Date()) {
+  const [enrollment, targetClass, existingTarget] = await Promise.all([
+    prisma.classEnrollment.findUniqueOrThrow({ where: { studentId_classId: { studentId, classId: fromClassId } } }),
+    prisma.class.findUniqueOrThrow({ where: { id: toClassId }, select: { active: true } }),
+    prisma.classEnrollment.findUnique({ where: { studentId_classId: { studentId, classId: toClassId } } }),
+  ]);
+  if (!targetClass.active) throw new Error('TARGET_CLASS_INACTIVE');
+  if (existingTarget) throw new Error('ALREADY_ENROLLED');
+
+  const today = taipeiTodayAsUtcMidnight(now);
+  const usedSessions = await prisma.classAttendance.count({
+    where: { studentId, classId: fromClassId, date: { lt: today }, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } },
+  });
+  const remaining = enrollment.totalSessions === null ? null : enrollment.totalSessions - usedSessions;
+
+  const [, , created] = await prisma.$transaction([
+    prisma.classAttendance.deleteMany({ where: { studentId, classId: fromClassId, date: { gte: today } } }),
+    prisma.classEnrollment.delete({ where: { id: enrollment.id } }),
+    prisma.classEnrollment.create({
+      data: {
+        studentId,
+        classId: toClassId,
+        totalSessions: remaining,
+        feeOverride: enrollment.feeOverride,
+        ...(remaining !== null ? { periods: { create: { sessions: remaining } } } : {}),
+      },
+    }),
+  ]);
+  return created;
+}
+
 // 是否仍有「有效班級」的報名（班級未被軟刪除）。請假／補課流程都掛在
 // 一般班級上，純個別輔導（或已全數退班）的學生看不到那些入口。
 export async function hasActiveClassEnrollment(studentId: string): Promise<boolean> {
