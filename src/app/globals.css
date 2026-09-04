@@ -83,11 +83,13 @@ button:not(:disabled) {
 /* Chrome/Safari render the unset yyyy/mm/dd (and hh/mm for time) segments
    of a date/time input with a translucent default color; over our warm
    dark-brown surfaces that blend reads as amber instead of neutral gray.
-   Pin it to the same gray-400 every other placeholder in the app uses
-   (Tailwind's default ::placeholder color) so it's always a plain
-   neutral, filled or not, in either theme. Safari ignores `color` on
-   these internal segments and only honors `-webkit-text-fill-color`, so
-   set both. */
+   Pin the EMPTY state to the same gray-400 every other placeholder in the
+   app uses (Tailwind's default ::placeholder color). Safari ignores
+   `color` on these internal segments and only honors
+   `-webkit-text-fill-color`, so set both. CSS alone can't tell a filled
+   date input from an empty one, so the shared Input component stamps
+   data-filled when it has a value — filled fields switch to ink so a
+   picked date is visibly different from the placeholder. */
 input[type='date']::-webkit-datetime-edit-fields-wrapper,
 input[type='date']::-webkit-datetime-edit-text,
 input[type='date']::-webkit-datetime-edit-year-field,
@@ -100,6 +102,20 @@ input[type='time']::-webkit-datetime-edit-minute-field,
 input[type='time']::-webkit-datetime-edit-ampm-field {
   color: #9ca3af;
   -webkit-text-fill-color: #9ca3af;
+}
+
+input[type='date'][data-filled]::-webkit-datetime-edit-fields-wrapper,
+input[type='date'][data-filled]::-webkit-datetime-edit-text,
+input[type='date'][data-filled]::-webkit-datetime-edit-year-field,
+input[type='date'][data-filled]::-webkit-datetime-edit-month-field,
+input[type='date'][data-filled]::-webkit-datetime-edit-day-field,
+input[type='time'][data-filled]::-webkit-datetime-edit-fields-wrapper,
+input[type='time'][data-filled]::-webkit-datetime-edit-text,
+input[type='time'][data-filled]::-webkit-datetime-edit-hour-field,
+input[type='time'][data-filled]::-webkit-datetime-edit-minute-field,
+input[type='time'][data-filled]::-webkit-datetime-edit-ampm-field {
+  color: var(--ink);
+  -webkit-text-fill-color: var(--ink);
 }
 
 /* Now that the select background matches the surrounding card/page
