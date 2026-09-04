@@ -9,7 +9,7 @@ import Input from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import AttendanceRosterEditor, { AttendanceStatusValue, RosterRow, SavedRecord, ClearedRecord } from '@/components/AttendanceRosterEditor';
-import { TUTORING_HIDDEN_STATUSES } from '@/components/attendanceStatusOptions';
+import { CLASS_HIDDEN_STATUSES, TUTORING_HIDDEN_STATUSES } from '@/components/attendanceStatusOptions';
 import { hasDate, rowsFromResponse, classRosterFromResponse } from '@/components/attendanceHubFetch';
 
 type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY' | 'TUTORING';
@@ -402,7 +402,13 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
             key={rosterRows.map((r) => r.key).join(',')}
             rows={rosterRows}
             onSave={handleSaveRoster}
-            hiddenStatuses={opening?.type === 'TUTORING' ? TUTORING_HIDDEN_STATUSES : undefined}
+            hiddenStatuses={
+              opening?.type === 'TUTORING'
+                ? TUTORING_HIDDEN_STATUSES
+                : opening?.type === 'CLASS'
+                  ? CLASS_HIDDEN_STATUSES
+                  : undefined
+            }
           />
         )}
       </Modal>
