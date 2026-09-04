@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
@@ -270,6 +271,20 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
     { label: '未收', value: summary?.totalOutstanding ?? null, className: 'text-rejected' },
   ];
 
+  // 匯出跟著畫面篩選走（來源／區間／搜尋後的清單，與統計卡連動同一套邏輯）
+  const exportColumns = [
+    { header: '來源', value: (r: OverviewBillRow) => (r.source ? SOURCE_LABEL[r.source] : '單獨開單') },
+    { header: '學生', value: (r: OverviewBillRow) => r.studentName },
+    { header: '項目', value: (r: OverviewBillRow) => r.targetName },
+    { header: '收費區間', value: (r: OverviewBillRow) => `${formatDateWithWeekday(r.periodStart)}～${formatDateWithWeekday(r.periodEnd)}` },
+    { header: '應繳', value: (r: OverviewBillRow) => r.amountDue },
+    { header: '已繳', value: (r: OverviewBillRow) => r.paid },
+    { header: '待繳', value: (r: OverviewBillRow) => r.outstanding },
+    { header: '繳費狀態', value: (r: OverviewBillRow) => PAID_STATE_CONFIG[r.state].label },
+    { header: '通知時間', value: (r: OverviewBillRow) => (r.notifiedAt ? formatTimestampWithWeekdayTaipei(r.notifiedAt) : '未通知') },
+  ];
+  const exportFilename = rangeOpen && startDate && endDate ? `收費清單_${startDate}~${endDate}` : '收費清單';
+
   const paymentBill = data?.bills.find((r) => r.id === paymentBillId) ?? null;
   const settleBill = data?.bills.find((r) => r.id === settleBillId) ?? null;
 
@@ -337,6 +352,12 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
           </button>
         </div>
         <CollapsibleSearchInput placeholder="搜尋學生或項目" value={search} onChange={setSearch} />
+        <ExportExcelButton
+          rows={filteredBills}
+          columns={exportColumns}
+          filename={exportFilename}
+          className="ml-auto px-3 py-1 text-xs"
+        />
       </div>
       {rangeOpen && (
         <div className="animate-rise-in mb-3 flex flex-wrap items-end gap-3">
