@@ -931,15 +931,26 @@ describe('go-hall ticket deduction on attendance', () => {
     expect(await prisma.goHallTicketTransaction.count({ where: { kind: 'ATTEND' } })).toBe(0);
   });
 
-  it('is idempotent: re-saving PRESENT (or switching PRESENT→LATE) deducts only once', async () => {
+  it('is idempotent: re-saving PRESENT deducts only once', async () => {
     const { student, session } = await setupGoHallSessionWithStudent();
     await buyGoHallTickets({ studentId: student.id, sessions: 10 });
     await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
     await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
-    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'LATE' }]);
 
     expect(await goHallBalance(student.id)).toBe(9);
     expect(await prisma.goHallTicketTransaction.count({ where: { kind: 'ATTEND' } })).toBe(1);
+  });
+
+  // 2026-09-04 定案：只有出席才扣堂票。遲到/早退已從點名選項移除，
+  // 歷史資料也已搬成出席；若仍有遺留的遲到紀錄被重存，視同非到場退票。
+  it('switching PRESENT→LATE now refunds (only 出席 deducts)', async () => {
+    const { student, session } = await setupGoHallSessionWithStudent();
+    await buyGoHallTickets({ studentId: student.id, sessions: 10 });
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);
+    await saveGoHallAttendance(session.id, 'marker-1', [{ studentId: student.id, status: 'LATE' }]);
+
+    expect(await goHallBalance(student.id)).toBe(10);
+    expect(await prisma.goHallTicketTransaction.count({ where: { kind: 'ATTEND' } })).toBe(0);
   });
 
   it('refunds when the attendance record is cleared', async () => {

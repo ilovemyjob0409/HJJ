@@ -301,8 +301,10 @@ export async function clearOneOnOneAttendance(makeupRequestId: string): Promise<
   await prisma.oneOnOneAttendance.deleteMany({ where: { makeupRequestId } });
 }
 
-// 「到場」才扣堂票：出席／遲到／早退；請假、缺席、未報名不扣。
-const GO_HALL_ATTENDED: ReadonlySet<string> = new Set(['PRESENT', 'LATE', 'LEFT_EARLY']);
+// 2026-09-04 定案：只有「出席」才扣堂票。遲到／早退已從點名選項移除，
+// 歷史資料也已搬移成出席（docs/superpowers/2026-09-04-gohall-late-to-present.sql）；
+// 若仍有遺留的遲到/早退紀錄被重存，會走「轉非到場」路徑退票＋清戳記。
+const GO_HALL_ATTENDED: ReadonlySet<string> = new Set(['PRESENT']);
 
 export interface GoHallRosterEntry {
   studentId: string;
