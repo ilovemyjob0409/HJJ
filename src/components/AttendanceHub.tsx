@@ -8,8 +8,9 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
-import AttendanceRosterEditor, { RosterRow, SavedRecord, ClearedRecord } from '@/components/AttendanceRosterEditor';
+import AttendanceRosterEditor, { AttendanceStatusValue, RosterRow, SavedRecord, ClearedRecord } from '@/components/AttendanceRosterEditor';
 import { TUTORING_HIDDEN_STATUSES } from '@/components/attendanceStatusOptions';
+import { hasDate, rowsFromResponse, classRosterFromResponse } from '@/components/attendanceHubFetch';
 
 type SessionType = 'CLASS' | 'ONE_ON_ONE' | 'GO_HALL' | 'ACTIVITY' | 'TUTORING';
 
@@ -35,7 +36,7 @@ interface ClassRosterApiRow {
   studentName: string;
   makeupRequestId: string | null;
   onLeave: boolean;
-  status: string | null;
+  status: AttendanceStatusValue | null;
   checkInTime: string | null;
   checkOutTime: string | null;
 }
@@ -43,7 +44,7 @@ interface ClassRosterApiRow {
 interface SimpleRosterApiRow {
   studentId: string;
   studentName: string;
-  status: string | null;
+  status: AttendanceStatusValue | null;
   checkInTime: string | null;
   checkOutTime: string | null;
 }
@@ -64,7 +65,7 @@ interface TutoringRosterApiRow {
   studentId: string;
   studentName: string;
   isMakeup: boolean;
-  status: string | null;
+  status: AttendanceStatusValue | null;
   checkInTime: string | null;
   checkOutTime: string | null;
   quotaLabel: string;
@@ -107,10 +108,12 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
   const { confirm, ConfirmDialog } = useConfirm();
 
   async function load() {
+    if (!hasDate(date)) return; // 日期欄可被鍵盤清空；空日期不查詢，保留原列表
     setLoading(true);
     try {
       const res = await fetch(`/api/attendance/sessions?date=${date}`);
-      setSessions(await res.json());
+      const rows = rowsFromResponse<SessionSummary>(res.ok, await res.json());
+      if (rows) setSessions(rows);
     } finally {
       setLoading(false);
     }
@@ -121,11 +124,25 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
+  function failRoster() {
+    showToast('載入點名資料失敗，請稍後再試');
+    closeRoster();
+  }
+
   async function openSession(s: SessionSummary) {
+    if (!hasDate(date)) {
+      showToast('請先選擇日期');
+      return;
+    }
     setOpening(s);
     if (s.type === 'CLASS') {
       const res = await fetch(`/api/attendance/class/${s.id}?date=${date}`);
-      const { roster, quotaByStudentId } = await res.json();
+      const data = classRosterFromResponse<
+        ClassRosterApiRow,
+        Record<string, { totalSessions: number | null; usedSessions: number }>
+      >(res.ok, await res.json());
+      if (!data) return failRoster();
+      const { roster, quotaByStudentId } = data;
       setRosterRows(
         roster.map((r: ClassRosterApiRow) => ({
           key: r.makeupRequestId ?? r.studentId,
@@ -143,6 +160,7 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       );
     } else if (s.type === 'ONE_ON_ONE') {
       const res = await fetch(`/api/attendance/one-on-one/${s.id}`);
+      if (!res.ok) return failRoster();
       const r = await res.json();
       setRosterRows([
         {
@@ -156,7 +174,8 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       ]);
     } else if (s.type === 'GO_HALL') {
       const res = await fetch(`/api/attendance/go-hall/${s.id}`);
-      const roster = await res.json();
+      const roster = rowsFromResponse<GoHallRosterApiRow>(res.ok, await res.json());
+      if (!roster) return failRoster();
       setRosterRows(
         roster.map((r: GoHallRosterApiRow) => ({
           key: r.studentId,
@@ -176,7 +195,8 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
         fetch(`/api/attendance/tutoring/${s.id}?date=${date}`),
         fetch(`/api/attendance/tutoring/${s.id}/walk-in?date=${date}`),
       ]);
-      const roster = await res.json();
+      const roster = rowsFromResponse<TutoringRosterApiRow>(res.ok, await res.json());
+      if (!roster) return failRoster();
       setRosterRows(
         roster.map((r: TutoringRosterApiRow) => ({
           key: r.bookingId,
@@ -191,7 +211,8 @@ export default function AttendanceHub({ hideDatePicker = false }: { hideDatePick
       setWalkIn(walkInRes.ok ? await walkInRes.json() : null);
     } else {
       const res = await fetch(`/api/attendance/activity/${s.id}?date=${date}`);
-      const roster = await res.json();
+      const roster = rowsFromResponse<SimpleRosterApiRow>(res.ok, await res.json());
+      if (!roster) return failRoster();
       setRosterRows(
         roster.map((r: SimpleRosterApiRow) => ({
           key: r.studentId,

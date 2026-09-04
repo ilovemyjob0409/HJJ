@@ -7,6 +7,7 @@ import Select from '@/components/ui/Select';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import AttendanceHub, { todayDateInput } from '@/components/AttendanceHub';
+import { hasDate, rowsFromResponse } from '@/components/attendanceHubFetch';
 
 interface ClassOption {
   id: string;
@@ -37,15 +38,18 @@ function AttendanceStatsPanel() {
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
 
   useEffect(() => {
-    fetch('/api/classes')
-      .then((r) => r.json())
-      .then(setClasses);
-    fetch('/api/students')
-      .then((r) => r.json())
-      .then(setStudents);
+    fetch('/api/classes').then(async (r) => {
+      const rows = rowsFromResponse<ClassOption>(r.ok, await r.json());
+      if (rows) setClasses(rows);
+    });
+    fetch('/api/students').then(async (r) => {
+      const rows = rowsFromResponse<StudentOption>(r.ok, await r.json());
+      if (rows) setStudents(rows);
+    });
   }, []);
 
   async function runQuery() {
+    if (!hasDate(from) || !hasDate(to)) return; // 日期欄可被鍵盤清空；缺日期不查詢，保留原結果
     const params = new URLSearchParams({ from, to });
     if (studentId) params.set('studentId', studentId);
     if (classId) params.set('classId', classId);
