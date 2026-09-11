@@ -56,8 +56,6 @@ export default async function StudentPointsPage() {
         </Card>
       </div>
 
-      <PrizeZone prizes={prizes} redemptions={redemptions} total={total} />
-
       {rules.length > 0 && (
         <Card className="mb-6">
           <h2 className="mb-2 font-bold text-ink">兌換規則</h2>
@@ -70,6 +68,8 @@ export default async function StudentPointsPage() {
           </ul>
         </Card>
       )}
+
+      <PrizeZone prizes={prizes} redemptions={redemptions} total={total} />
 
       <h2 className="mb-2 font-bold text-ink">點數紀錄</h2>
       <Card>
