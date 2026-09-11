@@ -11,7 +11,6 @@ import {
   updatePrize,
   listMyRedemptions,
   listPendingRedemptions,
-  findRedemptionByCode,
   sendPrizeExpiryReminders,
   expireOverduePrizeRedemptions,
 } from './prizeService';
@@ -46,11 +45,10 @@ async function redeemDaysAgo(days: number) {
 }
 
 describe('redeemPrize', () => {
-  it('deducts REDEEM_ONLY first then REGULAR, snapshots both, decrements stock, issues a 6-digit code', async () => {
+  it('deducts REDEEM_ONLY first then REGULAR, snapshots both, decrements stock', async () => {
     const { student, prize } = await setup({ regular: 40, redeemOnly: 30, points: 50 });
     const result = await redeemPrize({ studentId: student.id, prizeId: prize.id });
 
-    expect(result.code).toMatch(/^\d{6}$/);
     expect(result.prizeName).toBe('恐龍模型');
     expect(result.points).toBe(50);
 
@@ -100,24 +98,6 @@ describe('redeemPrize', () => {
     await expect(redeemPrize({ studentId: student.id, prizeId: prize.id })).resolves.toBeTruthy();
   });
 
-  it('retries code collisions and fails with CODE_GENERATION_FAILED when exhausted', async () => {
-    const { student, prize } = await setup({ regular: 200 });
-    const taken = await redeemPrize({ studentId: student.id, prizeId: prize.id }, () => '111111');
-    expect(taken.code).toBe('111111');
-
-    const other = await createStudent({ name: '小華', email: 'pz-hua@example.com', password: 'x' });
-    await prisma.pointTransaction.create({ data: { studentId: other.id, bucket: 'REGULAR', amount: 100, kind: 'TEACHER_AWARD', reason: 'x' } });
-
-    // 前幾次都撞號、最後一次給新號 → 成功
-    const codes = ['111111', '111111', '222222'];
-    const ok = await redeemPrize({ studentId: other.id, prizeId: prize.id }, () => codes.shift() ?? '999999');
-    expect(ok.code).toBe('222222');
-
-    // 永遠撞號 → CODE_GENERATION_FAILED
-    const third = await createStudent({ name: '小美', email: 'pz-mei@example.com', password: 'x' });
-    await prisma.pointTransaction.create({ data: { studentId: third.id, bucket: 'REGULAR', amount: 100, kind: 'TEACHER_AWARD', reason: 'x' } });
-    await expect(redeemPrize({ studentId: third.id, prizeId: prize.id }, () => '111111')).rejects.toThrow('CODE_GENERATION_FAILED');
-  });
 });
 
 describe('cancelRedemption', () => {
@@ -202,19 +182,16 @@ describe('prize catalog', () => {
 });
 
 describe('redemption lists', () => {
-  it('listMyRedemptions / listPendingRedemptions / findRedemptionByCode return points and deadlineKey', async () => {
+  it('listMyRedemptions / listPendingRedemptions return points and deadlineKey', async () => {
     const { student, prize } = await setup({ regular: 100, points: 50 });
     const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
 
     const mine = await listMyRedemptions(student.id);
     expect(mine).toHaveLength(1);
-    expect(mine[0]).toMatchObject({ code: r.code, prizeName: '恐龍模型', points: 50, status: 'PENDING', deadlineKey: r.deadlineKey });
+    expect(mine[0]).toMatchObject({ prizeName: '恐龍模型', points: 50, status: 'PENDING', deadlineKey: r.deadlineKey });
 
     const pending = await listPendingRedemptions();
-    expect(pending[0]).toMatchObject({ code: r.code, studentName: '小明', prizeName: '恐龍模型', points: 50 });
-
-    expect(await findRedemptionByCode(r.code)).toMatchObject({ studentName: '小明', status: 'PENDING' });
-    expect(await findRedemptionByCode('000000')).toBeNull();
+    expect(pending[0]).toMatchObject({ studentName: '小明', prizeName: '恐龍模型', points: 50 });
   });
 });
 

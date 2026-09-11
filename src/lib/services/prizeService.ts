@@ -1,5 +1,4 @@
 import { Prisma } from '@prisma/client';
-import { randomInt } from 'crypto';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser } from './notificationService';
@@ -7,12 +6,6 @@ import { prizeDeadlineKey, prizeRemindFromKey } from '@/lib/prizeDates';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { createPrizeSignedUrls, deletePrizeImages } from '@/lib/storage';
 import { taipeiDateKey } from '@/lib/taipeiDate';
-
-export const CODE_ATTEMPTS = 5;
-
-export function generatePrizeCode(): string {
-  return randomInt(0, 1_000_000).toString().padStart(6, '0');
-}
 
 // 兌換相關通知（收件夾＋推播）。寫入成功後才發；失敗只記 log，不影響主流程。
 async function notifyStudent(studentId: string, body: string) {
@@ -51,12 +44,9 @@ async function sumBucket(tx: Prisma.TransactionClient, studentId: string, bucket
   return agg._sum.amount ?? 0;
 }
 
-// 兌換：檢查上架/庫存/限換/餘額 → 扣點（先兌換專用、不足扣一般）→ 扣庫存 → 發代號。
+// 兌換：檢查上架/庫存/限換/餘額 → 扣點（先兌換專用、不足扣一般）→ 扣庫存。
 // 全程單一 Serializable 交易，防兩個並發兌換同時通過庫存/餘額檢查。
-export async function redeemPrize(
-  input: { studentId: string; prizeId: string },
-  generateCode: () => string = generatePrizeCode
-) {
+export async function redeemPrize(input: { studentId: string; prizeId: string }) {
   const result = await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
@@ -92,20 +82,10 @@ export async function redeemPrize(
 
         await tx.prize.update({ where: { id: prize.id }, data: { stock: { decrement: 1 } } });
 
-        let code = '';
-        for (let i = 0; i < CODE_ATTEMPTS; i++) {
-          const candidate = generateCode();
-          if ((await tx.prizeRedemption.count({ where: { code: candidate } })) === 0) {
-            code = candidate;
-            break;
-          }
-        }
-        if (!code) throw new Error('CODE_GENERATION_FAILED');
-
         const row = await tx.prizeRedemption.create({
-          data: { code, studentId: input.studentId, prizeId: prize.id, prizeName: prize.name, redeemOnlyUsed, regularUsed },
+          data: { studentId: input.studentId, prizeId: prize.id, prizeName: prize.name, redeemOnlyUsed, regularUsed },
         });
-        return { id: row.id, code, prizeName: prize.name, points: prize.points, createdAt: row.createdAt };
+        return { id: row.id, prizeName: prize.name, points: prize.points, createdAt: row.createdAt };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     )
@@ -113,7 +93,7 @@ export async function redeemPrize(
   const deadlineKey = prizeDeadlineKey(result.createdAt);
   await notifyStudent(
     input.studentId,
-    `兌換成功：${result.prizeName}，兌換代號 ${result.code}，請於 ${formatDateWithWeekday(deadlineKey)} 前至櫃台領取`
+    `兌換成功：${result.prizeName}，請於 ${formatDateWithWeekday(deadlineKey)} 前至櫃台領取`
   );
   return { ...result, deadlineKey };
 }
@@ -248,7 +228,6 @@ export async function listMyRedemptions(studentId: string) {
   const rows = await prisma.prizeRedemption.findMany({ where: { studentId }, orderBy: { createdAt: 'desc' } });
   return rows.map((r) => ({
     id: r.id,
-    code: r.code,
     prizeName: r.prizeName,
     points: r.redeemOnlyUsed + r.regularUsed,
     status: r.status,
@@ -265,7 +244,6 @@ export async function listPendingRedemptions() {
   });
   return rows.map((r) => ({
     id: r.id,
-    code: r.code,
     studentName: r.student.user.name,
     studentNumber: r.student.studentNumber,
     prizeName: r.prizeName,
@@ -273,24 +251,6 @@ export async function listPendingRedemptions() {
     createdAt: r.createdAt,
     deadlineKey: prizeDeadlineKey(r.createdAt),
   }));
-}
-
-export async function findRedemptionByCode(code: string) {
-  const r = await prisma.prizeRedemption.findUnique({
-    where: { code },
-    include: { student: { select: { user: { select: { name: true } } } } },
-  });
-  if (!r) return null;
-  return {
-    id: r.id,
-    code: r.code,
-    studentName: r.student.user.name,
-    prizeName: r.prizeName,
-    points: r.redeemOnlyUsed + r.regularUsed,
-    status: r.status,
-    createdAt: r.createdAt,
-    deadlineKey: prizeDeadlineKey(r.createdAt),
-  };
 }
 
 // 到期前 7 天提醒（每日 cron）：PENDING 且進入提醒窗、未提醒過的各發一次。

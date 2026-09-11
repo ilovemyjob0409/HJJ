@@ -29,14 +29,14 @@ function postReq(body: unknown) {
 }
 
 describe('POST /api/prize-redemptions (student redeem)', () => {
-  it('201 redeems for the logged-in student and returns the code', async () => {
+  it('201 redeems for the logged-in student', async () => {
     const { student, user } = await makeStudent('pzr-a@example.com');
     const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 1, sortOrder: 0 } });
     asUser(user.id, 'STUDENT');
     const res = await POST(postReq({ prizeId: prize.id }));
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.code).toMatch(/^\d{6}$/);
+    expect(body.prizeName).toBe('貼紙');
     expect(body.deadlineKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
@@ -54,19 +54,16 @@ describe('POST /api/prize-redemptions (student redeem)', () => {
 });
 
 describe('GET /api/prize-redemptions', () => {
-  it('student sees own rows; admin ?code= finds one; admin default lists pending', async () => {
+  it('student sees own rows; admin default lists pending', async () => {
     const { student, user } = await makeStudent('pzr-c@example.com');
     const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 2, sortOrder: 0 } });
     asUser(user.id, 'STUDENT');
-    const created = await (await POST(postReq({ prizeId: prize.id }))).json();
+    await (await POST(postReq({ prizeId: prize.id }))).json();
 
     const mineRes = await GET(new NextRequest('http://x/api/prize-redemptions'));
     expect((await mineRes.json())).toHaveLength(1);
 
     asUser('admin-1', 'ADMIN');
-    const byCode = await GET(new NextRequest(`http://x/api/prize-redemptions?code=${created.code}`));
-    expect((await byCode.json()).studentName).toBe('小明');
-    expect((await GET(new NextRequest('http://x/api/prize-redemptions?code=000000'))).status).toBe(404);
     const pending = await GET(new NextRequest('http://x/api/prize-redemptions'));
     expect(await pending.json()).toHaveLength(1);
   });

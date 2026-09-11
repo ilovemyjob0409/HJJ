@@ -6,19 +6,12 @@ import {
   redeemPrize,
   listMyRedemptions,
   listPendingRedemptions,
-  findRedemptionByCode,
 } from '@/lib/services/prizeService';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (session.user.role === 'ADMIN') {
-    const code = req.nextUrl.searchParams.get('code');
-    if (code) {
-      const row = await findRedemptionByCode(code.trim());
-      if (!row) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 });
-      return NextResponse.json(row);
-    }
     return NextResponse.json(await listPendingRedemptions());
   }
   if (session.user.role === 'STUDENT') {

@@ -28,7 +28,6 @@ CREATE TABLE IF NOT EXISTS "Prize" (
 -- 4) 兌換紀錄
 CREATE TABLE IF NOT EXISTS "PrizeRedemption" (
     "id" TEXT NOT NULL,
-    "code" TEXT NOT NULL,
     "studentId" TEXT NOT NULL,
     "prizeId" TEXT NOT NULL,
     "prizeName" TEXT NOT NULL,
@@ -43,7 +42,6 @@ CREATE TABLE IF NOT EXISTS "PrizeRedemption" (
     CONSTRAINT "PrizeRedemption_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "PrizeRedemption_code_key" ON "PrizeRedemption"("code");
 CREATE INDEX IF NOT EXISTS "PrizeRedemption_studentId_idx" ON "PrizeRedemption"("studentId");
 CREATE INDEX IF NOT EXISTS "PrizeRedemption_status_idx" ON "PrizeRedemption"("status");
 

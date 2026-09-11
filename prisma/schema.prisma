@@ -773,7 +773,6 @@ model Prize {
 // 退點按快照精準退回原桶。
 model PrizeRedemption {
   id               String                @id @default(cuid())
-  code             String                @unique // 6 位純數字兌換代號
   studentId        String
   student          Student               @relation(fields: [studentId], references: [id])
   prizeId          String
