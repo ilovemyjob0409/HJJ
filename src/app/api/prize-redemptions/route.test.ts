@@ -91,4 +91,31 @@ describe('pickup / cancel routes', () => {
     expect((await PICKUP(postReq({}), { params: { id: again.id } })).status).toBe(200);
     expect((await prisma.prizeRedemption.findUniqueOrThrow({ where: { id: again.id } })).operator).toBe('王行政');
   });
+
+  it('admin can cancel another student\'s PENDING and records operator name', async () => {
+    const { student, user } = await makeStudent('pzr-e@example.com');
+    const prize = await prisma.prize.create({ data: { name: '獎牌', points: 20, stock: 1, sortOrder: 0 } });
+    asUser(user.id, 'STUDENT');
+    const created = await (await POST(postReq({ prizeId: prize.id }))).json();
+
+    asUser('admin-1', 'ADMIN', '王行政');
+    const res = await CANCEL(postReq({}), { params: { id: created.id } });
+    expect(res.status).toBe(200);
+    expect((await prisma.prizeRedemption.findUniqueOrThrow({ where: { id: created.id } })).operator).toBe('王行政');
+  });
+
+  it('student cannot cancel another student\'s redemption (404)', async () => {
+    const { student: student1, user: user1 } = await makeStudent('pzr-f@example.com');
+    const { student: student2, user: user2 } = await makeStudent('pzr-g@example.com');
+    const prize = await prisma.prize.create({ data: { name: '徽章', points: 15, stock: 2, sortOrder: 0 } });
+
+    // Student 1 creates a redemption
+    asUser(user1.id, 'STUDENT');
+    const created = await (await POST(postReq({ prizeId: prize.id }))).json();
+
+    // Student 2 tries to cancel it
+    asUser(user2.id, 'STUDENT');
+    const res = await CANCEL(postReq({}), { params: { id: created.id } });
+    expect(res.status).toBe(404);
+  });
 });
