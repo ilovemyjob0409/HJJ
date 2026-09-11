@@ -23,16 +23,8 @@ async function makeStudent(email: string) {
 
 const asUser = (id: string, role: string, name = '王行政') => sessionMock.mockResolvedValue({ user: { id, role, name } });
 
-function getReq() {
-  return new NextRequest('http://x/api/prizes');
-}
-
 function postReq(body: unknown) {
   return new NextRequest('http://x/api/prizes', { method: 'POST', body: JSON.stringify(body) });
-}
-
-function patchReq(body: unknown) {
-  return new NextRequest('http://x/api/prizes/123', { method: 'PATCH', body: JSON.stringify(body) });
 }
 
 describe('GET /api/prizes', () => {
@@ -43,15 +35,15 @@ describe('GET /api/prizes', () => {
   });
 
   it('student sees listPrizesForStudent with alreadyRedeemed field', async () => {
-    const { student, user } = await makeStudent('prizes-get-student@example.com');
+    const { user } = await makeStudent('prizes-get-student@example.com');
     const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 5, sortOrder: 0, active: true } });
     asUser(user.id, 'STUDENT');
     const res = await GET();
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>[];
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBeGreaterThan(0);
-    const item = body.find((p: any) => p.id === prize.id);
+    const item = body.find((p) => (p as Record<string, unknown>).id === prize.id);
     expect(item).toBeDefined();
     expect(item.name).toBe('貼紙');
     expect(item.points).toBe(10);
@@ -65,9 +57,9 @@ describe('GET /api/prizes', () => {
     asUser('admin-1', 'ADMIN');
     const res = await GET();
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>[];
     expect(Array.isArray(body)).toBe(true);
-    const item = body.find((p: any) => p.id === prize.id);
+    const item = body.find((p) => (p as Record<string, unknown>).id === prize.id);
     expect(item).toBeDefined();
     expect(item.active).toBe(false);
     expect(item.sortOrder).toBe(1);

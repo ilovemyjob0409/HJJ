@@ -30,7 +30,7 @@ function postReq(body: unknown) {
 
 describe('POST /api/prize-redemptions (student redeem)', () => {
   it('201 redeems for the logged-in student', async () => {
-    const { student, user } = await makeStudent('pzr-a@example.com');
+    const { user } = await makeStudent('pzr-a@example.com');
     const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 1, sortOrder: 0 } });
     asUser(user.id, 'STUDENT');
     const res = await POST(postReq({ prizeId: prize.id }));
@@ -55,7 +55,7 @@ describe('POST /api/prize-redemptions (student redeem)', () => {
 
 describe('GET /api/prize-redemptions', () => {
   it('student sees own rows; admin default lists pending', async () => {
-    const { student, user } = await makeStudent('pzr-c@example.com');
+    const { user } = await makeStudent('pzr-c@example.com');
     const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 2, sortOrder: 0 } });
     asUser(user.id, 'STUDENT');
     await (await POST(postReq({ prizeId: prize.id }))).json();
@@ -71,7 +71,7 @@ describe('GET /api/prize-redemptions', () => {
 
 describe('pickup / cancel routes', () => {
   it('admin pickup succeeds; student cannot pickup; student cancels own PENDING', async () => {
-    const { student, user } = await makeStudent('pzr-d@example.com');
+    const { user } = await makeStudent('pzr-d@example.com');
     const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 2, sortOrder: 0 } });
     asUser(user.id, 'STUDENT');
     const created = await (await POST(postReq({ prizeId: prize.id }))).json();
@@ -90,7 +90,7 @@ describe('pickup / cancel routes', () => {
   });
 
   it('admin can cancel another student\'s PENDING and records operator name', async () => {
-    const { student, user } = await makeStudent('pzr-e@example.com');
+    const { user } = await makeStudent('pzr-e@example.com');
     const prize = await prisma.prize.create({ data: { name: '獎牌', points: 20, stock: 1, sortOrder: 0 } });
     asUser(user.id, 'STUDENT');
     const created = await (await POST(postReq({ prizeId: prize.id }))).json();
@@ -102,8 +102,8 @@ describe('pickup / cancel routes', () => {
   });
 
   it('student cannot cancel another student\'s redemption (404)', async () => {
-    const { student: student1, user: user1 } = await makeStudent('pzr-f@example.com');
-    const { student: student2, user: user2 } = await makeStudent('pzr-g@example.com');
+    const { user: user1 } = await makeStudent('pzr-f@example.com');
+    const { user: user2 } = await makeStudent('pzr-g@example.com');
     const prize = await prisma.prize.create({ data: { name: '徽章', points: 15, stock: 2, sortOrder: 0 } });
 
     // Student 1 creates a redemption

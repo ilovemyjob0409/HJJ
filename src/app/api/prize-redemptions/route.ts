@@ -8,7 +8,7 @@ import {
   listPendingRedemptions,
 } from '@/lib/services/prizeService';
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (session.user.role === 'ADMIN') {
