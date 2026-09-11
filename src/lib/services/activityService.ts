@@ -14,12 +14,13 @@ const ACTIVITY_LIST_SELECT = {
   id: true,
   title: true,
   description: true,
+  categoryId: true,
   category: { select: { name: true } },
   location: true,
   startDate: true,
   endDate: true,
   capacity: true,
-  teachers: { select: { teacher: { select: { user: { select: NAME_ONLY_SELECT } } } } },
+  teachers: { select: { teacherId: true, teacher: { select: { user: { select: NAME_ONLY_SELECT } } } } },
   images: { orderBy: { createdAt: 'asc' as const }, take: 1, select: { storagePath: true } },
   registrations: {
     select: {
@@ -83,6 +84,27 @@ export function createActivity(input: CreateActivityInput) {
       capacity: input.capacity,
       teachers: { create: input.teacherIds.map((teacherId) => ({ teacherId })) },
     },
+  });
+}
+
+// Replaces the teacher list wholesale — assignments are current state, not
+// history, so the delete-and-recreate inside one transaction is safe.
+export function updateActivity(id: string, input: CreateActivityInput) {
+  return prisma.$transaction(async (tx) => {
+    await tx.activityTeacher.deleteMany({ where: { activityId: id } });
+    return tx.activity.update({
+      where: { id },
+      data: {
+        title: input.title,
+        description: input.description,
+        categoryId: input.categoryId,
+        location: input.location ?? null,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        capacity: input.capacity,
+        teachers: { create: input.teacherIds.map((teacherId) => ({ teacherId })) },
+      },
+    });
   });
 }
 

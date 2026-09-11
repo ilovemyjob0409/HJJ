@@ -4,14 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import Textarea from '@/components/ui/Textarea';
-import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 import ActivityDetail from '@/components/ActivityDetail';
+import ActivityFormFields, { ActivityFormValues, EMPTY_ACTIVITY_FORM } from '@/components/ActivityFormFields';
 import ImageCropModal from '@/components/ImageCropModal';
 import { compressImage } from '@/lib/imageCompression';
 import { uploadCompressedImage } from '@/lib/uploadActivityImage';
@@ -42,12 +41,13 @@ interface ActivityRow {
   coverUrl: string | null;
   title: string;
   description: string;
+  categoryId: string;
   category: { name: string };
   location: string | null;
   startDate: string;
   endDate: string;
   capacity: number;
-  teachers: { teacher: { user: { name: string } } }[];
+  teachers: { teacherId: string; teacher: { user: { name: string } } }[];
   registrations: RosterEntry[];
   _count: { registrations: number };
 }
@@ -65,18 +65,12 @@ export default function AdminActivitiesPage() {
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    categoryId: '',
-    location: '',
-    startDate: '',
-    endDate: '',
-    capacity: '20',
-  });
-  const [formTeacherIds, setFormTeacherIds] = useState<string[]>([]);
-  const [teacherPickerOpen, setTeacherPickerOpen] = useState(false);
+  const [form, setForm] = useState<ActivityFormValues>(EMPTY_ACTIVITY_FORM);
   const [formError, setFormError] = useState('');
+  const [editing, setEditing] = useState<ActivityRow | null>(null);
+  const [editForm, setEditForm] = useState<ActivityFormValues>(EMPTY_ACTIVITY_FORM);
+  const [editError, setEditError] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
   const [showCategoryPanel, setShowCategoryPanel] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [viewing, setViewing] = useState<ActivityRow | null>(null);
@@ -105,10 +99,6 @@ export default function AdminActivitiesPage() {
   useEffect(() => {
     load();
   }, []);
-
-  function toggleFormTeacher(teacherId: string) {
-    setFormTeacherIds((prev) => (prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId]));
-  }
 
   function clearStagedPhotos() {
     setStagedPhotos((prev) => {
@@ -152,13 +142,13 @@ export default function AdminActivitiesPage() {
     setSubmitting(true);
     try {
       setFormError('');
-      if (formTeacherIds.length === 0) {
+      if (form.teacherIds.length === 0) {
         setFormError('請至少選擇一位帶領老師');
         return;
       }
       const res = await fetch('/api/activities', {
         method: 'POST',
-        body: JSON.stringify({ ...form, capacity: Number(form.capacity), teacherIds: formTeacherIds }),
+        body: JSON.stringify({ ...form, capacity: Number(form.capacity) }),
       });
       if (!res.ok) {
         setFormError('新增活動失敗，請稍後再試');
@@ -171,14 +161,54 @@ export default function AdminActivitiesPage() {
         if (!ok) failedPhotos += 1;
       }
       clearStagedPhotos();
-      setForm({ title: '', description: '', categoryId: '', location: '', startDate: '', endDate: '', capacity: '20' });
-      setFormTeacherIds([]);
-      setTeacherPickerOpen(false);
+      setForm(EMPTY_ACTIVITY_FORM);
       setShowAddForm(false);
       showToast(failedPhotos === 0 ? '已新增活動' : `已新增活動，但有 ${failedPhotos} 張照片上傳失敗`);
       load();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function openEdit(a: ActivityRow) {
+    setEditForm({
+      title: a.title,
+      description: a.description,
+      categoryId: a.categoryId,
+      location: a.location ?? '',
+      startDate: a.startDate.slice(0, 10),
+      endDate: a.endDate.slice(0, 10),
+      capacity: String(a.capacity),
+      teacherIds: a.teachers.map((t) => t.teacherId),
+    });
+    setEditError('');
+    setViewing(null);
+    setEditing(a);
+  }
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setEditSubmitting(true);
+    try {
+      setEditError('');
+      if (editForm.teacherIds.length === 0) {
+        setEditError('請至少選擇一位帶領老師');
+        return;
+      }
+      const res = await fetch(`/api/activities/${editing.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...editForm, capacity: Number(editForm.capacity) }),
+      });
+      if (!res.ok) {
+        setEditError('更新活動失敗，請稍後再試');
+        return;
+      }
+      setEditing(null);
+      showToast('已更新活動');
+      load();
+    } finally {
+      setEditSubmitting(false);
     }
   }
 
@@ -262,7 +292,13 @@ export default function AdminActivitiesPage() {
     {
       header: '操作',
       render: (a) => (
-        <Button variant="link" onClick={() => setViewing(a)}>
+        <Button
+          variant="link"
+          onClick={(e) => {
+            e.stopPropagation();
+            openEdit(a);
+          }}
+        >
           編輯
         </Button>
       ),
@@ -291,55 +327,7 @@ export default function AdminActivitiesPage() {
             </Button>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-            <Input placeholder="標題" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
-            <Textarea
-              placeholder="描述"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              rows={3}
-              required
-            />
-            <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required>
-              <option value="">請選擇分類</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-            <Input placeholder="地點（選填）" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-            <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required />
-            <Input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} required />
-            <Input
-              type="number"
-              min="1"
-              placeholder="人數上限"
-              value={form.capacity}
-              onChange={(e) => setForm({ ...form, capacity: e.target.value })}
-              required
-            />
-            <div>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between text-sm font-medium text-ink"
-                onClick={() => setTeacherPickerOpen((open) => !open)}
-              >
-                <span>
-                  帶領老師（至少選 1 位{formTeacherIds.length > 0 ? `，已選 ${formTeacherIds.length} 位` : ''}）
-                </span>
-                <span className="text-xs text-inkMuted">{teacherPickerOpen ? '收合' : '展開'}</span>
-              </button>
-              {teacherPickerOpen && (
-                <div className="mt-1 flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-borderStrong p-2">
-                  {teachers.map((t) => (
-                    <label key={t.id} className="flex items-center gap-2 text-sm text-ink">
-                      <input type="checkbox" checked={formTeacherIds.includes(t.id)} onChange={() => toggleFormTeacher(t.id)} />
-                      {t.user.name}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ActivityFormFields values={form} onChange={setForm} categories={categories} teachers={teachers} />
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-sm font-medium text-ink">照片（選填）</p>
@@ -448,12 +436,25 @@ export default function AdminActivitiesPage() {
               </button>
             )}
             footer={
-              <Button variant="link" tone="danger" className="text-left text-sm" onClick={handleDeleteActivity}>
-                刪除此活動
-              </Button>
+              <div className="flex items-center gap-4">
+                <Button variant="link" className="text-sm" onClick={() => openEdit(viewing)}>
+                  編輯活動
+                </Button>
+                <Button variant="link" tone="danger" className="text-sm" onClick={handleDeleteActivity}>
+                  刪除此活動
+                </Button>
+              </div>
             }
           />
         )}
+      </Modal>
+
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯活動">
+        <form onSubmit={handleEditSubmit} className="flex flex-col gap-2">
+          <ActivityFormFields values={editForm} onChange={setEditForm} categories={categories} teachers={teachers} />
+          {editError && <p className="text-sm text-rejected">{editError}</p>}
+          <Button type="submit" loading={editSubmitting}>儲存</Button>
+        </form>
       </Modal>
       {ConfirmDialog}
     </>

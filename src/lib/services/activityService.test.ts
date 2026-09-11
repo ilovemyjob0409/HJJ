@@ -13,6 +13,7 @@ vi.mock('@/lib/storage', () => ({
 
 import {
   createActivity,
+  updateActivity,
   listAllActivities,
   listActivitiesForTeacher,
   listOpenActivitiesForStudent,
@@ -303,6 +304,83 @@ describe('deleteActivity', () => {
 
     await expect(deleteActivity(activity.id)).rejects.toThrow('ACTIVITY_HAS_ATTENDANCE');
     expect(await prisma.activity.findUnique({ where: { id: activity.id } })).not.toBeNull();
+  });
+});
+
+describe('updateActivity', () => {
+  it('updates all fields, replaces teacher assignments, and exposes categoryId/teacherId for prefill', async () => {
+    const teacherA = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const teacherB = await createTeacher({ name: '林老師', email: 'lin@example.com', password: 'x', subjects: '圍棋' });
+    const camp = await createCategory('營隊');
+    const lecture = await createCategory('講座');
+    const activity = await createActivity({
+      title: '原標題',
+      description: '原描述',
+      categoryId: camp.id,
+      location: '原地點',
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 2),
+      capacity: 10,
+      teacherIds: [teacherA.id],
+    });
+
+    await updateActivity(activity.id, {
+      title: '新標題',
+      description: '新描述',
+      categoryId: lecture.id,
+      location: '新地點',
+      startDate: new Date(2026, 7, 5),
+      endDate: new Date(2026, 7, 6),
+      capacity: 25,
+      teacherIds: [teacherB.id],
+    });
+
+    const updated = await prisma.activity.findUniqueOrThrow({ where: { id: activity.id } });
+    expect(updated.title).toBe('新標題');
+    expect(updated.description).toBe('新描述');
+    expect(updated.categoryId).toBe(lecture.id);
+    expect(updated.location).toBe('新地點');
+    expect(updated.startDate).toEqual(new Date(2026, 7, 5));
+    expect(updated.endDate).toEqual(new Date(2026, 7, 6));
+    expect(updated.capacity).toBe(25);
+
+    const links = await prisma.activityTeacher.findMany({ where: { activityId: activity.id } });
+    expect(links.map((l) => l.teacherId)).toEqual([teacherB.id]);
+
+    const detail = await getActivityDetail(activity.id);
+    expect(detail.categoryId).toBe(lecture.id);
+    expect(detail.teachers.map((t) => t.teacherId)).toEqual([teacherB.id]);
+  });
+
+  it('clears location when omitted and keeps existing registrations intact', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const activity = await createActivity({
+      title: '營隊',
+      description: 'x',
+      categoryId: category.id,
+      location: '教室',
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 1),
+      capacity: 8,
+      teacherIds: [teacher.id],
+    });
+    await registerForActivity(activity.id, student.id);
+
+    await updateActivity(activity.id, {
+      title: '營隊',
+      description: 'x',
+      categoryId: category.id,
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 1),
+      capacity: 8,
+      teacherIds: [teacher.id],
+    });
+
+    const updated = await prisma.activity.findUniqueOrThrow({ where: { id: activity.id } });
+    expect(updated.location).toBeNull();
+    expect(await prisma.activityRegistration.count({ where: { activityId: activity.id } })).toBe(1);
   });
 });
 
