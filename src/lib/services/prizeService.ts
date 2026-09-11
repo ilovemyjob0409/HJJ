@@ -3,9 +3,10 @@ import { randomInt } from 'crypto';
 import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser } from './notificationService';
-import { prizeDeadlineKey } from '@/lib/prizeDates';
+import { prizeDeadlineKey, prizeRemindFromKey } from '@/lib/prizeDates';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { createPrizeSignedUrls, deletePrizeImages } from '@/lib/storage';
+import { taipeiDateKey } from '@/lib/taipeiDate';
 
 export const CODE_ATTEMPTS = 5;
 
@@ -290,4 +291,50 @@ export async function findRedemptionByCode(code: string) {
     createdAt: r.createdAt,
     deadlineKey: prizeDeadlineKey(r.createdAt),
   };
+}
+
+// 到期前 7 天提醒（每日 cron）：PENDING 且進入提醒窗、未提醒過的各發一次。
+export async function sendPrizeExpiryReminders(): Promise<number> {
+  const today = taipeiDateKey(new Date());
+  const rows = await prisma.prizeRedemption.findMany({ where: { status: 'PENDING', expiryRemindedAt: null } });
+  const due = rows.filter((r) => today >= prizeRemindFromKey(r.createdAt));
+  for (const r of due) {
+    await notifyStudent(
+      r.studentId,
+      `兌換的「${r.prizeName}」將於 ${formatDateWithWeekday(prizeDeadlineKey(r.createdAt))} 到期，請盡快至櫃台領取`
+    );
+    await prisma.prizeRedemption.update({ where: { id: r.id }, data: { expiryRemindedAt: new Date() } });
+  }
+  return due.length;
+}
+
+// 逾期自動退點（每日 cron）：期限日（含）過後才處理。逐筆各自成交易，
+// 交易內重讀狀態——期間被領取/取消就跳過，不會重複退點。
+export async function expireOverduePrizeRedemptions(): Promise<number> {
+  const today = taipeiDateKey(new Date());
+  const rows = await prisma.prizeRedemption.findMany({ where: { status: 'PENDING' } });
+  const overdue = rows.filter((r) => today > prizeDeadlineKey(r.createdAt));
+  let processed = 0;
+  for (const r of overdue) {
+    const expired = await runSerializableWithRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const cur = await tx.prizeRedemption.findUnique({ where: { id: r.id } });
+          if (!cur || cur.status !== 'PENDING') return false;
+          await refundAndRestock(tx, cur, '逾期退點');
+          await tx.prizeRedemption.update({
+            where: { id: r.id },
+            data: { status: 'EXPIRED', cancelledAt: new Date(), operator: '系統（逾期）' },
+          });
+          return true;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      )
+    );
+    if (expired) {
+      processed += 1;
+      await notifyStudent(r.studentId, `兌換的「${r.prizeName}」已逾期，${r.redeemOnlyUsed + r.regularUsed} 點已自動退回`);
+    }
+  }
+  return processed;
 }

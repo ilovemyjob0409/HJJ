@@ -12,6 +12,8 @@ import {
   listMyRedemptions,
   listPendingRedemptions,
   findRedemptionByCode,
+  sendPrizeExpiryReminders,
+  expireOverduePrizeRedemptions,
 } from './prizeService';
 
 async function setup(opts?: { regular?: number; redeemOnly?: number; points?: number; stock?: number }) {
@@ -24,6 +26,23 @@ async function setup(opts?: { regular?: number; redeemOnly?: number; points?: nu
   if (opts?.redeemOnly) grants.push({ studentId: student.id, bucket: 'REDEEM_ONLY' as const, amount: opts.redeemOnly, kind: 'LOTTERY_WIN' as const, reason: 'x' });
   if (grants.length) await prisma.pointTransaction.createMany({ data: grants });
   return { student, prize };
+}
+
+const DAY_MS = 86_400_000;
+let redeemCounter = 0;
+
+async function redeemDaysAgo(days: number) {
+  redeemCounter++;
+  const student = await createStudent({ name: `學生${redeemCounter}`, email: `pz-student${redeemCounter}@example.com`, password: 'x' });
+  const prize = await prisma.prize.create({
+    data: { name: '恐龍模型', points: 50, stock: 3, sortOrder: 0 },
+  });
+  await prisma.pointTransaction.create({
+    data: { studentId: student.id, bucket: 'REGULAR', amount: 100, kind: 'TEACHER_AWARD', reason: 'x' },
+  });
+  const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+  await prisma.prizeRedemption.update({ where: { id: r.id }, data: { createdAt: new Date(Date.now() - days * DAY_MS) } });
+  return { student, prize, id: r.id };
 }
 
 describe('redeemPrize', () => {
@@ -196,5 +215,42 @@ describe('redemption lists', () => {
 
     expect(await findRedemptionByCode(r.code)).toMatchObject({ studentName: '小明', status: 'PENDING' });
     expect(await findRedemptionByCode('000000')).toBeNull();
+  });
+});
+
+describe('sendPrizeExpiryReminders', () => {
+  it('reminds only rows in the 7-day window without a prior reminder, and only once', async () => {
+    const due = await redeemDaysAgo(25); // 期限剩 5 天 → 提醒
+    expect(await sendPrizeExpiryReminders()).toBe(1);
+    const row = await prisma.prizeRedemption.findUniqueOrThrow({ where: { id: due.id } });
+    expect(row.expiryRemindedAt).not.toBeNull();
+    expect(await sendPrizeExpiryReminders()).toBe(0); // 不重複
+  });
+
+  it('skips fresh redemptions', async () => {
+    await redeemDaysAgo(3);
+    expect(await sendPrizeExpiryReminders()).toBe(0);
+  });
+});
+
+describe('expireOverduePrizeRedemptions', () => {
+  it('expires >30-day-old PENDING rows: refund, restock, EXPIRED with system operator', async () => {
+    const overdue = await redeemDaysAgo(31);
+    expect(await expireOverduePrizeRedemptions()).toBe(1);
+
+    const row = await prisma.prizeRedemption.findUniqueOrThrow({ where: { id: overdue.id } });
+    expect(row.status).toBe('EXPIRED');
+    expect(row.operator).toBe('系統（逾期）');
+    const refunds = await prisma.pointTransaction.findMany({ where: { kind: 'REDEMPTION_REFUND' } });
+    expect(refunds.reduce((s, t) => s + t.amount, 0)).toBe(50);
+    for (const t of refunds) expect(t.reason).toBe('逾期退點：恐龍模型');
+    expect((await prisma.prize.findUniqueOrThrow({ where: { id: overdue.prize.id } })).stock).toBe(3);
+  });
+
+  it('leaves 30-day-old (deadline day) and picked-up rows alone', async () => {
+    await redeemDaysAgo(29); // 未過期限
+    const picked = await redeemDaysAgo(40);
+    await prisma.prizeRedemption.update({ where: { id: picked.id }, data: { status: 'PICKED_UP' } });
+    expect(await expireOverduePrizeRedemptions()).toBe(0);
   });
 });
