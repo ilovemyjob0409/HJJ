@@ -9,6 +9,7 @@ import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 import PrizeFormModal, { PrizeRow } from './PrizeFormModal';
+import PrizeRulesManager from './PrizeRulesManager';
 
 interface RedemptionRow {
   id: string;
@@ -274,6 +275,8 @@ export default function AdminPrizesPage() {
       <AlertModal open={errorInfo !== null} onClose={() => setErrorInfo(null)} title={errorInfo?.title ?? '發生錯誤'}>
         {errorInfo?.message}
       </AlertModal>
+
+      <PrizeRulesManager />
 
       {ConfirmDialog}
     </>

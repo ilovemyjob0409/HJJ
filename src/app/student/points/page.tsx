@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getPointBalances, listPointHistory } from '@/lib/services/pointService';
 import { listPrizesForStudent, listMyRedemptions } from '@/lib/services/prizeService';
+import { listPrizeRuleItems } from '@/lib/services/prizeRuleService';
 import Card from '@/components/ui/Card';
 import PointsHistoryTable from './PointsHistoryTable';
 import PrizeZone from './PrizeZone';
@@ -26,11 +27,12 @@ export default async function StudentPointsPage() {
     );
   }
 
-  const [balances, history, prizes, redemptions] = await Promise.all([
+  const [balances, history, prizes, redemptions, rules] = await Promise.all([
     getPointBalances(student.id),
     listPointHistory(student.id),
     listPrizesForStudent(student.id),
     listMyRedemptions(student.id),
+    listPrizeRuleItems(),
   ]);
   const total = balances.regular + balances.redeemOnly;
 
@@ -55,6 +57,19 @@ export default async function StudentPointsPage() {
       </div>
 
       <PrizeZone prizes={prizes} redemptions={redemptions} total={total} />
+
+      {rules.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-2 font-bold text-ink">兌換規則</h2>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-inkMuted">
+            {rules.map((r) => (
+              <li key={r.id} className="whitespace-pre-wrap">
+                {r.content}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <h2 className="mb-2 font-bold text-ink">點數紀錄</h2>
       <Card>

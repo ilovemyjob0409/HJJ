@@ -769,6 +769,15 @@ model Prize {
   redemptions PrizeRedemption[]
 }
 
+// 兌換規則（行政逐條維護，顯示在學生「集點＆獎品」頁；比照 MakeupNoticeItem）
+model PrizeRuleItem {
+  id        String   @id @default(cuid())
+  content   String
+  sortOrder Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // 兌換紀錄＝狀態機主體。prizeName／兩桶扣點為快照，獎品改名刪除不影響歷史，
 // 退點按快照精準退回原桶。
 model PrizeRedemption {
