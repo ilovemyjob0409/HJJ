@@ -34,6 +34,8 @@ interface ActivityDetailProps {
   canManageAlbum?: boolean;
   onImagesChanged?: () => void;
   rosterItemAction?: (r: ActivityDetailData['registrations'][number]) => ReactNode;
+  // 報名名單標題右側的自訂控件（行政端放「幫學生報名」）
+  rosterHeaderAction?: ReactNode;
   footer?: ReactNode;
 }
 
@@ -81,6 +83,7 @@ export default function ActivityDetail({
   canManageAlbum = false,
   onImagesChanged,
   rosterItemAction,
+  rosterHeaderAction,
   footer,
 }: ActivityDetailProps) {
   const { showToast } = useToast();
@@ -312,7 +315,10 @@ export default function ActivityDetail({
         {activity.description && <p className="whitespace-pre-wrap text-sm text-ink">{activity.description}</p>}
 
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-inkMuted">報名名單（{activity.registrations.length}）</h3>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-inkMuted">報名名單（{activity.registrations.length}）</h3>
+            {rosterHeaderAction}
+          </div>
           {activity.registrations.length === 0 ? (
             <p className="text-sm text-inkMuted">尚無學生報名</p>
           ) : (

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Select from '@/components/ui/Select';
 import Input from '@/components/ui/Input';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -74,6 +75,10 @@ export default function AdminActivitiesPage() {
   const [showCategoryPanel, setShowCategoryPanel] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [viewing, setViewing] = useState<ActivityRow | null>(null);
+  // 行政代報名：學生名單（首次開詳情彈窗才抓）＋選擇狀態
+  const [allStudents, setAllStudents] = useState<{ id: string; studentNumber: string | null; user: { name: string } }[]>([]);
+  const [addStudentId, setAddStudentId] = useState('');
+  const [addingStudent, setAddingStudent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [categorySubmitting, setCategorySubmitting] = useState(false);
@@ -267,6 +272,40 @@ export default function AdminActivitiesPage() {
     setViewing((prev) => (prev ? (updated.find((a) => a.id === prev.id) ?? null) : null));
   }
 
+  useEffect(() => {
+    if (!viewing || allStudents.length > 0) return;
+    fetch('/api/students')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setAllStudents)
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewing]);
+
+  async function handleAdminRegister() {
+    if (!viewing || !addStudentId) return;
+    setAddingStudent(true);
+    try {
+      const res = await fetch('/api/activity-registrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activityId: viewing.id, studentId: addStudentId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error === 'ALREADY_REGISTERED' ? '這位學生已報名過' : '報名失敗，請稍後再試');
+        return;
+      }
+      showToast('已幫學生報名');
+      setAddStudentId('');
+      const listRes = await fetch('/api/activities');
+      const updated: ActivityRow[] = await listRes.json();
+      setActivities(updated);
+      setViewing((prev) => (prev ? (updated.find((a) => a.id === prev.id) ?? null) : null));
+    } finally {
+      setAddingStudent(false);
+    }
+  }
+
   const columns: Column<ActivityRow>[] = [
     {
       header: '封面',
@@ -430,6 +469,36 @@ export default function AdminActivitiesPage() {
             onClose={() => setViewing(null)}
             canManageAlbum
             onImagesChanged={load}
+            rosterHeaderAction={
+              <div className="flex items-center gap-2">
+                <Select
+                  value={addStudentId}
+                  onChange={(e) => setAddStudentId(e.target.value)}
+                  className="min-w-0 py-1 text-xs"
+                  aria-label="選擇要代報名的學生"
+                >
+                  <option value="">選擇學生…</option>
+                  {allStudents
+                    .filter((st) => !viewing.registrations.some((r) => r.studentId === st.id))
+                    .map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.user.name}
+                        {st.studentNumber ? `（${st.studentNumber}）` : ''}
+                      </option>
+                    ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="whitespace-nowrap text-xs"
+                  loading={addingStudent}
+                  disabled={!addStudentId}
+                  onClick={handleAdminRegister}
+                >
+                  幫學生報名
+                </Button>
+              </div>
+            }
             rosterItemAction={(r) => (
               <button type="button" aria-label="移除報名" className="text-rejected hover:underline" onClick={() => handleRemoveRegistration(r.id)}>
                 ✕

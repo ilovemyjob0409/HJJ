@@ -26,6 +26,7 @@ import {
   listCategories,
   createCategory,
   deleteCategory,
+  adminRegisterStudent,
 } from './activityService';
 
 describe('createActivity / listAllActivities', () => {
@@ -183,6 +184,30 @@ describe('registerForActivity', () => {
 
     const count = await prisma.activityRegistration.count({ where: { activityId: activity.id } });
     expect(count).toBe(1);
+  });
+});
+
+describe('adminRegisterStudent', () => {
+  it('registers beyond capacity (admin override) and rejects duplicates', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'chen@example.com', password: 'x', subjects: '圍棋' });
+    const category = await createCategory('營隊');
+    const studentA = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    const studentB = await createStudent({ name: '小華', email: 'hua@example.com', password: 'x' });
+    await createActivity({ title: '營隊', description: 'x', categoryId: category.id, startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 1), capacity: 1, teacherIds: [teacher.id] });
+    const activity = await prisma.activity.findFirstOrThrow();
+    await registerForActivity(activity.id, studentA.id);
+
+    // 已額滿仍可代報（1/1 → 2/1）
+    const over = await adminRegisterStudent(activity.id, studentB.id);
+    expect(over.studentId).toBe(studentB.id);
+    expect(await prisma.activityRegistration.count({ where: { activityId: activity.id } })).toBe(2);
+
+    await expect(adminRegisterStudent(activity.id, studentB.id)).rejects.toThrow('ALREADY_REGISTERED');
+  });
+
+  it('throws NOT_FOUND for an unknown activity', async () => {
+    const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x' });
+    await expect(adminRegisterStudent('nope', student.id)).rejects.toThrow('NOT_FOUND');
   });
 });
 

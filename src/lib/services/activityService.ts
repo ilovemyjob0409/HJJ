@@ -165,6 +165,19 @@ export async function adminRemoveRegistration(id: string) {
   await prisma.activityRegistration.delete({ where: { id } });
 }
 
+// 行政代報名：不受名額限制（現場判斷權在行政，比照弈廳代報慣例）；
+// 重複報名靠 @@unique 防線，併發下 P2002 一律映射成 ALREADY_REGISTERED。
+export async function adminRegisterStudent(activityId: string, studentId: string) {
+  const activity = await prisma.activity.findUnique({ where: { id: activityId } });
+  if (!activity) throw new Error('NOT_FOUND');
+  try {
+    return await prisma.activityRegistration.create({ data: { activityId, studentId } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new Error('ALREADY_REGISTERED');
+    throw err;
+  }
+}
+
 // Blocks deletion when the activity has attendance history — that's a
 // record and must survive. Registrations/teacher assignments/images are
 // current state, not history, so they're cleared as part of the delete.
