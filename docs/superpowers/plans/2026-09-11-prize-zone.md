@@ -1,5 +1,7 @@
 # 獎品專區 Implementation Plan
 
+> **2026-09-11 檢查點修訂注意**：本計畫執行途中使用者定案（一）取消兌換代號機制、（二）學生端併入集點卡頁（改名「集點＆獎品」）。Task 4–8 原文中的 6 位代號／`findRedemptionByCode`／`?code=` 描述為歷史紀錄，已由 Task 9A 全數拆除，**以 spec 現行版為準**；Task 10/11 已改寫為修訂後版本。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 學生用點數在系統上自助兌換獎品、取得 6 位數字兌換代號，行政在後台核銷領獎；含後台獎品目錄維護、取消退點、30 天逾期自動退點。
