@@ -174,6 +174,12 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
     }
   }
 
+  // 繳費日期＝最後一筆繳款的 paidOn（可能多筆分期，取最新；未繳回 null）
+  function lastPaidOn(r: OverviewBillRow): string | null {
+    if (r.payments.length === 0) return null;
+    return r.payments.reduce((max, p) => (p.paidOn > max ? p.paidOn : max), r.payments[0].paidOn);
+  }
+
   const columns: Column<OverviewBillRow>[] = [
     {
       header: '來源',
@@ -200,6 +206,14 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
         return <span className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${bg} ${text}`}>{label}</span>;
       },
       sortValue: (r) => r.state,
+    },
+    {
+      header: '繳費日期',
+      render: (r) => {
+        const paidOn = lastPaidOn(r);
+        return paidOn ? <span className="whitespace-nowrap">{formatDateWithWeekday(paidOn)}</span> : <span className="text-inkMuted">—</span>;
+      },
+      sortValue: (r) => lastPaidOn(r),
     },
     {
       header: '通知',
@@ -281,6 +295,7 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
     { header: '已繳', value: (r: OverviewBillRow) => r.paid },
     { header: '待繳', value: (r: OverviewBillRow) => r.outstanding },
     { header: '繳費狀態', value: (r: OverviewBillRow) => PAID_STATE_CONFIG[r.state].label },
+    { header: '繳費日期', value: (r: OverviewBillRow) => { const paidOn = lastPaidOn(r); return paidOn ? formatDateWithWeekday(paidOn) : '—'; } },
     { header: '通知時間', value: (r: OverviewBillRow) => (r.notifiedAt ? formatTimestampWithWeekdayTaipei(r.notifiedAt) : '未通知') },
   ];
   const exportFilename = rangeOpen && startDate && endDate ? `收費清單_${startDate}~${endDate}` : '收費清單';
