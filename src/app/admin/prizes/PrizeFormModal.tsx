@@ -48,8 +48,9 @@ interface PrizeFormModalProps {
   onImageUploaded: () => void;
 }
 
-// 新增獎品：名稱／點數／庫存／排序。編輯獎品：再加狀態（上架/下架）與圖片上傳
-// （先 compressImage 壓縮再用 FormData POST，比照學生端 PrizeZone 的錯誤呈現風格）。
+// 新增獎品：名稱／點數／庫存／排序＋圖片（先選好，儲存時建完獎品接著上傳）。
+// 編輯獎品：再加狀態（上架/下架），圖片選了就即時上傳
+// （皆先 compressImage 壓縮再用 FormData POST，比照學生端 PrizeZone 的錯誤呈現風格）。
 export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, onImageUploaded }: PrizeFormModalProps) {
   const { showToast } = useToast();
   const [name, setName] = useState('');
@@ -60,6 +61,8 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
   const [submitting, setSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
+  // 新增模式：選好的圖先留在本地，等獎品建立拿到 id 才上傳
+  const [pendingImage, setPendingImage] = useState<Blob | null>(null);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +74,7 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
     setSortOrder(prize ? String(prize.sortOrder) : '0');
     setActive(prize?.active === false ? 'false' : 'true');
     setLocalPreviewUrl(null);
+    setPendingImage(null);
     setErrorInfo(null);
   }, [open, prize]);
 
@@ -80,6 +84,15 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
       if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
     };
   }, [localPreviewUrl]);
+
+  async function uploadImageTo(prizeId: string, blob: Blob): Promise<{ ok: boolean; error?: string }> {
+    const formData = new FormData();
+    formData.append('file', blob, 'prize.jpg');
+    const res = await fetch(`/api/prizes/${prizeId}/image`, { method: 'POST', body: formData });
+    if (res.ok) return { ok: true };
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: (data as { error?: string }).error };
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -100,6 +113,15 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
         setErrorInfo({ title: mode === 'create' ? '新增失敗' : '更新失敗', message: errorLabel(data.error) });
         return;
       }
+      // 新增模式有先選圖：拿到新獎品 id 後接著上傳。失敗不擋建立——提示改用編輯重傳。
+      if (mode === 'create' && pendingImage) {
+        const uploaded = await uploadImageTo((data as { id: string }).id, pendingImage).catch(() => ({ ok: false }));
+        if (!uploaded.ok) {
+          setErrorInfo({ title: '圖片上傳失敗', message: '獎品已建立，但圖片沒傳成功——請從清單「編輯」重新上傳。' });
+          onSaved();
+          return;
+        }
+      }
       showToast(mode === 'create' ? '已新增獎品' : '已更新獎品');
       onSaved();
     } finally {
@@ -110,16 +132,20 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (!file || !prize) return;
+    if (!file) return;
     setUploadingImage(true);
     try {
       const compressed = await compressImage(file);
-      const formData = new FormData();
-      formData.append('file', compressed, 'prize.jpg');
-      const res = await fetch(`/api/prizes/${prize.id}/image`, { method: 'POST', body: formData });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setErrorInfo({ title: '圖片上傳失敗', message: errorLabel(data.error) });
+      if (mode === 'create') {
+        // 還沒有獎品 id：先留檔＋本地預覽，儲存時才上傳
+        setPendingImage(compressed);
+        setLocalPreviewUrl(URL.createObjectURL(compressed));
+        return;
+      }
+      if (!prize) return;
+      const result = await uploadImageTo(prize.id, compressed);
+      if (!result.ok) {
+        setErrorInfo({ title: '圖片上傳失敗', message: errorLabel(result.error ?? '') });
         return;
       }
       setLocalPreviewUrl(URL.createObjectURL(compressed));
@@ -158,41 +184,41 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
           </label>
 
           {mode === 'edit' && (
-            <>
-              <label className="flex flex-col gap-1 text-sm text-ink">
-                狀態
-                <Select value={active} onChange={(e) => setActive(e.target.value as 'true' | 'false')}>
-                  <option value="true">上架</option>
-                  <option value="false">下架</option>
-                </Select>
-              </label>
-
-              <div className="flex flex-col gap-2 border-t border-borderSubtle pt-3">
-                <p className="text-sm font-medium text-ink">圖片</p>
-                <div className="flex items-center gap-3">
-                  {previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- signed URL / local blob preview, short-lived
-                    <img src={previewUrl} alt={name || '獎品圖片'} className="h-16 w-16 rounded-lg object-cover" />
-                  ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-stripe text-xl" aria-hidden="true">
-                      🎁
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageChange}
-                  />
-                  <Button type="button" variant="secondary" loading={uploadingImage} onClick={() => fileInputRef.current?.click()}>
-                    上傳圖片
-                  </Button>
-                </div>
-                <p className="text-xs text-inkMuted">jpg／png／webp，4MB 內，自動壓縮</p>
-              </div>
-            </>
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              狀態
+              <Select value={active} onChange={(e) => setActive(e.target.value as 'true' | 'false')}>
+                <option value="true">上架</option>
+                <option value="false">下架</option>
+              </Select>
+            </label>
           )}
+
+          <div className="flex flex-col gap-2 border-t border-borderSubtle pt-3">
+            <p className="text-sm font-medium text-ink">圖片</p>
+            <div className="flex items-center gap-3">
+              {previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- signed URL / local blob preview, short-lived
+                <img src={previewUrl} alt={name || '獎品圖片'} className="h-16 w-16 rounded-lg object-cover" />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-stripe text-xl" aria-hidden="true">
+                  🎁
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageChange}
+              />
+              <Button type="button" variant="secondary" loading={uploadingImage} onClick={() => fileInputRef.current?.click()}>
+                {mode === 'create' ? '選擇圖片' : '上傳圖片'}
+              </Button>
+            </div>
+            <p className="text-xs text-inkMuted">
+              jpg／png／webp，4MB 內，自動壓縮{mode === 'create' ? '；儲存時一併上傳' : ''}
+            </p>
+          </div>
 
           <Button type="submit" loading={submitting} className="mt-2">
             儲存
