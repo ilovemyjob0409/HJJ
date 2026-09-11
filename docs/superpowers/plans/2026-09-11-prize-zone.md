@@ -1,5 +1,7 @@
 # 獎品專區 Implementation Plan
 
+> **2026-09-11 檢查點修訂注意**：本計畫執行途中使用者定案（一）取消兌換代號機制、（二）學生端併入集點卡頁（改名「集點＆獎品」）。Task 4–8 原文中的 6 位代號／`findRedemptionByCode`／`?code=` 描述為歷史紀錄，已由 Task 9A 全數拆除，**以 spec 現行版為準**；Task 10/11 已改寫為修訂後版本。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 學生用點數在系統上自助兌換獎品、取得 6 位數字兌換代號，行政在後台核銷領獎；含後台獎品目錄維護、取消退點、30 天逾期自動退點。
@@ -1514,191 +1516,91 @@ git commit -m "feat: 獎品專區 API（目錄 CRUD/圖片/兌換/核銷/取消�
 
 ---
 
-### Task 10: 學生端 UI（/student/prizes＋入口）
+### Task 10: 學生端 UI（併入集點卡頁）
+
+> 2026-09-11 檢查點修訂：學生端不做獨立頁——獎品區併入 `/student/points`；兌換代號機制已整個拆除（Task 9A）。
 
 **Files:**
-- Create: `src/app/student/prizes/page.tsx`
-- Create: `src/app/student/prizes/PrizeZone.tsx`
-- Modify: `src/app/student/points/page.tsx`（加入口卡）
-- Modify: `src/components/ui/AppShell.tsx:48`（STUDENT nav 加一項）
+- Modify: `src/app/student/points/page.tsx`（插入獎品區）
+- Create: `src/app/student/points/PrizeZone.tsx`
+- Modify: `src/lib/services/prizeService.ts`（notifyStudent 的 url `/student/prizes` → `/student/points`，一行）
 
 **Interfaces:**
-- Consumes: `listPrizesForStudent`／`listMyRedemptions`／`getPointBalances`（server 端）；`POST /api/prize-redemptions`、`POST /api/prize-redemptions/[id]/cancel`（client 端）；`useConfirm`、`Modal`、`Button`、`Card`、`CollapsibleDataTable`、`formatDateWithWeekday`、`formatTimestampWithWeekdayTaipei`。
-- **以 Task 9 核可的 mockup 為準**；以下為預設實作骨架，版面細節依 mockup 調整。
+- Consumes: `listPrizesForStudent`／`listMyRedemptions`（server 端）；`POST /api/prize-redemptions`、`POST /api/prize-redemptions/[id]/cancel`（client 端）；`useConfirm`、`Modal`、`AlertModal`、`Button`、`Card`、`CollapsibleDataTable`、`formatDateWithWeekday`、`formatTimestampWithWeekdayTaipei`。
+- 版面順序（使用者核可的 mockup）：餘額三卡（既有）→ 獎品目錄 → 我的兌換紀錄（收合）→ 點數紀錄（既有，殿後）。
 
-- [ ] **Step 1: Server page**
+- [ ] **Step 1: Server page 改造**
 
-```tsx
-// src/app/student/prizes/page.tsx
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/db';
-import { getPointBalances } from '@/lib/services/pointService';
-import { listPrizesForStudent, listMyRedemptions } from '@/lib/services/prizeService';
-import Card from '@/components/ui/Card';
-import PrizeZone from './PrizeZone';
-
-export const dynamic = 'force-dynamic';
-
-export default async function StudentPrizesPage() {
-  const session = await getServerSession(authOptions);
-  const student = session ? await prisma.student.findUnique({ where: { userId: session.user.id } }) : null;
-
-  if (!student) {
-    return (
-      <>
-        <h1 className="mb-4 text-xl font-bold text-ink">獎品專區</h1>
-        <Card>
-          <p className="text-sm text-inkMuted">找不到學生資料</p>
-        </Card>
-      </>
-    );
-  }
-
-  const [balances, prizes, redemptions] = await Promise.all([
-    getPointBalances(student.id),
-    listPrizesForStudent(student.id),
-    listMyRedemptions(student.id),
-  ]);
-  return <PrizeZone balances={balances} prizes={prizes} redemptions={redemptions} />;
-}
-```
+`page.tsx` 的 Promise.all 加抓 `listPrizesForStudent(student.id)`、`listMyRedemptions(student.id)`，在餘額卡 grid 之後、「點數紀錄」標題之前 render `<PrizeZone prizes={prizes} redemptions={redemptions} total={total} />`。頁面標題維持「集點卡」。
 
 - [ ] **Step 2: PrizeZone client component**
 
-要點（完整檔依 mockup 定案版面實作）：
-
 ```tsx
-// src/app/student/prizes/PrizeZone.tsx
 'use client';
-// props 驅動顯示；mutation 成功後 router.refresh() 讓 server page 重抓資料。
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
-import Modal from '@/components/ui/Modal';
-import AlertModal from '@/components/ui/AlertModal';
-import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
-import { useConfirm } from '@/components/ui/ConfirmModal';
-import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
-
-const ERROR_LABELS: Record<string, string> = {
-  PRIZE_UNAVAILABLE: '這個獎品目前無法兌換',
-  OUT_OF_STOCK: '這個獎品已經換完了',
-  ALREADY_REDEEMED: '你已經兌換過這個獎品囉',
-  INSUFFICIENT_POINTS: '點數不夠，再多集一點吧！',
-  NOT_PENDING: '這筆兌換已經處理過了',
-  NOT_FOUND: '找不到這筆兌換紀錄',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: '待領獎',
-  PICKED_UP: '已領取',
-  CANCELLED: '已取消',
-  EXPIRED: '已逾期',
-};
+// props 驅動；mutation 成功後 router.refresh() 重抓 server 資料。
 ```
 
-行為規格：
-- 餘額卡三張（一般／兌換專用／合計），同 `/student/points` 口徑。
-- 獎品格：`grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4`；每張 Card 含圖（無圖放置灰底佔位）、名稱、`{points} 點`。按鈕邏輯：
-  - `alreadyRedeemed` → disabled「已兌換」
-  - `stock === 0` → disabled「已換完」
+行為規格（照核可 mockup）：
+- 「獎品目錄」標題＋格狀 `grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4`；卡片含圖（imageUrl，無圖灰底 🎁 佔位）、名稱、`{points} 點`（brandDark 粗體）。按鈕四態：
+  - `alreadyRedeemed` → disabled「已兌換」＋卡片右上綠徽章
+  - `stock === 0` → disabled「已換完」＋右上紅徽章
   - `total < points` → disabled「還差 {points - total} 點」
-  - 否則 →「兌換」：`await confirm(`確定用 ${points} 點兌換「${name}」嗎？`)` → POST `/api/prize-redemptions` → 成功開成功 Modal（大字代號 `text-3xl font-bold tracking-widest`＋`請於 ${formatDateWithWeekday(deadlineKey)} 前至櫃台領取`）＋`router.refresh()`；失敗開 AlertModal 顯示 `ERROR_LABELS[code] ?? '兌換失敗，請稍後再試'`。
-- 「我的兌換紀錄」`CollapsibleDataTable maxRows={3}`，欄：代號（`font-mono`）、獎品、點數、狀態（STATUS_LABELS）、兌換時間（`formatTimestampWithWeekdayTaipei(createdAt)`）、操作（PENDING 顯示「取消」：`confirm(..., { danger: true })` → POST cancel → `router.refresh()`）。
-- 載入中狀態沿用 Button `loading` prop；不新增動畫。
+  - 否則 →「兌換」：`confirm(`確定用 ${points} 點兌換「${name}」嗎？`)` → POST `/api/prize-redemptions` `{ prizeId }` → 成功開 Modal：「兌換成功 🎉」＋獎品名（點數）＋「請於 {formatDateWithWeekday(deadlineKey)} 前到櫃台領取，逾期將自動退回點數」（無代號）＋「知道了」；`router.refresh()`。失敗 AlertModal 顯示 ERROR_LABELS 映射。
+- 「我的兌換紀錄」`CollapsibleDataTable maxRows={3}`，欄：獎品、點數、狀態（待領獎/已領取/已取消/已逾期，badge 配色 pending/approved/muted/rejected）、兌換時間（`formatTimestampWithWeekdayTaipei(createdAt)`）、操作（PENDING →「取消」`confirm(..., { danger: true })` → POST cancel → `router.refresh()`）。
+- ERROR_LABELS：PRIZE_UNAVAILABLE「這個獎品目前無法兌換」、OUT_OF_STOCK「這個獎品已經換完了」、ALREADY_REDEEMED「你已經兌換過這個獎品囉」、INSUFFICIENT_POINTS「點數不夠，再多集一點吧！」、NOT_PENDING「這筆兌換已經處理過了」、NOT_FOUND「找不到這筆兌換紀錄」。
+- Button `loading` 沿用；不加新動畫、不加導覽項、不做入口卡。
 
-- [ ] **Step 3: 集點卡頁入口卡＋導覽列**
+- [ ] **Step 3: notifyStudent url 改 `/student/points`**
 
-`src/app/student/points/page.tsx` 餘額卡下方加（檔頭 `import Link from 'next/link';`）：
+- [ ] **Step 4: 瀏覽器驗證**（launch.json dev server）：四態按鈕、成功彈窗（無代號）、取消流程、深色模式、手機寬度。console 無錯誤。
 
-```tsx
-<Link href="/student/prizes" className="mb-6 block">
-  <Card className="transition hover:shadow-md">
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="font-bold text-ink">🎁 獎品專區</p>
-        <p className="mt-1 text-sm text-inkMuted">用點數兌換獎品，領取兌換代號到櫃台換好禮</p>
-      </div>
-      <span className="text-inkMuted">→</span>
-    </div>
-  </Card>
-</Link>
-```
-
-（`Card` 若不吃 `className`，改在外層 `<a>` 上加樣式——依 Card 實際 props 為準。）
-
-`src/components/ui/AppShell.tsx` STUDENT 陣列在 `集點卡` 後插入：
-
-```ts
-    { href: '/student/prizes', label: '獎品專區' },
-```
-
-- [ ] **Step 4: 瀏覽器驗證（dev server 走 launch.json／preview 工具，不用 Bash 起服務）**
-
-以測試學生帳號登入 `/student/prizes`：四種按鈕狀態、兌換成功彈窗代號、取消流程、深色模式、手機寬度卡片排版。console 無錯誤。
-
-- [ ] **Step 5: Lint＋既有測試**
+- [ ] **Step 5: Lint＋測試**
 
 Run: `npx next lint --dir src/app/student && npx vitest run src/lib/services/prizeService.test.ts`
-Expected: 無 error、測試 PASS。
+Expected: 無 error、PASS。
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/app/student/prizes src/app/student/points/page.tsx src/components/ui/AppShell.tsx
-git commit -m "feat: 學生端獎品專區（自助兌換＋兌換紀錄＋入口）"
+git add src/app/student/points src/lib/services/prizeService.ts
+git commit -m "feat: 集點卡頁併入獎品專區（自助兌換＋兌換紀錄）"
 ```
 
 ---
 
 ### Task 11: 行政端 UI（/admin/prizes）
 
+> 2026-09-11 檢查點修訂：無兌換代號——核銷區只有待領清單（顯示學生身分），無輸代號欄。
+
 **Files:**
 - Create: `src/app/admin/prizes/page.tsx`
 - Create: `src/app/admin/prizes/PrizeFormModal.tsx`
-- Modify: `src/components/ui/AppShell.tsx:27`（ADMIN nav 加一項）
+- Modify: `src/components/ui/AppShell.tsx:27`（ADMIN nav「集點」後插入 `{ href: '/admin/prizes', label: '獎品' }`）
 
 **Interfaces:**
-- Consumes: `GET/POST /api/prizes`、`PATCH /api/prizes/[id]`、`POST /api/prizes/[id]/image`、`GET /api/prize-redemptions`（含 `?code=`）、`POST /api/prize-redemptions/[id]/pickup|cancel`；`compressImage`（`@/lib/imageCompression`）；`useConfirm`、`Modal`、`Input`、`Select`、`Button`、`CollapsibleDataTable`、`formatTimestampWithWeekdayTaipei`、`formatDateWithWeekday`。
-- **以 Task 9 核可的 mockup 為準**。
+- Consumes: `GET/POST /api/prizes`、`PATCH /api/prizes/[id]`、`POST /api/prizes/[id]/image`、`GET /api/prize-redemptions`（ADMIN=待領清單）、`POST /api/prize-redemptions/[id]/pickup|cancel`；`compressImage`（`@/lib/imageCompression`）；`useConfirm`、`Modal`、`Input`、`Select`、`Button`、`CollapsibleDataTable`、`formatTimestampWithWeekdayTaipei`、`formatDateWithWeekday`。
 
-- [ ] **Step 1: 頁面（client page，比照 admin/points 的寫法）**
+- [ ] **Step 1: 頁面（client page，比照 admin/points 寫法）**
 
-行為規格：
-- **待領獎核銷區**（置頂 Card）：
-  - 代號輸入（`Input`，`inputMode="numeric"` `maxLength={6}`）＋「查詢」Button → GET `?code=` → 顯示結果卡（學生、獎品、點數、兌換時間、狀態）＋「確認核銷」Button（`useConfirm`）→ POST pickup → 重抓清單；404 顯示「查無此代號」。
-  - 待領清單 `CollapsibleDataTable maxRows={3}`，欄：代號（`font-mono`）、學生（姓名＋學號）、獎品、點數、兌換時間（`formatTimestampWithWeekdayTaipei`）、領取期限（`formatDateWithWeekday(deadlineKey)`）、操作（「已領取」→ pickup；「撤銷退點」→ `confirm(..., { danger: true })` → cancel）。
-  - 錯誤映射：`ALREADY_PICKED_UP: '這筆已領取過'`、`ALREADY_CANCELLED: '這筆已取消'`、`ALREADY_EXPIRED: '這筆已逾期退點'`、`NOT_FOUND: '查無此代號'`、`NOT_PENDING: '這筆兌換已處理過'`。
-- **獎品管理區**（Card）：「新增獎品」Button＋列表（縮圖 64px、名稱、點數、庫存、狀態上架/下架、排序、操作「編輯」）。此為 CRUD 管理列表，**不收合**（符合表格收合慣例的排除項）。
-- 兩區資料各自 `useEffect` 抓取＋骨架屏 loading；操作後重抓。
+- **待領獎核銷區**（置頂 Card）：`CollapsibleDataTable maxRows={3}`，欄：學生（姓名＋學號）、獎品、點數、兌換時間（`formatTimestampWithWeekdayTaipei`）、領取期限（`formatDateWithWeekday(deadlineKey)`）、操作（「已領取」→ pickup；「撤銷退點」→ `confirm(..., { danger: true })` → cancel）。操作後重抓清單。
+- **獎品管理區**（Card）：「＋ 新增獎品」Button＋列表（縮圖 64px 圓角、名稱、點數、庫存（0 紅字）、狀態上架/下架 badge、排序、「編輯」）。管理列表不收合。
+- 兩區各自 fetch＋骨架屏 loading；錯誤映射：ALREADY_PICKED_UP「這筆已領取過」、ALREADY_CANCELLED「這筆已取消」、ALREADY_EXPIRED「這筆已逾期退點」、NOT_FOUND「找不到這筆兌換」、NOT_PENDING「這筆兌換已處理過」。
 
 - [ ] **Step 2: PrizeFormModal**
 
-- 新增模式欄位：名稱（`Input`）、點數／庫存／排序（`Input type="number"`）；儲存 → POST `/api/prizes`。
-- 編輯模式追加：上下架（`Select`：上架/下架）＋圖片區（現圖預覽＋`<input type="file" accept="image/*">` → `compressImage(file)` → FormData POST `/api/prizes/[id]/image`）；儲存 → PATCH。
-- 驗證錯誤映射：`INVALID_NAME: '請輸入獎品名稱'`、`INVALID_POINTS: '點數需為正整數'`、`INVALID_STOCK: '庫存不可為負數'`、`INVALID_FILE: '圖片格式或大小不符（jpg/png/webp，4MB 內）'`。
-- `Modal` 標題「新增獎品」／「編輯獎品」；儲存 Button 用 `loading`。
+- 新增模式：名稱（`Input`）、點數／庫存／排序（`Input type="number"`）→ POST `/api/prizes`。
+- 編輯模式追加：狀態（`Select`：上架/下架）＋圖片區（現圖預覽＋`<input type="file" accept="image/*">` → `compressImage(file)` → FormData POST `/api/prizes/[id]/image`，提示「jpg／png／webp，4MB 內，自動壓縮」）→ PATCH。
+- 錯誤映射：INVALID_NAME「請輸入獎品名稱」、INVALID_POINTS「點數需為正整數」、INVALID_STOCK「庫存不可為負數」、INVALID_FILE「圖片格式或大小不符（jpg/png/webp，4MB 內）」。
+- `Modal` 標題「新增獎品」／「編輯獎品」；儲存 Button `loading`。
 
-- [ ] **Step 3: 導覽列**
+- [ ] **Step 3: 瀏覽器驗證**：新增獎品 → 上傳圖片 → 學生端兌換 → 後台待領清單出現 → 核銷 → 清單消失；再兌一筆「撤銷退點」確認退點。深色模式＋手機寬度。console 無錯誤。
 
-`AppShell.tsx` ADMIN 陣列在 `集點` 後插入：
-
-```ts
-    { href: '/admin/prizes', label: '獎品' },
-```
-
-- [ ] **Step 4: 瀏覽器驗證**
-
-以 ADMIN 帳號：新增獎品 → 上傳圖片 → 學生端兌換一筆 → 後台輸代號查詢 → 核銷 → 待領清單消失；再兌一筆按「撤銷退點」確認學生點數退回。深色模式＋手機寬度檢查。console 無錯誤。
-
-- [ ] **Step 5: Lint＋全套測試**
+- [ ] **Step 4: Lint＋全套測試**
 
 Run: `npx next lint --dir src/app/admin && npm test`
 Expected: 無 error、全綠。
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/app/admin/prizes src/components/ui/AppShell.tsx

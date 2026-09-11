@@ -70,3 +70,35 @@ describe('storage', () => {
     expect(removeMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('prize storage', () => {
+  it('uploadPrizeImage uploads under the prize folder and returns the path', async () => {
+    uploadMock.mockResolvedValue({ data: { path: 'x' }, error: null });
+    const { uploadPrizeImage } = await import('./storage');
+    const path = await uploadPrizeImage('prize123', Buffer.from('x'), 'image/png');
+    expect(path).toMatch(/^prize123\/[0-9a-f-]+\.png$/);
+    expect(uploadMock).toHaveBeenCalledWith(path, expect.any(Buffer), { contentType: 'image/png' });
+  });
+
+  it('uploadPrizeImage rejects unsupported content types', async () => {
+    const { uploadPrizeImage } = await import('./storage');
+    await expect(uploadPrizeImage('p1', Buffer.from('x'), 'image/gif')).rejects.toThrow(/Unsupported/);
+  });
+
+  it('createPrizeSignedUrls maps path to signed url and returns empty map for no paths', async () => {
+    createSignedUrlsMock.mockResolvedValue({ data: [{ path: 'p1/a.jpg', signedUrl: 'https://signed/a' }], error: null });
+    const { createPrizeSignedUrls } = await import('./storage');
+    expect((await createPrizeSignedUrls(['p1/a.jpg'])).get('p1/a.jpg')).toBe('https://signed/a');
+    expect((await createPrizeSignedUrls([])).size).toBe(0);
+  });
+
+  it('deletePrizeImages removes paths and no-ops on empty', async () => {
+    removeMock.mockResolvedValue({ data: null, error: null });
+    const { deletePrizeImages } = await import('./storage');
+    await deletePrizeImages(['p1/a.jpg']);
+    expect(removeMock).toHaveBeenCalledWith(['p1/a.jpg']);
+    removeMock.mockClear();
+    await deletePrizeImages([]);
+    expect(removeMock).not.toHaveBeenCalled();
+  });
+});

@@ -57,6 +57,7 @@ enum PointKind {
   LOTTERY_COST
   LOTTERY_WIN
   REDEMPTION
+  REDEMPTION_REFUND
   ADMIN_ADJUST
 }
 
@@ -141,6 +142,7 @@ model Student {
   activityAttendances      ActivityAttendance[]
   tutoringEnrollments      TutoringEnrollment[]
   bills                    Bill[]
+  prizeRedemptions         PrizeRedemption[]
 }
 
 model Class {
@@ -744,4 +746,47 @@ model BillPayment {
   createdAt   DateTime      @default(now())
 
   @@index([billId])
+}
+
+enum PrizeRedemptionStatus {
+  PENDING // 待領獎
+  PICKED_UP // 已領取
+  CANCELLED // 已取消（學生自取消或行政撤銷）
+  EXPIRED // 逾期自動退點
+}
+
+// 獎品目錄（行政維護）。刪除＝下架（active:false），歷史靠 PrizeRedemption 快照。
+model Prize {
+  id          String            @id @default(cuid())
+  name        String
+  points      Int // 所需點數
+  stock       Int // 庫存；0 顯示「已換完」
+  imagePath   String? // Supabase prize-images bucket 路徑
+  active      Boolean           @default(true)
+  sortOrder   Int
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  redemptions PrizeRedemption[]
+}
+
+// 兌換紀錄＝狀態機主體。prizeName／兩桶扣點為快照，獎品改名刪除不影響歷史，
+// 退點按快照精準退回原桶。
+model PrizeRedemption {
+  id               String                @id @default(cuid())
+  studentId        String
+  student          Student               @relation(fields: [studentId], references: [id])
+  prizeId          String
+  prize            Prize                 @relation(fields: [prizeId], references: [id])
+  prizeName        String
+  redeemOnlyUsed   Int
+  regularUsed      Int
+  status           PrizeRedemptionStatus @default(PENDING)
+  createdAt        DateTime              @default(now())
+  pickedUpAt       DateTime?
+  cancelledAt      DateTime? // CANCELLED / EXPIRED 共用
+  expiryRemindedAt DateTime? // 到期前提醒只發一次
+  operator         String? // 核銷／撤銷操作者（行政名／「學生本人」／「系統（逾期）」）
+
+  @@index([studentId])
+  @@index([status])
 }

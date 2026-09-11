@@ -21,6 +21,7 @@ const KIND_LABELS: Record<string, string> = {
   LOTTERY_COST: '抽獎',
   LOTTERY_WIN: '抽獎獲得',
   REDEMPTION: '兌換',
+  REDEMPTION_REFUND: '兌換退點',
   ADMIN_ADJUST: '調整',
 };
 

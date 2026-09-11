@@ -94,7 +94,7 @@ export default async function StudentDashboard() {
         <Card className="mb-6 transition-shadow hover:shadow-md">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm text-inkMuted">我的集點卡</p>
+              <p className="text-sm text-inkMuted">我的集點＆獎品</p>
               <p className="mt-1 text-2xl font-bold text-brandDark">{balances.regular + balances.redeemOnly} 點</p>
             </div>
             <p className="text-sm text-inkMuted">
