@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { runSerializableWithRetry } from '@/lib/transaction';
-import { createSignedUrls, deleteActivityImages } from '@/lib/storage';
+import { createSignedThumbUrls, deleteActivityImages } from '@/lib/storage';
 import { isBeforeToday } from '@/lib/pastDate';
 import { taipeiDateKey } from './tutoringBookingService';
 
@@ -55,7 +55,7 @@ async function attachCoverUrl<T extends { images: { storagePath: string }[] }>(
   // role's list (and the student's registrations) routes through this
   // helper, so a signing failure here degrades to placeholder covers
   // instead of a 500 across the whole feature.
-  const urls = paths.length ? await createSignedUrls(paths).catch(() => new Map<string, string>()) : new Map<string, string>();
+  const urls = paths.length ? await createSignedThumbUrls(paths).catch(() => new Map<string, string>()) : new Map<string, string>();
   return rows.map(({ images, ...rest }) => ({
     ...rest,
     coverUrl: images[0] ? (urls.get(images[0].storagePath) ?? null) : null,

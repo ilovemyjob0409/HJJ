@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const uploadMock = vi.fn();
 const createSignedUrlsMock = vi.fn();
+const createSignedUrlMock = vi.fn();
 const removeMock = vi.fn();
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -10,6 +11,7 @@ vi.mock('@supabase/supabase-js', () => ({
       from: vi.fn(() => ({
         upload: uploadMock,
         createSignedUrls: createSignedUrlsMock,
+        createSignedUrl: createSignedUrlMock,
         remove: removeMock,
       })),
     },
@@ -20,6 +22,7 @@ beforeEach(() => {
   vi.resetModules();
   uploadMock.mockReset();
   createSignedUrlsMock.mockReset();
+  createSignedUrlMock.mockReset();
   removeMock.mockReset();
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
@@ -90,6 +93,22 @@ describe('prize storage', () => {
     expect(prizeImagePublicUrl('p1/a.jpg')).toBe('https://example.supabase.co/storage/v1/object/public/prize-images/p1/a.jpg');
     delete process.env.SUPABASE_URL;
     expect(prizeImagePublicUrl('p1/a.jpg')).toBeNull();
+  });
+
+  it('prizeImageThumbUrl points at the render endpoint with width/quality', async () => {
+    const { prizeImageThumbUrl } = await import('./storage');
+    expect(prizeImageThumbUrl('p1/a.jpg')).toBe(
+      'https://example.supabase.co/storage/v1/render/image/public/prize-images/p1/a.jpg?width=800&quality=75'
+    );
+  });
+
+  it('createSignedThumbUrls signs per path with transform and memoizes', async () => {
+    createSignedUrlMock.mockResolvedValue({ data: { signedUrl: 'https://signed-thumb/a' }, error: null });
+    const { createSignedThumbUrls } = await import('./storage');
+    expect((await createSignedThumbUrls(['act1/a.jpg'])).get('act1/a.jpg')).toBe('https://signed-thumb/a');
+    expect((await createSignedThumbUrls(['act1/a.jpg'])).get('act1/a.jpg')).toBe('https://signed-thumb/a');
+    expect(createSignedUrlMock).toHaveBeenCalledTimes(1);
+    expect(createSignedUrlMock).toHaveBeenCalledWith('act1/a.jpg', 86_400, { transform: { width: 800, quality: 75 } });
   });
 
   it('uploads set a long cacheControl (UUID paths never change content)', async () => {

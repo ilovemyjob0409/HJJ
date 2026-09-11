@@ -15,6 +15,7 @@ import { formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 interface AlbumImage {
   id: string;
   url: string;
+  thumbUrl?: string;
 }
 
 export interface ActivityDetailData {
@@ -223,7 +224,7 @@ export default function ActivityDetail({
             {selected?.url ? (
               <button type="button" className="block w-full cursor-zoom-in" onClick={() => setLightboxOpen(true)} aria-label="放大檢視照片">
                 {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived */}
-                <img src={selected.url} alt="活動照片" className="aspect-[16/10] w-full object-cover" />
+                <img src={selected.thumbUrl ?? selected.url} alt="活動照片" className="aspect-[16/10] w-full object-cover" />
               </button>
             ) : (
               <div className="bg-stripe aspect-[16/10] w-full" aria-label="照片無法載入" />
@@ -254,7 +255,7 @@ export default function ActivityDetail({
                     className={`block h-14 w-14 overflow-hidden rounded-lg ${i === selectedIndex ? 'outline outline-2 outline-brandDark' : ''}`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived */}
-                    <img src={img.url} alt="" className="h-full w-full object-cover" />
+                    <img src={img.thumbUrl ?? img.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   </button>
                 ) : (
                   <div className={`bg-stripe h-14 w-14 rounded-lg ${i === selectedIndex ? 'outline outline-2 outline-brandDark' : ''}`} />

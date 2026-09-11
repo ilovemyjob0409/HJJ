@@ -2,12 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
-import { createSignedUrls } from '@/lib/storage';
+import { createSignedThumbUrls } from '@/lib/storage';
 import { taipeiDateKey } from './tutoringBookingService';
 
 vi.mock('@/lib/storage', () => ({
   uploadActivityImage: vi.fn(),
   createSignedUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://signed/${p}`]))),
+  createSignedThumbUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://thumb/${p}`]))),
   deleteActivityImages: vi.fn(async () => {}),
 }));
 
@@ -536,22 +537,22 @@ describe('coverUrl on list/detail queries', () => {
     await prisma.activityImage.create({ data: { activityId: activity.id, storagePath: `${activity.id}/2.jpg` } });
 
     const [all] = await listAllActivities();
-    expect(all.coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+    expect(all.coverUrl).toBe(`https://thumb/${activity.id}/1.jpg`);
     expect((all as unknown as { images?: unknown }).images).toBeUndefined();
 
     const forTeacher = await listActivitiesForTeacher(teacher.id);
-    expect(forTeacher[0].coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+    expect(forTeacher[0].coverUrl).toBe(`https://thumb/${activity.id}/1.jpg`);
 
     const open = await listOpenActivitiesForStudent();
-    expect(open[0].coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+    expect(open[0].coverUrl).toBe(`https://thumb/${activity.id}/1.jpg`);
 
     const detail = await getActivityDetail(activity.id);
-    expect(detail.coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+    expect(detail.coverUrl).toBe(`https://thumb/${activity.id}/1.jpg`);
 
     const student = await createStudent({ name: '小明', email: 'ming@example.com', password: 'x', parentPhone: '' });
     await prisma.activityRegistration.create({ data: { activityId: activity.id, studentId: student.id } });
     const registrations = await listRegistrationsForStudent(student.id);
-    expect(registrations[0].activity.coverUrl).toBe(`https://signed/${activity.id}/1.jpg`);
+    expect(registrations[0].activity.coverUrl).toBe(`https://thumb/${activity.id}/1.jpg`);
   });
 
   it('falls back to a null coverUrl instead of failing the whole list when signing URLs errors', async () => {
@@ -568,7 +569,7 @@ describe('coverUrl on list/detail queries', () => {
     });
     await prisma.activityImage.create({ data: { activityId: activity.id, storagePath: `${activity.id}/1.jpg` } });
 
-    vi.mocked(createSignedUrls).mockRejectedValueOnce(new Error('storage outage'));
+    vi.mocked(createSignedThumbUrls).mockRejectedValueOnce(new Error('storage outage'));
     const [all] = await listAllActivities();
     expect(all.coverUrl).toBeNull();
   });

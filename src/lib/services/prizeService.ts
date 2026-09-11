@@ -4,7 +4,7 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser } from './notificationService';
 import { prizeDeadlineKey, prizeRemindFromKey } from '@/lib/prizeDates';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
-import { prizeImagePublicUrl, deletePrizeImages } from '@/lib/storage';
+import { prizeImageThumbUrl, deletePrizeImages } from '@/lib/storage';
 import { taipeiDateKey } from '@/lib/taipeiDate';
 
 // 兌換相關通知（收件夾＋推播）。寫入成功後才發；失敗只記 log，不影響主流程。
@@ -148,7 +148,7 @@ export async function listPrizesForStudent(studentId: string) {
     name: p.name,
     points: p.points,
     stock: p.stock,
-    imageUrl: p.imagePath ? prizeImagePublicUrl(p.imagePath) : null,
+    imageUrl: p.imagePath ? prizeImageThumbUrl(p.imagePath) : null,
     alreadyRedeemed: redeemed.has(p.id),
   }));
 }
@@ -162,7 +162,7 @@ export async function listPrizesForAdmin() {
     stock: p.stock,
     active: p.active,
     sortOrder: p.sortOrder,
-    imageUrl: p.imagePath ? prizeImagePublicUrl(p.imagePath) : null,
+    imageUrl: p.imagePath ? prizeImageThumbUrl(p.imagePath) : null,
   }));
 }
 

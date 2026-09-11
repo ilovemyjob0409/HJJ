@@ -5,6 +5,7 @@ import { createTeacher } from './teacherService';
 vi.mock('@/lib/storage', () => ({
   uploadActivityImage: vi.fn(),
   createSignedUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://signed/${p}`]))),
+  createSignedThumbUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://thumb/${p}`]))),
   deleteActivityImages: vi.fn(async () => {}),
 }));
 
