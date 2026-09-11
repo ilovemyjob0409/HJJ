@@ -51,6 +51,14 @@ describe('POST /api/prize-redemptions (student redeem)', () => {
     expect(res.status).toBe(422);
     expect((await res.json()).error).toBe('PRIZE_UNAVAILABLE');
   });
+
+  it('400 with INVALID_INPUT when the logged-in student sends an empty body', async () => {
+    const { user } = await makeStudent('pzr-h@example.com');
+    asUser(user.id, 'STUDENT');
+    const res = await POST(postReq({}));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('INVALID_INPUT');
+  });
 });
 
 describe('GET /api/prize-redemptions', () => {
@@ -60,11 +68,11 @@ describe('GET /api/prize-redemptions', () => {
     asUser(user.id, 'STUDENT');
     await (await POST(postReq({ prizeId: prize.id }))).json();
 
-    const mineRes = await GET(new NextRequest('http://x/api/prize-redemptions'));
+    const mineRes = await GET();
     expect((await mineRes.json())).toHaveLength(1);
 
     asUser('admin-1', 'ADMIN');
-    const pending = await GET(new NextRequest('http://x/api/prize-redemptions'));
+    const pending = await GET();
     expect(await pending.json()).toHaveLength(1);
   });
 });

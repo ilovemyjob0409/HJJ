@@ -220,7 +220,9 @@ export async function setPrizeImage(prizeId: string, storagePath: string) {
   if (prize.imagePath) {
     try {
       await deletePrizeImages([prize.imagePath]);
-    } catch {}
+    } catch (err) {
+      console.error('prize image cleanup failed', err);
+    }
   }
 }
 
@@ -257,7 +259,7 @@ export async function listPendingRedemptions() {
 export async function sendPrizeExpiryReminders(): Promise<number> {
   const today = taipeiDateKey(new Date());
   const rows = await prisma.prizeRedemption.findMany({ where: { status: 'PENDING', expiryRemindedAt: null } });
-  const due = rows.filter((r) => today >= prizeRemindFromKey(r.createdAt));
+  const due = rows.filter((r) => today >= prizeRemindFromKey(r.createdAt) && today <= prizeDeadlineKey(r.createdAt));
   for (const r of due) {
     await notifyStudent(
       r.studentId,

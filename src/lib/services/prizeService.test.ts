@@ -208,6 +208,11 @@ describe('sendPrizeExpiryReminders', () => {
     await redeemDaysAgo(3);
     expect(await sendPrizeExpiryReminders()).toBe(0);
   });
+
+  it('does not remind already-overdue rows', async () => {
+    await redeemDaysAgo(31);
+    expect(await sendPrizeExpiryReminders()).toBe(0);
+  });
 });
 
 describe('expireOverduePrizeRedemptions', () => {
@@ -225,7 +230,7 @@ describe('expireOverduePrizeRedemptions', () => {
   });
 
   it('leaves 30-day-old (deadline day) and picked-up rows alone', async () => {
-    await redeemDaysAgo(29); // 未過期限
+    await redeemDaysAgo(30); // 未過期限
     const picked = await redeemDaysAgo(40);
     await prisma.prizeRedemption.update({ where: { id: picked.id }, data: { status: 'PICKED_UP' } });
     expect(await expireOverduePrizeRedemptions()).toBe(0);

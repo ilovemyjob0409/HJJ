@@ -16,14 +16,29 @@ export async function GET() {
   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 }
 
+// 新增獎品業務錯誤碼白名單：只有這些訊息會原樣回傳給前端，其餘一律 500 INTERNAL（不外洩原始/Prisma 錯誤）。
+const CREATE_ERROR_CODES = new Set(['INVALID_NAME', 'INVALID_POINTS', 'INVALID_STOCK', 'INVALID_SORT_ORDER']);
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const { name, points, stock, sortOrder } = await req.json();
   try {
+    const body = await req.json();
+    if (
+      typeof body?.name !== 'string' ||
+      typeof body?.points !== 'number' ||
+      typeof body?.stock !== 'number' ||
+      typeof body?.sortOrder !== 'number'
+    ) {
+      return NextResponse.json({ error: 'INVALID_INPUT' }, { status: 400 });
+    }
+    const { name, points, stock, sortOrder } = body;
     return NextResponse.json(await createPrize({ name, points, stock, sortOrder }), { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 422 });
+    if (err instanceof SyntaxError) return NextResponse.json({ error: 'INVALID_INPUT' }, { status: 400 });
+    const message = err instanceof Error ? err.message : '';
+    if (CREATE_ERROR_CODES.has(message)) return NextResponse.json({ error: message }, { status: 422 });
+    console.error('POST /api/prizes failed', err);
+    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
   }
 }

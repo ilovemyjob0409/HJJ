@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
-import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import AlertModal from '@/components/ui/AlertModal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
@@ -80,6 +79,8 @@ export default function AdminPrizesPage() {
   }, []);
 
   async function handlePickup(r: RedemptionRow) {
+    const ok = await confirm(`確定「${r.studentName}」已領取「${r.prizeName}」嗎？`);
+    if (!ok) return;
     setPickupBusyId(r.id);
     try {
       const res = await fetch(`/api/prize-redemptions/${r.id}/pickup`, { method: 'POST' });
@@ -203,11 +204,10 @@ export default function AdminPrizesPage() {
 
       <Card className="mb-6">
         <h2 className="mb-3 font-bold text-ink">待領獎核銷</h2>
-        <CollapsibleDataTable
+        <DataTable
           columns={redemptionColumns}
           rows={redemptions}
           keyField={(r) => r.id}
-          maxRows={3}
           loading={redemptionsLoading}
           emptyText="目前沒有待領獎的兌換"
         />

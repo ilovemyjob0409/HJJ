@@ -45,11 +45,11 @@ describe('GET /api/prizes', () => {
     expect(body.length).toBeGreaterThan(0);
     const item = body.find((p) => (p as Record<string, unknown>).id === prize.id);
     expect(item).toBeDefined();
-    expect(item.name).toBe('貼紙');
-    expect(item.points).toBe(10);
-    expect(item.stock).toBe(5);
-    expect(item.alreadyRedeemed).toBe(false);
-    expect(item.active).toBeUndefined(); // student should not see active field
+    expect(item!.name).toBe('貼紙');
+    expect(item!.points).toBe(10);
+    expect(item!.stock).toBe(5);
+    expect(item!.alreadyRedeemed).toBe(false);
+    expect(item!.active).toBeUndefined(); // student should not see active field
   });
 
   it('admin sees listPrizesForAdmin with active field', async () => {
@@ -61,8 +61,8 @@ describe('GET /api/prizes', () => {
     expect(Array.isArray(body)).toBe(true);
     const item = body.find((p) => (p as Record<string, unknown>).id === prize.id);
     expect(item).toBeDefined();
-    expect(item.active).toBe(false);
-    expect(item.sortOrder).toBe(1);
+    expect(item!.active).toBe(false);
+    expect(item!.sortOrder).toBe(1);
   });
 });
 
@@ -89,6 +89,13 @@ describe('POST /api/prizes', () => {
     const res = await POST(postReq({ name: '獎牌', points: 0, stock: 5, sortOrder: 0 }));
     expect(res.status).toBe(422);
     expect((await res.json()).error).toBe('INVALID_POINTS');
+  });
+
+  it('400 with INVALID_INPUT when admin sends an empty body', async () => {
+    asUser('admin-1', 'ADMIN');
+    const res = await POST(postReq({}));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('INVALID_INPUT');
   });
 });
 
