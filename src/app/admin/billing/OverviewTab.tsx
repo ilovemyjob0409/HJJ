@@ -211,7 +211,15 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
       header: '繳費日期',
       render: (r) => {
         const paidOn = lastPaidOn(r);
-        return paidOn ? <span className="whitespace-nowrap">{formatDateWithWeekday(paidOn)}</span> : <span className="text-inkMuted">—</span>;
+        if (!paidOn) return <span className="text-inkMuted">—</span>;
+        // 日期與（星期）拆兩行，欄窄時不會把日期截斷
+        const [datePart, weekPart] = formatDateWithWeekday(paidOn).split('（');
+        return (
+          <div className="whitespace-nowrap">
+            <div>{datePart}</div>
+            <div className="text-xs text-inkMuted">（{weekPart}</div>
+          </div>
+        );
       },
       sortValue: (r) => lastPaidOn(r),
     },
