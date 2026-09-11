@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { updatePrize } from '@/lib/services/prizeService';
+import { updatePrize, deletePrize } from '@/lib/services/prizeService';
 
 // 更新獎品業務錯誤碼白名單：只有這些訊息會原樣回傳給前端，其餘一律 500 INTERNAL（不外洩原始/Prisma 錯誤）。
 const UPDATE_ERROR_CODES = new Set(['INVALID_NAME', 'INVALID_POINTS', 'INVALID_STOCK', 'INVALID_SORT_ORDER']);
@@ -28,6 +28,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (message === 'NOT_FOUND') return NextResponse.json({ error: message }, { status: 404 });
     if (UPDATE_ERROR_CODES.has(message)) return NextResponse.json({ error: message }, { status: 422 });
     console.error('PATCH /api/prizes/[id] failed', err);
+    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
+  }
+}
+
+// 真刪除（僅限無兌換紀錄的獎品）；有紀錄回 HAS_REDEMPTIONS，前端引導改用下架。
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  if (!session || session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  try {
+    await deletePrize(params.id);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '';
+    if (message === 'NOT_FOUND') return NextResponse.json({ error: message }, { status: 404 });
+    if (message === 'HAS_REDEMPTIONS') return NextResponse.json({ error: message }, { status: 422 });
+    console.error('DELETE /api/prizes/[id] failed', err);
     return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
   }
 }

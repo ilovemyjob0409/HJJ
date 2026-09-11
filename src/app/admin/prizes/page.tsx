@@ -52,6 +52,7 @@ export default function AdminPrizesPage() {
   const [prizes, setPrizes] = useState<PrizeRow[]>([]);
   const [prizesLoading, setPrizesLoading] = useState(true);
   const [prizeModal, setPrizeModal] = useState<PrizeModalState>(null);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
 
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
@@ -113,6 +114,32 @@ export default function AdminPrizesPage() {
       loadRedemptions();
     } finally {
       setCancelBusyId(null);
+    }
+  }
+
+  async function handleDeletePrize(p: PrizeRow) {
+    const ok = await confirm(`確定刪除「${p.name}」嗎？此動作無法復原。`, { danger: true });
+    if (!ok) return;
+    setDeleteBusyId(p.id);
+    try {
+      const res = await fetch(`/api/prizes/${p.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErrorInfo({
+          title: '刪除失敗',
+          message:
+            data.error === 'HAS_REDEMPTIONS'
+              ? '此獎品已有兌換紀錄，無法刪除——請改用「編輯」把狀態設為下架。'
+              : data.error === 'NOT_FOUND'
+                ? '找不到這個獎品'
+                : '發生錯誤，請稍後再試',
+        });
+        return;
+      }
+      showToast('已刪除獎品');
+      loadPrizes();
+    } finally {
+      setDeleteBusyId(null);
     }
   }
 
@@ -191,9 +218,14 @@ export default function AdminPrizesPage() {
     {
       header: '操作',
       render: (p) => (
-        <Button variant="link" onClick={() => setPrizeModal({ mode: 'edit', prize: p })}>
-          編輯
-        </Button>
+        <div className="flex justify-end gap-3 sm:justify-start">
+          <Button variant="link" onClick={() => setPrizeModal({ mode: 'edit', prize: p })}>
+            編輯
+          </Button>
+          <Button variant="link" tone="danger" loading={deleteBusyId === p.id} onClick={() => handleDeletePrize(p)}>
+            刪除
+          </Button>
+        </div>
       ),
     },
   ];

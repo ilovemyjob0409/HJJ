@@ -212,6 +212,28 @@ export async function updatePrize(
   });
 }
 
+// 真刪除：僅限從未被兌換過的獎品（任何狀態的兌換紀錄都算佔用——歷史靠外鍵掛著）；
+// 有紀錄的只能下架。檢查與刪除之間的併發兌換由 FK RESTRICT 當最後防線。
+export async function deletePrize(id: string) {
+  const prize = await prisma.prize.findUnique({ where: { id } });
+  if (!prize) throw new Error('NOT_FOUND');
+  const redemptions = await prisma.prizeRedemption.count({ where: { prizeId: id } });
+  if (redemptions > 0) throw new Error('HAS_REDEMPTIONS');
+  try {
+    await prisma.prize.delete({ where: { id } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') throw new Error('HAS_REDEMPTIONS');
+    throw err;
+  }
+  if (prize.imagePath) {
+    try {
+      await deletePrizeImages([prize.imagePath]);
+    } catch (err) {
+      console.error('prize image cleanup failed', err);
+    }
+  }
+}
+
 // 換圖：DB 先 commit、舊檔刪除 best-effort（孤兒物件可接受，DB 指向被刪物件不可）
 export async function setPrizeImage(prizeId: string, storagePath: string) {
   const prize = await prisma.prize.findUnique({ where: { id: prizeId } });

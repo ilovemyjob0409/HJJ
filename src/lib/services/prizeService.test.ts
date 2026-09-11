@@ -9,6 +9,7 @@ import {
   listPrizesForAdmin,
   createPrize,
   updatePrize,
+  deletePrize,
   listMyRedemptions,
   listPendingRedemptions,
   sendPrizeExpiryReminders,
@@ -178,6 +179,26 @@ describe('prize catalog', () => {
     expect(rows[0].alreadyRedeemed).toBe(true);
 
     expect((await listPrizesForAdmin()).map((r) => r.name).sort()).toEqual(['下架品', '恐龍模型']);
+  });
+});
+
+describe('deletePrize', () => {
+  it('hard-deletes a never-redeemed prize', async () => {
+    const prize = await createPrize({ name: '測試品', points: 5, stock: 1, sortOrder: 9 });
+    await deletePrize(prize.id);
+    expect(await prisma.prize.findUnique({ where: { id: prize.id } })).toBeNull();
+  });
+
+  it('rejects HAS_REDEMPTIONS when any redemption exists (even cancelled) and keeps the row', async () => {
+    const { student, prize } = await setup({ regular: 100 });
+    const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+    await cancelRedemption({ redemptionId: r.id, byStudentId: student.id, operator: '學生本人' });
+    await expect(deletePrize(prize.id)).rejects.toThrow('HAS_REDEMPTIONS');
+    expect(await prisma.prize.findUnique({ where: { id: prize.id } })).not.toBeNull();
+  });
+
+  it('rejects NOT_FOUND for an unknown id', async () => {
+    await expect(deletePrize('nope')).rejects.toThrow('NOT_FOUND');
   });
 });
 

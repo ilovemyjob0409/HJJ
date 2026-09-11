@@ -6,7 +6,7 @@ vi.mock('next-auth', () => ({ getServerSession: (...args: unknown[]) => sessionM
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 
 import { GET, POST } from './route';
-import { PATCH } from './[id]/route';
+import { PATCH, DELETE } from './[id]/route';
 import { prisma } from '@/lib/db';
 import { createStudent } from '@/lib/services/studentService';
 
@@ -140,5 +140,31 @@ describe('POST /api/prizes/[id]/image', () => {
     const res = await postImage(req, { params: { id: prize.id } });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe('INVALID_FILE');
+  });
+});
+
+describe('DELETE /api/prizes/[id]', () => {
+  const delReq = () => new NextRequest('http://x/api/prizes/x', { method: 'DELETE' });
+
+  it('403 for student; admin deletes never-redeemed prize; 422 with records; 404 unknown', async () => {
+    const { student, user } = await makeStudent('prizes-del@example.com');
+    const clean = await prisma.prize.create({ data: { name: '無紀錄品', points: 5, stock: 1, sortOrder: 0 } });
+    const used = await prisma.prize.create({ data: { name: '有紀錄品', points: 5, stock: 1, sortOrder: 1 } });
+    await prisma.prizeRedemption.create({
+      data: { studentId: student.id, prizeId: used.id, prizeName: '有紀錄品', redeemOnlyUsed: 0, regularUsed: 5 },
+    });
+
+    asUser(user.id, 'STUDENT');
+    expect((await DELETE(delReq(), { params: { id: clean.id } })).status).toBe(403);
+
+    asUser('admin-1', 'ADMIN');
+    expect((await DELETE(delReq(), { params: { id: clean.id } })).status).toBe(200);
+    expect(await prisma.prize.findUnique({ where: { id: clean.id } })).toBeNull();
+
+    const res = await DELETE(delReq(), { params: { id: used.id } });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toBe('HAS_REDEMPTIONS');
+
+    expect((await DELETE(delReq(), { params: { id: 'nope' } })).status).toBe(404);
   });
 });
