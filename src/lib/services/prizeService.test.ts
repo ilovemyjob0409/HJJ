@@ -1,7 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createStudent } from './studentService';
-import { redeemPrize, cancelRedemption, pickupRedemption } from './prizeService';
+import {
+  redeemPrize,
+  cancelRedemption,
+  pickupRedemption,
+  listPrizesForStudent,
+  listPrizesForAdmin,
+  createPrize,
+  updatePrize,
+  listMyRedemptions,
+  listPendingRedemptions,
+  findRedemptionByCode,
+} from './prizeService';
 
 async function setup(opts?: { regular?: number; redeemOnly?: number; points?: number; stock?: number }) {
   const student = await createStudent({ name: '小明', email: 'pz-ming@example.com', password: 'x' });
@@ -142,5 +153,48 @@ describe('pickupRedemption', () => {
     await pickupRedemption({ redemptionId: r.id, operator: '王行政' });
     await expect(pickupRedemption({ redemptionId: r.id, operator: '王行政' })).rejects.toThrow('ALREADY_PICKED_UP');
     await expect(pickupRedemption({ redemptionId: 'nope', operator: '王行政' })).rejects.toThrow('NOT_FOUND');
+  });
+});
+
+describe('prize catalog', () => {
+  it('createPrize validates inputs; updatePrize edits fields and rejects unknown id', async () => {
+    await expect(createPrize({ name: '  ', points: 10, stock: 1, sortOrder: 0 })).rejects.toThrow('INVALID_NAME');
+    await expect(createPrize({ name: 'A', points: 0, stock: 1, sortOrder: 0 })).rejects.toThrow('INVALID_POINTS');
+    await expect(createPrize({ name: 'A', points: 10, stock: -1, sortOrder: 0 })).rejects.toThrow('INVALID_STOCK');
+
+    const prize = await createPrize({ name: '貼紙組', points: 10, stock: 5, sortOrder: 1 });
+    const updated = await updatePrize(prize.id, { points: 15, active: false });
+    expect(updated.points).toBe(15);
+    expect(updated.active).toBe(false);
+    await expect(updatePrize('nope', { points: 1 })).rejects.toThrow('NOT_FOUND');
+  });
+
+  it('listPrizesForStudent returns only active prizes ordered by sortOrder, with alreadyRedeemed flag', async () => {
+    const { student, prize } = await setup({ regular: 100 });
+    await createPrize({ name: '下架品', points: 5, stock: 1, sortOrder: 0 }).then((p) => updatePrize(p.id, { active: false }));
+    await redeemPrize({ studentId: student.id, prizeId: prize.id });
+
+    const rows = await listPrizesForStudent(student.id);
+    expect(rows.map((r) => r.name)).toEqual(['恐龍模型']);
+    expect(rows[0].alreadyRedeemed).toBe(true);
+
+    expect((await listPrizesForAdmin()).map((r) => r.name).sort()).toEqual(['下架品', '恐龍模型']);
+  });
+});
+
+describe('redemption lists', () => {
+  it('listMyRedemptions / listPendingRedemptions / findRedemptionByCode return points and deadlineKey', async () => {
+    const { student, prize } = await setup({ regular: 100, points: 50 });
+    const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+
+    const mine = await listMyRedemptions(student.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ code: r.code, prizeName: '恐龍模型', points: 50, status: 'PENDING', deadlineKey: r.deadlineKey });
+
+    const pending = await listPendingRedemptions();
+    expect(pending[0]).toMatchObject({ code: r.code, studentName: '小明', prizeName: '恐龍模型', points: 50 });
+
+    expect(await findRedemptionByCode(r.code)).toMatchObject({ studentName: '小明', status: 'PENDING' });
+    expect(await findRedemptionByCode('000000')).toBeNull();
   });
 });

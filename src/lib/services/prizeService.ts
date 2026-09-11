@@ -5,6 +5,7 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser } from './notificationService';
 import { prizeDeadlineKey } from '@/lib/prizeDates';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { createPrizeSignedUrls, deletePrizeImages } from '@/lib/storage';
 
 export const CODE_ATTEMPTS = 5;
 
@@ -150,4 +151,143 @@ export async function pickupRedemption(input: { redemptionId: string; operator: 
     if (cur.status === 'CANCELLED') throw new Error('ALREADY_CANCELLED');
     throw new Error('ALREADY_EXPIRED');
   }
+}
+
+// 簽名網址快取：失敗不擋目錄顯示（沒圖照樣能換）
+async function signedUrlMap(imagePaths: (string | null)[]) {
+  const paths = imagePaths.filter((p): p is string => !!p);
+  try {
+    return await createPrizeSignedUrls(paths);
+  } catch (err) {
+    console.error('prize signed urls failed', err);
+    return new Map<string, string>();
+  }
+}
+
+export async function listPrizesForStudent(studentId: string) {
+  const [prizes, mine] = await Promise.all([
+    prisma.prize.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
+    prisma.prizeRedemption.findMany({
+      where: { studentId, status: { in: ['PENDING', 'PICKED_UP'] } },
+      select: { prizeId: true },
+    }),
+  ]);
+  const redeemed = new Set(mine.map((m) => m.prizeId));
+  const urls = await signedUrlMap(prizes.map((p) => p.imagePath));
+  return prizes.map((p) => ({
+    id: p.id,
+    name: p.name,
+    points: p.points,
+    stock: p.stock,
+    imageUrl: p.imagePath ? (urls.get(p.imagePath) ?? null) : null,
+    alreadyRedeemed: redeemed.has(p.id),
+  }));
+}
+
+export async function listPrizesForAdmin() {
+  const prizes = await prisma.prize.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
+  const urls = await signedUrlMap(prizes.map((p) => p.imagePath));
+  return prizes.map((p) => ({
+    id: p.id,
+    name: p.name,
+    points: p.points,
+    stock: p.stock,
+    active: p.active,
+    sortOrder: p.sortOrder,
+    imageUrl: p.imagePath ? (urls.get(p.imagePath) ?? null) : null,
+  }));
+}
+
+function validatePrizeInput(input: { name?: string; points?: number; stock?: number; sortOrder?: number }) {
+  if (input.name !== undefined && !input.name.trim()) throw new Error('INVALID_NAME');
+  if (input.points !== undefined && (!Number.isInteger(input.points) || input.points < 1)) throw new Error('INVALID_POINTS');
+  if (input.stock !== undefined && (!Number.isInteger(input.stock) || input.stock < 0)) throw new Error('INVALID_STOCK');
+  if (input.sortOrder !== undefined && !Number.isInteger(input.sortOrder)) throw new Error('INVALID_SORT_ORDER');
+}
+
+export async function createPrize(input: { name: string; points: number; stock: number; sortOrder: number }) {
+  validatePrizeInput(input);
+  return prisma.prize.create({
+    data: { name: input.name.trim(), points: input.points, stock: input.stock, sortOrder: input.sortOrder },
+  });
+}
+
+export async function updatePrize(
+  id: string,
+  input: { name?: string; points?: number; stock?: number; sortOrder?: number; active?: boolean }
+) {
+  validatePrizeInput(input);
+  const existing = await prisma.prize.findUnique({ where: { id } });
+  if (!existing) throw new Error('NOT_FOUND');
+  return prisma.prize.update({
+    where: { id },
+    data: {
+      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...(input.points !== undefined ? { points: input.points } : {}),
+      ...(input.stock !== undefined ? { stock: input.stock } : {}),
+      ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+      ...(input.active !== undefined ? { active: input.active } : {}),
+    },
+  });
+}
+
+// 換圖：DB 先 commit、舊檔刪除 best-effort（孤兒物件可接受，DB 指向被刪物件不可）
+export async function setPrizeImage(prizeId: string, storagePath: string) {
+  const prize = await prisma.prize.findUnique({ where: { id: prizeId } });
+  if (!prize) throw new Error('NOT_FOUND');
+  await prisma.prize.update({ where: { id: prizeId }, data: { imagePath: storagePath } });
+  if (prize.imagePath) {
+    try {
+      await deletePrizeImages([prize.imagePath]);
+    } catch {}
+  }
+}
+
+export async function listMyRedemptions(studentId: string) {
+  const rows = await prisma.prizeRedemption.findMany({ where: { studentId }, orderBy: { createdAt: 'desc' } });
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    prizeName: r.prizeName,
+    points: r.redeemOnlyUsed + r.regularUsed,
+    status: r.status,
+    createdAt: r.createdAt,
+    deadlineKey: prizeDeadlineKey(r.createdAt),
+  }));
+}
+
+export async function listPendingRedemptions() {
+  const rows = await prisma.prizeRedemption.findMany({
+    where: { status: 'PENDING' },
+    orderBy: { createdAt: 'asc' },
+    include: { student: { select: { studentNumber: true, user: { select: { name: true } } } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    studentName: r.student.user.name,
+    studentNumber: r.student.studentNumber,
+    prizeName: r.prizeName,
+    points: r.redeemOnlyUsed + r.regularUsed,
+    createdAt: r.createdAt,
+    deadlineKey: prizeDeadlineKey(r.createdAt),
+  }));
+}
+
+export async function findRedemptionByCode(code: string) {
+  const r = await prisma.prizeRedemption.findUnique({
+    where: { code },
+    include: { student: { select: { user: { select: { name: true } } } } },
+  });
+  if (!r) return null;
+  return {
+    id: r.id,
+    code: r.code,
+    studentName: r.student.user.name,
+    prizeName: r.prizeName,
+    points: r.redeemOnlyUsed + r.regularUsed,
+    status: r.status,
+    createdAt: r.createdAt,
+    deadlineKey: prizeDeadlineKey(r.createdAt),
+  };
 }
