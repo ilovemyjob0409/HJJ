@@ -5,12 +5,11 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Select from '@/components/ui/Select';
 import Input from '@/components/ui/Input';
-import DataTable, { Column } from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
-import { formatActivityDateRange } from '@/lib/activityDateRange';
 import ActivityDetail from '@/components/ActivityDetail';
+import ActivityCardGrid from '@/components/ActivityCardGrid';
 import ActivityFormFields, { ActivityFormValues, EMPTY_ACTIVITY_FORM } from '@/components/ActivityFormFields';
 import ImageCropModal from '@/components/ImageCropModal';
 import { compressImage } from '@/lib/imageCompression';
@@ -52,12 +51,6 @@ interface ActivityRow {
   teachers: { teacherId: string; teacher: { user: { name: string } } }[];
   registrations: RosterEntry[];
   _count: { registrations: number };
-}
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
 }
 
 export default function AdminActivitiesPage() {
@@ -307,44 +300,6 @@ export default function AdminActivitiesPage() {
     }
   }
 
-  const columns: Column<ActivityRow>[] = [
-    {
-      header: '封面',
-      width: 'w-40',
-      render: (a) =>
-        a.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 max-w-full rounded object-cover" />
-        ) : (
-          <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
-        ),
-    },
-    { header: '標題', render: (a) => a.title, sortValue: (a) => a.title },
-    { header: '分類', render: (a) => a.category.name, sortValue: (a) => a.category.name },
-    { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
-    { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
-    { header: '人數', render: (a) => `${a._count.registrations}/${a.capacity}` },
-    {
-      header: '狀態',
-      render: (a) => (new Date(a.endDate) < startOfToday() ? '已結束' : '進行中'),
-      sortValue: (a) => (new Date(a.endDate) < startOfToday() ? 1 : 0),
-    },
-    {
-      header: '操作',
-      render: (a) => (
-        <Button
-          variant="link"
-          onClick={(e) => {
-            e.stopPropagation();
-            openEdit(a);
-          }}
-        >
-          編輯
-        </Button>
-      ),
-    },
-  ];
-
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">活動專區管理</h1>
@@ -450,17 +405,17 @@ export default function AdminActivitiesPage() {
         </Card>
       )}
 
-      <Card>
-        <DataTable
-          columns={columns}
-          rows={activities}
-          keyField={(a) => a.id}
-          onRowClick={(a) => setViewing(a)}
-          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
-          loading={loading}
-          emptyText="目前沒有活動"
-        />
-      </Card>
+      <ActivityCardGrid
+        activities={activities}
+        loading={loading}
+        emptyText="目前沒有活動"
+        onView={(a) => setViewing(a)}
+        action={(a) => (
+          <Button variant="link" className="text-sm" onClick={() => openEdit(a)}>
+            編輯
+          </Button>
+        )}
+      />
 
       <Modal open={viewing !== null} onClose={() => setViewing(null)} flush maxWidthClassName="max-w-xl">
         {viewing && (

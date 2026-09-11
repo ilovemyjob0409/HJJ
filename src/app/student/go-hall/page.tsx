@@ -4,11 +4,12 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GoHallTicketHistoryModal from '@/components/GoHallTicketHistoryModal';
+import GoHallSessionCards from '@/components/GoHallSessionCards';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { withStopPropagation } from '@/components/ui/stopPropagation';
@@ -126,30 +127,6 @@ function StudentGoHallContent() {
     setViewing(await res.json());
   }
 
-  const openColumns: Column<SessionRow>[] = [
-    { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW'), sortValue: (s) => s.date },
-    { header: '時間', render: (s) => `${s.startTime}-${s.endTime}` },
-    { header: '老師', render: (s) => s.teacher.user.name, sortValue: (s) => s.teacher.user.name },
-    {
-      header: '剩餘名額',
-      render: (s) => Math.max(s.capacity - s._count.registrations, 0),
-      sortValue: (s) => Math.max(s.capacity - s._count.registrations, 0),
-    },
-    {
-      header: '操作',
-      render: (s) => (
-        <Button
-          className="px-3 py-1 text-xs"
-          disabled={s._count.registrations >= s.capacity}
-          onClick={withStopPropagation(() => handleRegister(s.id))}
-          loading={pendingId === s.id}
-        >
-          {s._count.registrations >= s.capacity ? '已額滿' : '報名'}
-        </Button>
-      ),
-    },
-  ];
-
   const myColumns: Column<RegistrationRow>[] = [
     { header: '日期', render: (r) => formatDateWithWeekday(r.session.date, 'zh-TW'), sortValue: (r) => r.session.date },
     { header: '時間', render: (r) => `${r.session.startTime}-${r.session.endTime}` },
@@ -224,17 +201,42 @@ function StudentGoHallContent() {
       </button>
 
       <h2 className="mb-2 font-bold text-ink">開放中的場次</h2>
-      <Card className="mb-6">
-        <DataTable
-          columns={openColumns}
-          rows={openSessions}
-          keyField={(s) => s.id}
-          onRowClick={(s) => openRoster(s.id)}
-          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+      <div className="mb-6">
+        <GoHallSessionCards
+          sessions={openSessions}
           loading={loading}
           emptyText="目前沒有開放中的場次"
+          registeredCount={(s) => s._count.registrations}
+          footer={(s) => {
+            const mine = myRegistrations.find((r) => r.session.id === s.id && !isBeforeToday(r.session.date));
+            const full = s._count.registrations >= s.capacity;
+            return (
+              <>
+                <Button variant="link" className="text-sm" onClick={() => openRoster(s.id)}>
+                  查看名單
+                </Button>
+                {mine ? (
+                  <span className="flex items-center gap-2">
+                    <span className="rounded-full bg-approvedBg px-3 py-1 text-xs font-bold text-approved">已報名</span>
+                    <Button variant="link" tone="danger" className="text-sm" onClick={() => handleCancel(mine.id)}>
+                      取消
+                    </Button>
+                  </span>
+                ) : (
+                  <Button
+                    className="px-4 py-1.5 text-sm"
+                    disabled={full}
+                    onClick={() => handleRegister(s.id)}
+                    loading={pendingId === s.id}
+                  >
+                    {full ? '已額滿' : '報名'}
+                  </Button>
+                )}
+              </>
+            );
+          }}
         />
-      </Card>
+      </div>
 
       <h2 className="mb-2 font-bold text-ink">我的報名紀錄</h2>
       <Card>

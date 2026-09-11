@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
+import GoHallSessionCards from '@/components/GoHallSessionCards';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
@@ -210,6 +211,9 @@ function AdminGoHallContent() {
   }
 
   const filteredSessions = sessions.filter((s) => matchesSessionSearch(s, search));
+  // 卡片改版：未過期場次出卡片、歷史場次維持收合表格（紀錄類）
+  const upcomingSessions = filteredSessions.filter((s) => !isBeforeToday(s.date));
+  const pastSessions = filteredSessions.filter((s) => isBeforeToday(s.date));
 
   const columns: Column<SessionRow>[] = [
     { header: '日期', render: (s) => formatDateWithWeekday(s.date, 'zh-TW'), sortValue: (s) => s.date },
@@ -363,10 +367,26 @@ function AdminGoHallContent() {
           className="max-w-md"
         />
       </div>
+      <div className="mb-6">
+        <GoHallSessionCards
+          sessions={upcomingSessions}
+          loading={loading}
+          emptyText="目前沒有開放中的場次"
+          registeredCount={(s) => s._count.registrations}
+          highlightId={highlightDismissed ? null : highlightId}
+          footer={(s) => (
+            <Button variant="link" className="text-sm" onClick={() => openRoster(s.id)}>
+              查看名單
+            </Button>
+          )}
+        />
+      </div>
+
+      <h2 className="mb-2 font-bold text-ink">歷史場次</h2>
       <Card className="mb-6">
         <CollapsibleDataTable
           columns={columns}
-          rows={filteredSessions}
+          rows={pastSessions}
           keyField={(s) => s.id}
           onRowClick={(s) => openRoster(s.id)}
           rowClassName={(s) => (s.id === highlightId && !highlightDismissed ? 'bg-pendingBg' : 'cursor-pointer hover:bg-stripe')}
@@ -375,7 +395,7 @@ function AdminGoHallContent() {
           }}
           maxRows={search.trim() || highlightId ? undefined : 3}
           loading={loading}
-          emptyText="目前沒有場次"
+          emptyText="沒有歷史場次"
         />
       </Card>
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import DataTable, { Column } from '@/components/ui/DataTable';
+import { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 import { isBeforeToday } from '@/lib/pastDate';
 import ActivityDetail from '@/components/ActivityDetail';
+import ActivityCardGrid from '@/components/ActivityCardGrid';
 
 interface ActivityStudentRow {
   id: string;
@@ -132,30 +133,6 @@ export default function StudentActivitiesPage() {
     setDetailLoading(false);
   }
 
-  const openColumns: Column<ActivityStudentRow>[] = [
-    {
-      header: '封面',
-      width: 'w-40',
-      render: (a) =>
-        a.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={a.coverUrl} alt="封面" className="mx-auto h-20 w-32 max-w-full rounded object-cover" />
-        ) : (
-          <div className="bg-stripe mx-auto h-20 w-32 max-w-full rounded" />
-        ),
-    },
-    { header: '標題', render: (a) => a.title, sortValue: (a) => a.title },
-    { header: '分類', render: (a) => a.category.name, sortValue: (a) => a.category.name },
-    { header: '日期區間', render: (a) => formatActivityDateRange(a.startDate, a.endDate, 'zh-TW') },
-    { header: '地點', render: (a) => a.location ?? '-', sortValue: (a) => a.location ?? null },
-    { header: '老師', render: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
-    {
-      header: '剩餘名額',
-      render: (a) => Math.max(a.capacity - a._count.registrations, 0),
-      sortValue: (a) => Math.max(a.capacity - a._count.registrations, 0),
-    },
-  ];
-
   const myColumns: Column<RegistrationRow>[] = [
     {
       header: '封面',
@@ -178,17 +155,31 @@ export default function StudentActivitiesPage() {
       <h1 className="mb-4 text-xl font-bold text-ink">活動專區</h1>
 
       <h2 className="mb-2 font-bold text-ink">活動列表</h2>
-      <Card className="mb-6">
-        <DataTable
-          columns={openColumns}
-          rows={openActivities}
-          keyField={(a) => a.id}
-          onRowClick={(a) => openDetail(a.id, myRegistrations.find((r) => r.activity.id === a.id)?.id ?? null)}
-          rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+      <div className="mb-6">
+        <ActivityCardGrid
+          activities={openActivities}
           loading={loading}
           emptyText="目前沒有開放中的活動"
+          onView={(a) => openDetail(a.id, myRegistrations.find((r) => r.activity.id === a.id)?.id ?? null)}
+          action={(a) => {
+            const mine = myRegistrations.find((r) => r.activity.id === a.id);
+            if (mine) {
+              return <span className="rounded-full bg-approvedBg px-3 py-1 text-xs font-bold text-approved">已報名</span>;
+            }
+            const full = a._count.registrations >= a.capacity;
+            return (
+              <Button
+                className="px-4 py-1.5 text-sm"
+                disabled={full}
+                loading={pendingId === a.id}
+                onClick={() => handleRegister(a.id)}
+              >
+                {full ? '已額滿' : '報名'}
+              </Button>
+            );
+          }}
         />
-      </Card>
+      </div>
 
       <h2 className="mb-2 font-bold text-ink">我的報名紀錄</h2>
       <Card>
