@@ -6,14 +6,14 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
-import { Column } from '@/components/ui/DataTable';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { previewSessionDates } from '@/lib/goHallDates';
 import { isBeforeToday } from '@/lib/pastDate';
-import { formatDateWithWeekday, WEEKDAY_LABELS } from '@/lib/dateFormat';
+import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei, WEEKDAY_LABELS } from '@/lib/dateFormat';
 import { matchesSessionSearch } from './sessionSearch';
 import TicketManager, { QUALIFICATION_LABEL } from './TicketManager';
 import { scrollToRow } from '@/components/ui/scrollToRow';
@@ -41,6 +41,7 @@ interface SessionRow {
 interface RosterEntry {
   id: string;
   studentId: string;
+  createdAt: string;
   student: { user: { name: string } };
   qualification?: string | null;
   qualificationPredicted?: boolean;
@@ -225,6 +226,34 @@ function AdminGoHallContent() {
     },
   ];
 
+  const rosterColumns: Column<RosterEntry>[] = [
+    { header: '學生', render: (r) => r.student.user.name, sortValue: (r) => r.student.user.name },
+    {
+      header: '資格',
+      render: (r) =>
+        r.qualification ? (
+          <span className={r.qualification === 'SINGLE' ? 'text-xs font-semibold text-pending' : 'text-xs text-inkMuted'}>
+            {(r.qualificationPredicted ? '預計：' : '') + QUALIFICATION_LABEL[r.qualification]}
+          </span>
+        ) : (
+          '—'
+        ),
+    },
+    {
+      header: '報名時間',
+      render: (r) => formatTimestampWithWeekdayTaipei(r.createdAt),
+      sortValue: (r) => r.createdAt,
+    },
+    {
+      header: '操作',
+      render: (r) => (
+        <Button variant="link" tone="danger" className="text-xs" onClick={() => handleRemoveRegistration(r.id)}>
+          移除
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">弈廳場次管理</h1>
@@ -350,7 +379,7 @@ function AdminGoHallContent() {
         />
       </Card>
 
-      <Modal open={viewing !== null} onClose={() => setViewing(null)} title="場次名單">
+      <Modal open={viewing !== null} onClose={() => setViewing(null)} title="場次名單" maxWidthClassName="max-w-lg">
         {viewing && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-inkMuted">
@@ -360,21 +389,11 @@ function AdminGoHallContent() {
             {viewing.registrations.length === 0 ? (
               <p className="text-sm text-inkMuted">尚無學生報名</p>
             ) : (
-              <ul className="flex flex-col gap-1">
-                {viewing.registrations.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between text-sm text-ink">
-                    <span>{r.student.user.name}</span>
-                    {r.qualification && (
-                      <span className={r.qualification === 'SINGLE' ? 'text-xs font-semibold text-pending' : 'text-xs text-inkMuted'}>
-                        {(r.qualificationPredicted ? '預計：' : '') + QUALIFICATION_LABEL[r.qualification]}
-                      </span>
-                    )}
-                    <Button variant="link" tone="danger" onClick={() => handleRemoveRegistration(r.id)}>
-                      移除
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+              <DataTable
+                columns={rosterColumns}
+                rows={viewing.registrations}
+                keyField={(r) => r.id}
+              />
             )}
             {!isBeforeToday(viewing.date) && (
               <Button type="button" className="w-fit px-3 py-1 text-xs" onClick={() => setShowRegisterModal(true)}>

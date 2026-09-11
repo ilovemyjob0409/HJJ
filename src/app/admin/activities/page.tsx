@@ -34,6 +34,7 @@ interface CategoryOption {
 interface RosterEntry {
   id: string;
   studentId: string;
+  createdAt: string;
   student: { user: { name: string } };
 }
 
@@ -500,9 +501,9 @@ export default function AdminActivitiesPage() {
               </div>
             }
             rosterItemAction={(r) => (
-              <button type="button" aria-label="移除報名" className="text-rejected hover:underline" onClick={() => handleRemoveRegistration(r.id)}>
-                ✕
-              </button>
+              <Button variant="link" tone="danger" className="text-xs" onClick={() => handleRemoveRegistration(r.id)}>
+                移除
+              </Button>
             )}
             footer={
               <div className="flex items-center gap-4">

@@ -26,6 +26,7 @@ const ACTIVITY_LIST_SELECT = {
     select: {
       id: true,
       studentId: true,
+      createdAt: true,
       student: { select: { user: { select: NAME_ONLY_SELECT } } },
     },
   },

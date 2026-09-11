@@ -3,12 +3,14 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Button from '@/components/ui/Button';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import ImageCropModal from '@/components/ImageCropModal';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useDialogA11y } from '@/components/ui/useDialogA11y';
 import { uploadActivityImageFile } from '@/lib/uploadActivityImage';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
+import { formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 
 interface AlbumImage {
   id: string;
@@ -25,7 +27,7 @@ export interface ActivityDetailData {
   endDate: string;
   capacity: number;
   teachers: { teacher: { user: { name: string } } }[];
-  registrations: { id: string; student: { user: { name: string } } }[];
+  registrations: { id: string; createdAt?: string; student: { user: { name: string } } }[];
 }
 
 interface ActivityDetailProps {
@@ -86,6 +88,17 @@ export default function ActivityDetail({
   rosterHeaderAction,
   footer,
 }: ActivityDetailProps) {
+  type RosterRow = ActivityDetailData['registrations'][number];
+  const rosterColumns: Column<RosterRow>[] = [
+    { header: '學生', render: (r) => r.student.user.name, sortValue: (r) => r.student.user.name },
+    {
+      header: '報名時間',
+      render: (r) => (r.createdAt ? formatTimestampWithWeekdayTaipei(r.createdAt) : '—'),
+      sortValue: (r) => r.createdAt ?? '',
+    },
+    ...(rosterItemAction ? [{ header: '操作', render: (r: RosterRow) => rosterItemAction(r) }] : []),
+  ];
+
   const { showToast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [images, setImages] = useState<AlbumImage[]>([]);
@@ -322,14 +335,7 @@ export default function ActivityDetail({
           {activity.registrations.length === 0 ? (
             <p className="text-sm text-inkMuted">尚無學生報名</p>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {activity.registrations.map((r) => (
-                <span key={r.id} className="flex items-center gap-1.5 rounded-full border border-borderSubtle bg-stripe px-2.5 py-1 text-xs text-ink">
-                  {r.student.user.name}
-                  {rosterItemAction?.(r)}
-                </span>
-              ))}
-            </div>
+            <DataTable columns={rosterColumns} rows={activity.registrations} keyField={(r) => r.id} />
           )}
         </div>
 

@@ -173,6 +173,7 @@ export function getSessionDetail(id: string) {
         select: {
           id: true,
           studentId: true,
+          createdAt: true,
           student: { select: { user: { select: NAME_ONLY_SELECT } } },
         },
       },
