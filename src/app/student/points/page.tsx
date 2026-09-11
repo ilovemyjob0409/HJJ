@@ -2,8 +2,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getPointBalances, listPointHistory } from '@/lib/services/pointService';
+import { listPrizesForStudent, listMyRedemptions } from '@/lib/services/prizeService';
 import Card from '@/components/ui/Card';
 import PointsHistoryTable from './PointsHistoryTable';
+import PrizeZone from './PrizeZone';
 
 // Without this, Next.js prerenders this page once at build time and
 // serves that frozen snapshot to every student until the next deploy.
@@ -24,7 +26,12 @@ export default async function StudentPointsPage() {
     );
   }
 
-  const [balances, history] = await Promise.all([getPointBalances(student.id), listPointHistory(student.id)]);
+  const [balances, history, prizes, redemptions] = await Promise.all([
+    getPointBalances(student.id),
+    listPointHistory(student.id),
+    listPrizesForStudent(student.id),
+    listMyRedemptions(student.id),
+  ]);
   const total = balances.regular + balances.redeemOnly;
 
   return (
@@ -46,6 +53,8 @@ export default async function StudentPointsPage() {
           <p className="mt-1 text-2xl font-bold text-brandDark">{total}</p>
         </Card>
       </div>
+
+      <PrizeZone prizes={prizes} redemptions={redemptions} total={total} />
 
       <h2 className="mb-2 font-bold text-ink">點數紀錄</h2>
       <Card>

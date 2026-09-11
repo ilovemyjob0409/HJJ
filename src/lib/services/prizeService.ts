@@ -15,7 +15,7 @@ async function notifyStudent(studentId: string, body: string) {
       select: { user: { select: { id: true } } },
     });
     if (!student) return;
-    await notifyUser(student.user.id, { title: '獎品專區', body, url: '/student/prizes' });
+    await notifyUser(student.user.id, { title: '獎品專區', body, url: '/student/points' });
   } catch (err) {
     console.error('prize notification failed', err);
   }
