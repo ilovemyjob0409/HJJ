@@ -235,6 +235,8 @@ export default function AdminPrizesPage() {
     <>
       <h1 className="mb-4 text-xl font-bold text-ink">獎品管理</h1>
 
+      <PrizeRulesManager />
+
       <Card className="mb-6">
         <h2 className="mb-3 font-bold text-ink">待領獎核銷</h2>
         <DataTable
@@ -275,8 +277,6 @@ export default function AdminPrizesPage() {
       <AlertModal open={errorInfo !== null} onClose={() => setErrorInfo(null)} title={errorInfo?.title ?? '發生錯誤'}>
         {errorInfo?.message}
       </AlertModal>
-
-      <PrizeRulesManager />
 
       {ConfirmDialog}
     </>

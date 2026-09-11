@@ -159,7 +159,7 @@ export default function PrizeRulesManager() {
   ];
 
   return (
-    <Card className="mt-6">
+    <Card className="mb-6">
       <div className="mb-1 flex items-center justify-between">
         <h2 className="font-bold text-ink">兌換規則</h2>
         {!showAddForm && (
