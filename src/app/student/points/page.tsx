@@ -18,7 +18,7 @@ export default async function StudentPointsPage() {
   if (!student) {
     return (
       <>
-        <h1 className="mb-4 text-xl font-bold text-ink">集點卡</h1>
+        <h1 className="mb-4 text-xl font-bold text-ink">集點＆獎品</h1>
         <Card>
           <p className="text-sm text-inkMuted">找不到學生資料</p>
         </Card>
@@ -36,7 +36,7 @@ export default async function StudentPointsPage() {
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold text-ink">集點卡</h1>
+      <h1 className="mb-4 text-xl font-bold text-ink">集點＆獎品</h1>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
