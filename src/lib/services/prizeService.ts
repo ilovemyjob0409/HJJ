@@ -29,7 +29,6 @@ async function notifyStudent(studentId: string, body: string) {
 type RefundableRow = { studentId: string; prizeId: string; prizeName: string; redeemOnlyUsed: number; regularUsed: number };
 
 // 取消／逾期共用：按快照把兩桶各自退回＋庫存加回。
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function refundAndRestock(tx: Prisma.TransactionClient, row: RefundableRow, reasonPrefix: string) {
   const reason = `${reasonPrefix}：${row.prizeName}`;
   if (row.redeemOnlyUsed > 0) {
@@ -115,4 +114,40 @@ export async function redeemPrize(
     `兌換成功：${result.prizeName}，兌換代號 ${result.code}，請於 ${formatDateWithWeekday(deadlineKey)} 前至櫃台領取`
   );
   return { ...result, deadlineKey };
+}
+
+// 取消（學生本人或行政撤銷）：退點＋補庫存＋改狀態，單一 Serializable 交易。
+export async function cancelRedemption(input: { redemptionId: string; byStudentId?: string; operator: string }) {
+  const row = await runSerializableWithRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        const r = await tx.prizeRedemption.findUnique({ where: { id: input.redemptionId } });
+        if (!r || (input.byStudentId && r.studentId !== input.byStudentId)) throw new Error('NOT_FOUND');
+        if (r.status !== 'PENDING') throw new Error('NOT_PENDING');
+        await refundAndRestock(tx, r, '取消兌換退點');
+        return tx.prizeRedemption.update({
+          where: { id: r.id },
+          data: { status: 'CANCELLED', cancelledAt: new Date(), operator: input.operator },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  );
+  await notifyStudent(row.studentId, `已取消兌換：${row.prizeName}，退回 ${row.redeemOnlyUsed + row.regularUsed} 點`);
+  return row;
+}
+
+// 核銷：updateMany 帶 status 條件當樂觀鎖——兩個行政同時按只會成功一次。
+export async function pickupRedemption(input: { redemptionId: string; operator: string }) {
+  const updated = await prisma.prizeRedemption.updateMany({
+    where: { id: input.redemptionId, status: 'PENDING' },
+    data: { status: 'PICKED_UP', pickedUpAt: new Date(), operator: input.operator },
+  });
+  if (updated.count === 0) {
+    const cur = await prisma.prizeRedemption.findUnique({ where: { id: input.redemptionId } });
+    if (!cur) throw new Error('NOT_FOUND');
+    if (cur.status === 'PICKED_UP') throw new Error('ALREADY_PICKED_UP');
+    if (cur.status === 'CANCELLED') throw new Error('ALREADY_CANCELLED');
+    throw new Error('ALREADY_EXPIRED');
+  }
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createStudent } from './studentService';
-import { redeemPrize } from './prizeService';
+import { redeemPrize, cancelRedemption, pickupRedemption } from './prizeService';
 
 async function setup(opts?: { regular?: number; redeemOnly?: number; points?: number; stock?: number }) {
   const student = await createStudent({ name: '小明', email: 'pz-ming@example.com', password: 'x' });
@@ -87,5 +87,60 @@ describe('redeemPrize', () => {
     const third = await createStudent({ name: '小美', email: 'pz-mei@example.com', password: 'x' });
     await prisma.pointTransaction.create({ data: { studentId: third.id, bucket: 'REGULAR', amount: 100, kind: 'TEACHER_AWARD', reason: 'x' } });
     await expect(redeemPrize({ studentId: third.id, prizeId: prize.id }, () => '111111')).rejects.toThrow('CODE_GENERATION_FAILED');
+  });
+});
+
+describe('cancelRedemption', () => {
+  it('refunds each bucket per snapshot, restocks, marks CANCELLED with operator', async () => {
+    const { student, prize } = await setup({ regular: 40, redeemOnly: 30, points: 50 });
+    const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+
+    await cancelRedemption({ redemptionId: r.id, byStudentId: student.id, operator: '學生本人' });
+
+    const row = await prisma.prizeRedemption.findUniqueOrThrow({ where: { id: r.id } });
+    expect(row.status).toBe('CANCELLED');
+    expect(row.operator).toBe('學生本人');
+    expect(row.cancelledAt).not.toBeNull();
+
+    const refunds = await prisma.pointTransaction.findMany({ where: { kind: 'REDEMPTION_REFUND' } });
+    expect(refunds.find((t) => t.bucket === 'REDEEM_ONLY')?.amount).toBe(30);
+    expect(refunds.find((t) => t.bucket === 'REGULAR')?.amount).toBe(20);
+    for (const t of refunds) expect(t.reason).toBe('取消兌換退點：恐龍模型');
+
+    expect((await prisma.prize.findUniqueOrThrow({ where: { id: prize.id } })).stock).toBe(3);
+  });
+
+  it("a student cannot cancel someone else's redemption; admin (no byStudentId) can", async () => {
+    const { student, prize } = await setup({ regular: 100 });
+    const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+    await expect(cancelRedemption({ redemptionId: r.id, byStudentId: 'other', operator: '學生本人' })).rejects.toThrow('NOT_FOUND');
+    await expect(cancelRedemption({ redemptionId: r.id, operator: '王行政' })).resolves.toBeTruthy();
+  });
+
+  it('rejects NOT_PENDING for already picked-up rows', async () => {
+    const { student, prize } = await setup({ regular: 100 });
+    const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+    await pickupRedemption({ redemptionId: r.id, operator: '王行政' });
+    await expect(cancelRedemption({ redemptionId: r.id, operator: '王行政' })).rejects.toThrow('NOT_PENDING');
+  });
+});
+
+describe('pickupRedemption', () => {
+  it('marks PICKED_UP with operator and pickedUpAt', async () => {
+    const { student, prize } = await setup({ regular: 100 });
+    const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+    await pickupRedemption({ redemptionId: r.id, operator: '王行政' });
+    const row = await prisma.prizeRedemption.findUniqueOrThrow({ where: { id: r.id } });
+    expect(row.status).toBe('PICKED_UP');
+    expect(row.operator).toBe('王行政');
+    expect(row.pickedUpAt).not.toBeNull();
+  });
+
+  it('reports the current status when not pending', async () => {
+    const { student, prize } = await setup({ regular: 100 });
+    const r = await redeemPrize({ studentId: student.id, prizeId: prize.id });
+    await pickupRedemption({ redemptionId: r.id, operator: '王行政' });
+    await expect(pickupRedemption({ redemptionId: r.id, operator: '王行政' })).rejects.toThrow('ALREADY_PICKED_UP');
+    await expect(pickupRedemption({ redemptionId: 'nope', operator: '王行政' })).rejects.toThrow('NOT_FOUND');
   });
 });
