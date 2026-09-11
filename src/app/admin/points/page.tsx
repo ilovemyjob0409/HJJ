@@ -14,8 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import AwardRowsForm from '@/components/AwardRowsForm';
 import PointReasonsManager from './PointReasonsManager';
-
-const DRAW_COST = 20; // 與 pointService.DRAW_COST 一致（顯示用）
+import { DRAW_COST } from '@/lib/pointRules';
 
 const KIND_LABELS: Record<string, string> = {
   TEACHER_AWARD: '加分',

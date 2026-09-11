@@ -95,8 +95,7 @@ describe('recordLottery', () => {
 
   it('writes no LOTTERY_WIN row when wonPoints is 0', async () => {
     const { teacher, student, reason } = await setup();
-    await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: 10, reasonId: reason.id });
-    await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: 10, reasonId: reason.id });
+    await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: DRAW_COST, reasonId: reason.id });
 
     await recordLottery({ studentId: student.id, draws: 1, wonPoints: 0 });
 
@@ -106,7 +105,7 @@ describe('recordLottery', () => {
 
   it('throws INSUFFICIENT_POINTS when REGULAR balance cannot cover the draws', async () => {
     const { teacher, student, reason } = await setup();
-    await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: 10, reasonId: reason.id });
+    await awardPoints({ teacherId: teacher.id, studentIds: [student.id], amount: DRAW_COST - 1, reasonId: reason.id });
 
     await expect(recordLottery({ studentId: student.id, draws: 1, wonPoints: 5 })).rejects.toThrow('INSUFFICIENT_POINTS');
     expect(await prisma.pointTransaction.count({ where: { kind: { in: ['LOTTERY_COST', 'LOTTERY_WIN'] } } })).toBe(0);

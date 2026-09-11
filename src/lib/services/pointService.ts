@@ -3,7 +3,9 @@ import { prisma } from '@/lib/db';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser } from './notificationService';
 
-export const DRAW_COST = 20; // 線下抽獎固定每次消耗
+import { DRAW_COST } from '@/lib/pointRules';
+
+export { DRAW_COST };
 export const AWARD_MAX = 10; // 老師單次給點上限（防誤按）
 
 export interface PointBalances {
