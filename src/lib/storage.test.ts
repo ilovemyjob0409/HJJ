@@ -37,7 +37,7 @@ describe('storage', () => {
     const { uploadActivityImage } = await import('./storage');
     const path = await uploadActivityImage('act123', Buffer.from('x'), 'image/jpeg');
     expect(path).toMatch(/^act123\/[0-9a-f-]+\.jpg$/);
-    expect(uploadMock).toHaveBeenCalledWith(path, expect.any(Buffer), { contentType: 'image/jpeg' });
+    expect(uploadMock).toHaveBeenCalledWith(path, expect.any(Buffer), { contentType: 'image/jpeg', cacheControl: '31536000' });
   });
 
   it('uploadActivityImage throws when the storage API returns an error', async () => {
@@ -57,7 +57,7 @@ describe('storage', () => {
     const { createSignedUrls } = await import('./storage');
     const map = await createSignedUrls(['a/1.jpg', 'a/2.jpg']);
     expect(map.get('a/1.jpg')).toBe('https://signed/1');
-    expect(createSignedUrlsMock).toHaveBeenCalledWith(['a/1.jpg', 'a/2.jpg'], 3600);
+    expect(createSignedUrlsMock).toHaveBeenCalledWith(['a/1.jpg', 'a/2.jpg'], 86_400);
     expect((await createSignedUrls([])).size).toBe(0);
   });
 
@@ -77,7 +77,7 @@ describe('prize storage', () => {
     const { uploadPrizeImage } = await import('./storage');
     const path = await uploadPrizeImage('prize123', Buffer.from('x'), 'image/png');
     expect(path).toMatch(/^prize123\/[0-9a-f-]+\.png$/);
-    expect(uploadMock).toHaveBeenCalledWith(path, expect.any(Buffer), { contentType: 'image/png' });
+    expect(uploadMock).toHaveBeenCalledWith(path, expect.any(Buffer), { contentType: 'image/png', cacheControl: '31536000' });
   });
 
   it('uploadPrizeImage rejects unsupported content types', async () => {
@@ -85,11 +85,26 @@ describe('prize storage', () => {
     await expect(uploadPrizeImage('p1', Buffer.from('x'), 'image/gif')).rejects.toThrow(/Unsupported/);
   });
 
-  it('createPrizeSignedUrls maps path to signed url and returns empty map for no paths', async () => {
-    createSignedUrlsMock.mockResolvedValue({ data: [{ path: 'p1/a.jpg', signedUrl: 'https://signed/a' }], error: null });
-    const { createPrizeSignedUrls } = await import('./storage');
-    expect((await createPrizeSignedUrls(['p1/a.jpg'])).get('p1/a.jpg')).toBe('https://signed/a');
-    expect((await createPrizeSignedUrls([])).size).toBe(0);
+  it('prizeImagePublicUrl builds a stable public URL and returns null without env', async () => {
+    const { prizeImagePublicUrl } = await import('./storage');
+    expect(prizeImagePublicUrl('p1/a.jpg')).toBe('https://example.supabase.co/storage/v1/object/public/prize-images/p1/a.jpg');
+    delete process.env.SUPABASE_URL;
+    expect(prizeImagePublicUrl('p1/a.jpg')).toBeNull();
+  });
+
+  it('uploads set a long cacheControl (UUID paths never change content)', async () => {
+    uploadMock.mockResolvedValue({ data: { path: 'x' }, error: null });
+    const { uploadActivityImage } = await import('./storage');
+    const path = await uploadActivityImage('act1', Buffer.from('x'), 'image/jpeg');
+    expect(uploadMock).toHaveBeenCalledWith(path, expect.any(Buffer), { contentType: 'image/jpeg', cacheControl: '31536000' });
+  });
+
+  it('createSignedUrls memoizes per path so repeated calls reuse the same URL', async () => {
+    createSignedUrlsMock.mockResolvedValue({ data: [{ path: 'act1/a.jpg', signedUrl: 'https://signed/a' }], error: null });
+    const { createSignedUrls } = await import('./storage');
+    expect((await createSignedUrls(['act1/a.jpg'])).get('act1/a.jpg')).toBe('https://signed/a');
+    expect((await createSignedUrls(['act1/a.jpg'])).get('act1/a.jpg')).toBe('https://signed/a');
+    expect(createSignedUrlsMock).toHaveBeenCalledTimes(1);
   });
 
   it('deletePrizeImages removes paths and no-ops on empty', async () => {

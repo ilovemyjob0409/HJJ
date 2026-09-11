@@ -187,7 +187,7 @@ export default function AdminPrizesPage() {
       render: (p) =>
         p.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-          <img src={p.imageUrl} alt={p.name} className="mx-auto h-16 w-16 rounded-lg object-cover" />
+          <img src={p.imageUrl} alt={p.name} loading="lazy" decoding="async" className="mx-auto h-16 w-16 rounded-lg object-cover" />
         ) : (
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-lg bg-stripe text-xl" aria-hidden="true">
             🎁

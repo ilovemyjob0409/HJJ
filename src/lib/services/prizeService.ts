@@ -4,7 +4,7 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { notifyUser } from './notificationService';
 import { prizeDeadlineKey, prizeRemindFromKey } from '@/lib/prizeDates';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
-import { createPrizeSignedUrls, deletePrizeImages } from '@/lib/storage';
+import { prizeImagePublicUrl, deletePrizeImages } from '@/lib/storage';
 import { taipeiDateKey } from '@/lib/taipeiDate';
 
 // 兌換相關通知（收件夾＋推播）。寫入成功後才發；失敗只記 log，不影響主流程。
@@ -134,17 +134,6 @@ export async function pickupRedemption(input: { redemptionId: string; operator: 
   }
 }
 
-// 簽名網址快取：失敗不擋目錄顯示（沒圖照樣能換）
-async function signedUrlMap(imagePaths: (string | null)[]) {
-  const paths = imagePaths.filter((p): p is string => !!p);
-  try {
-    return await createPrizeSignedUrls(paths);
-  } catch (err) {
-    console.error('prize signed urls failed', err);
-    return new Map<string, string>();
-  }
-}
-
 export async function listPrizesForStudent(studentId: string) {
   const [prizes, mine] = await Promise.all([
     prisma.prize.findMany({ where: { active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
@@ -154,20 +143,18 @@ export async function listPrizesForStudent(studentId: string) {
     }),
   ]);
   const redeemed = new Set(mine.map((m) => m.prizeId));
-  const urls = await signedUrlMap(prizes.map((p) => p.imagePath));
   return prizes.map((p) => ({
     id: p.id,
     name: p.name,
     points: p.points,
     stock: p.stock,
-    imageUrl: p.imagePath ? (urls.get(p.imagePath) ?? null) : null,
+    imageUrl: p.imagePath ? prizeImagePublicUrl(p.imagePath) : null,
     alreadyRedeemed: redeemed.has(p.id),
   }));
 }
 
 export async function listPrizesForAdmin() {
   const prizes = await prisma.prize.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
-  const urls = await signedUrlMap(prizes.map((p) => p.imagePath));
   return prizes.map((p) => ({
     id: p.id,
     name: p.name,
@@ -175,7 +162,7 @@ export async function listPrizesForAdmin() {
     stock: p.stock,
     active: p.active,
     sortOrder: p.sortOrder,
-    imageUrl: p.imagePath ? (urls.get(p.imagePath) ?? null) : null,
+    imageUrl: p.imagePath ? prizeImagePublicUrl(p.imagePath) : null,
   }));
 }
 

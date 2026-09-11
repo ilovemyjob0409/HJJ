@@ -72,7 +72,7 @@ export default function ActivityCardGrid<T extends ActivityCardData>({
             >
               {a.coverUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-                <img src={a.coverUrl} alt="" className="h-full w-full object-cover" />
+                <img src={a.coverUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
               ) : (
                 <span className="flex h-full w-full items-center justify-center text-4xl" aria-hidden>
                   🎈

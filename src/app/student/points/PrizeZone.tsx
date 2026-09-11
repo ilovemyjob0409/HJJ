@@ -177,7 +177,9 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
 
                   {prize.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-                    <img src={prize.imageUrl} alt={prize.name} className="h-24 w-full rounded object-cover" />
+                    <img src={prize.imageUrl}
+                  loading="lazy"
+                  decoding="async" alt={prize.name} className="h-24 w-full rounded object-cover" />
                   ) : (
                     <div className="flex h-24 w-full items-center justify-center rounded bg-stripe text-3xl" aria-hidden="true">
                       🎁
