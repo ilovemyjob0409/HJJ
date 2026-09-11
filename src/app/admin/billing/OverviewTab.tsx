@@ -227,7 +227,10 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
       header: '通知',
       render: (r) =>
         r.notifiedAt ? (
-          <span className="text-ink">已通知・{formatTimestampWithWeekdayTaipei(r.notifiedAt)}</span>
+          <div className="whitespace-nowrap text-ink">
+            <div>已通知</div>
+            <div className="text-xs text-inkMuted">{formatTimestampWithWeekdayTaipei(r.notifiedAt)}</div>
+          </div>
         ) : (
           <span className="text-inkMuted">未通知</span>
         ),

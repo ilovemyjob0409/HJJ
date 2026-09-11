@@ -401,7 +401,10 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
         header: '通知',
         render: (b) =>
           b.notifiedAt ? (
-            <span className="text-ink">已通知・{formatTimestampWithWeekdayTaipei(b.notifiedAt)}</span>
+            <div className="whitespace-nowrap text-ink">
+            <div>已通知</div>
+            <div className="text-xs text-inkMuted">{formatTimestampWithWeekdayTaipei(b.notifiedAt)}</div>
+          </div>
           ) : (
             <span className="text-inkMuted">未通知</span>
           ),
