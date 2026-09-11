@@ -25,6 +25,7 @@ const NAV_LINKS: Record<Role, { href: string; label: string; exact?: boolean }[]
     { href: '/admin/go-hall', label: '弈廳' },
     { href: '/admin/activities', label: '活動專區' },
     { href: '/admin/points', label: '集點' },
+    { href: '/admin/prizes', label: '獎品' },
     { href: '/admin/makeup-notices', label: '補課須知' },
     { href: '/admin/faq', label: '常見問題' },
   ],
