@@ -7,6 +7,7 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/storage', () => ({
   uploadActivityImage: vi.fn(async (activityId: string) => `${activityId}/mock.jpg`),
   createSignedUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://signed/${p}`]))),
+  createSignedThumbUrls: vi.fn(async (paths: string[]) => new Map(paths.map((p) => [p, `https://signed-thumb/${p}`]))),
   deleteActivityImages: vi.fn(async () => {}),
 }));
 
