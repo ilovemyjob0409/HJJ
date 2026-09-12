@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface MatrixCell {
@@ -73,6 +74,17 @@ function MatrixCellContent({ cell }: { cell: MatrixCell | undefined }) {
   return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}>{label}</span>;
 }
 
+// Excel 匯出用的純文字格值（畫面徽章的文字版）；插班／已退班學生的無關日期留空。
+function exportCellText(cell: MatrixCell | undefined): string {
+  if (!cell) return '';
+  if (cell.kind === 'ON_LEAVE') {
+    if (cell.makeupDate === null) return '請假';
+    const md = formatShortMonthDay(cell.makeupDate);
+    return cell.makeupPending ? `請假（補於${md}・待審）` : `請假（補於${md}）`;
+  }
+  return CELL_BADGE[cell.kind].label;
+}
+
 // 整班出缺勤總表（矩陣式）：橫軸＝近三個月該班上課日（新→舊）、縱軸＝學生，
 // 每格一種標籤（簽到／請假＋補於日期／補課／未點名，缺席與未報名照實顯示）。
 // 學生姓名欄 sticky 固定在左側，表格本體橫向捲動（手機同樣橫捲）。老師／行政
@@ -97,6 +109,13 @@ export default function ClassAttendanceOverview({
       .finally(() => setLoading(false));
   }, [classId]);
 
+  const exportColumns = data
+    ? [
+        { header: '學生', value: (s: MatrixStudent) => s.studentName },
+        ...data.dates.map((key) => ({ header: formatShortDate(key), value: (s: MatrixStudent) => exportCellText(s.cells[key]) })),
+      ]
+    : [];
+
   return (
     <>
       <Link href={backHref} className="mb-2 inline-flex items-center gap-1 text-sm text-inkMuted transition-colors hover:text-ink">
@@ -119,34 +138,44 @@ export default function ClassAttendanceOverview({
           {data.students.length === 0 ? (
             <p className="text-sm text-inkMuted">目前沒有學生</p>
           ) : (
-            <Card className="p-0">
-              <div className="overflow-x-auto rounded-xl">
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-borderSubtle">
-                      <th className="sticky left-0 z-10 border-r border-borderSubtle bg-card px-4 py-2.5 text-left font-semibold text-inkMuted">學生</th>
-                      {data.dates.map((key) => (
-                        <th key={key} className="whitespace-nowrap px-3 py-2.5 text-center text-xs font-semibold text-inkMuted">
-                          {formatShortDate(key)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.students.map((s) => (
-                      <tr key={s.studentId} className="border-b border-borderSubtle last:border-b-0">
-                        <td className="sticky left-0 z-10 whitespace-nowrap border-r border-borderSubtle bg-card px-4 py-2.5 font-semibold text-ink">{s.studentName}</td>
+            <>
+              <div className="mb-2 flex">
+                <ExportExcelButton
+                  rows={data.students}
+                  columns={exportColumns}
+                  filename={`出缺勤總表_${data.class.name}`}
+                  className="ml-auto shrink-0"
+                />
+              </div>
+              <Card className="p-0">
+                <div className="overflow-x-auto rounded-xl">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-borderSubtle">
+                        <th className="sticky left-0 z-10 border-r border-borderSubtle bg-card px-4 py-2.5 text-left font-semibold text-inkMuted">學生</th>
                         {data.dates.map((key) => (
-                          <td key={key} className="px-3 py-2.5 text-center">
-                            <MatrixCellContent cell={s.cells[key]} />
-                          </td>
+                          <th key={key} className="whitespace-nowrap px-3 py-2.5 text-center text-xs font-semibold text-inkMuted">
+                            {formatShortDate(key)}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                    </thead>
+                    <tbody>
+                      {data.students.map((s) => (
+                        <tr key={s.studentId} className="border-b border-borderSubtle last:border-b-0">
+                          <td className="sticky left-0 z-10 whitespace-nowrap border-r border-borderSubtle bg-card px-4 py-2.5 font-semibold text-ink">{s.studentName}</td>
+                          {data.dates.map((key) => (
+                            <td key={key} className="px-3 py-2.5 text-center">
+                              <MatrixCellContent cell={s.cells[key]} />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
           )}
         </>
       )}
