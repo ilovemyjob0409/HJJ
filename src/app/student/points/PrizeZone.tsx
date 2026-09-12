@@ -73,6 +73,8 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
+  // 點整張卡開的獎品詳情彈窗
+  const [viewingPrize, setViewingPrize] = useState<Prize | null>(null);
 
   async function handleRedeem(prize: Prize) {
     const ok = await confirm(`確定用 ${prize.points} 點兌換「${prize.name}」嗎？`);
@@ -164,7 +166,13 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
             {prizes.map((prize) => {
               const shortBy = prize.points - total;
               return (
-                <div key={prize.id} className="relative flex flex-col gap-2 rounded-lg border border-borderSubtle p-3">
+                // 整張卡可點開詳情；快速兌換鈕自行擋冒泡
+                // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+                <div
+                  key={prize.id}
+                  className="relative flex cursor-pointer flex-col gap-2 rounded-lg border border-borderSubtle p-3 transition-shadow hover:shadow-md"
+                  onClick={() => setViewingPrize(prize)}
+                >
                   {prize.alreadyRedeemed ? (
                     <span className="absolute right-2 top-2 rounded-full bg-approvedBg px-2 py-0.5 text-xs font-bold text-approved">
                       已兌換
@@ -204,7 +212,14 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
                       還差 {shortBy} 點
                     </Button>
                   ) : (
-                    <Button loading={redeemingId === prize.id} onClick={() => handleRedeem(prize)} className="w-full">
+                    <Button
+                      loading={redeemingId === prize.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRedeem(prize);
+                      }}
+                      className="w-full"
+                    >
                       兌換
                     </Button>
                   )}
@@ -239,6 +254,49 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
       <AlertModal open={errorInfo !== null} onClose={() => setErrorInfo(null)} title={errorInfo?.title ?? '發生錯誤'}>
         {errorInfo?.message}
       </AlertModal>
+
+      <Modal open={viewingPrize !== null} onClose={() => setViewingPrize(null)} title={viewingPrize?.name ?? '獎品詳情'}>
+        {viewingPrize && (
+          <div className="flex flex-col gap-3">
+            {viewingPrize.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
+              <img src={viewingPrize.imageUrl} alt={viewingPrize.name} className="max-h-72 w-full rounded-lg object-contain" />
+            ) : (
+              <div className="flex h-40 w-full items-center justify-center rounded-lg bg-stripe text-5xl" aria-hidden="true">
+                🎁
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-bold text-brandDark">{viewingPrize.points} 點</p>
+              <p className="text-sm text-inkMuted">剩餘 {viewingPrize.stock} 件</p>
+            </div>
+            {viewingPrize.alreadyRedeemed ? (
+              <Button variant="secondary" disabled className="w-full">
+                已兌換
+              </Button>
+            ) : viewingPrize.stock === 0 ? (
+              <Button variant="secondary" disabled className="w-full">
+                已換完
+              </Button>
+            ) : viewingPrize.points - total > 0 ? (
+              <Button variant="secondary" disabled className="w-full">
+                還差 {viewingPrize.points - total} 點
+              </Button>
+            ) : (
+              <Button
+                className="w-full"
+                onClick={() => {
+                  const target = viewingPrize;
+                  setViewingPrize(null);
+                  handleRedeem(target);
+                }}
+              >
+                兌換
+              </Button>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {ConfirmDialog}
     </>
