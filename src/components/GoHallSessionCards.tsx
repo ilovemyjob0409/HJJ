@@ -21,6 +21,8 @@ interface GoHallSessionCardsProps<T extends GoHallSessionCardData> {
   footer: (session: T) => ReactNode;
   // 通知深連結的高亮（沿用 scrollToRow 的 data-row-key 機制）
   highlightId?: string | null;
+  // 整卡點擊（開場次名單）；內部 footer 動作自行擋冒泡
+  onView?: (session: T) => void;
 }
 
 // 弈廳場次卡片（2026-09 卡片改版）：日期大字（星期）＋時間・老師＋報名進度條。
@@ -31,6 +33,7 @@ export default function GoHallSessionCards<T extends GoHallSessionCardData>({
   registeredCount,
   footer,
   highlightId = null,
+  onView,
 }: GoHallSessionCardsProps<T>) {
   if (loading) {
     return (
@@ -58,7 +61,10 @@ export default function GoHallSessionCards<T extends GoHallSessionCardData>({
           <div
             key={s.id}
             data-row-key={s.id}
-            className={`flex flex-col gap-2 rounded-xl p-4 shadow-sm ${s.id === highlightId ? 'bg-pendingBg' : 'bg-card'}`}
+            className={`flex flex-col gap-2 rounded-xl p-4 shadow-sm ${s.id === highlightId ? 'bg-pendingBg' : 'bg-card'} ${
+              onView ? 'cursor-pointer transition-shadow hover:shadow-md' : ''
+            }`}
+            onClick={onView ? () => onView(s) : undefined}
           >
             <div className="flex items-start justify-between gap-2">
               <p className="text-base font-bold text-ink">{formatDateWithWeekday(s.date, 'zh-TW')}</p>
@@ -75,7 +81,10 @@ export default function GoHallSessionCards<T extends GoHallSessionCardData>({
                 <div className="h-full bg-brandDark" style={{ width: `${ratio}%` }} />
               </div>
             </div>
-            <div className="mt-auto flex items-center justify-between pt-1">{footer(s)}</div>
+            {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
+            <div className="mt-auto flex items-center justify-between pt-1" onClick={(e) => e.stopPropagation()}>
+              {footer(s)}
+            </div>
           </div>
         );
       })}

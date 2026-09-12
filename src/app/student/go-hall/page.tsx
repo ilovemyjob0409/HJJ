@@ -207,6 +207,7 @@ function StudentGoHallContent() {
           loading={loading}
           emptyText="目前沒有開放中的場次"
           registeredCount={(s) => s._count.registrations}
+          onView={(s) => openRoster(s.id)}
           footer={(s) => {
             const mine = myRegistrations.find((r) => r.session.id === s.id && !isBeforeToday(r.session.date));
             const full = s._count.registrations >= s.capacity;

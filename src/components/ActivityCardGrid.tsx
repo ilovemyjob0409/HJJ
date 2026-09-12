@@ -63,7 +63,13 @@ export default function ActivityCardGrid<T extends ActivityCardData>({
         const full = a._count.registrations >= a.capacity;
         const ratio = Math.min((a._count.registrations / Math.max(a.capacity, 1)) * 100, 100);
         return (
-          <div key={a.id} data-row-key={a.id} className="flex flex-col overflow-hidden rounded-xl bg-card shadow-sm">
+          // 整張卡都可點開詳情（比照 DataTable 列點擊慣例）；內部動作鈕自行擋冒泡
+          <div
+            key={a.id}
+            data-row-key={a.id}
+            className="flex cursor-pointer flex-col overflow-hidden rounded-xl bg-card shadow-sm transition-shadow hover:shadow-md"
+            onClick={() => onView(a)}
+          >
             <button
               type="button"
               className="relative block aspect-video w-full bg-stripe text-left"
@@ -106,7 +112,11 @@ export default function ActivityCardGrid<T extends ActivityCardData>({
                 <Button variant="link" className="text-sm" onClick={() => onView(a)}>
                   查看詳情
                 </Button>
-                {action?.(a)}
+                {action && (
+                  // 報名/編輯等動作不觸發開詳情
+                  // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+                  <span onClick={(e) => e.stopPropagation()}>{action(a)}</span>
+                )}
               </div>
             </div>
           </div>

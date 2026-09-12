@@ -374,6 +374,7 @@ function AdminGoHallContent() {
           emptyText="目前沒有開放中的場次"
           registeredCount={(s) => s._count.registrations}
           highlightId={highlightDismissed ? null : highlightId}
+          onView={(s) => openRoster(s.id)}
           footer={(s) => (
             <Button variant="link" className="text-sm" onClick={() => openRoster(s.id)}>
               查看名單
