@@ -28,14 +28,11 @@ async function findOverlappingTutoringBill(tutoringEnrollmentId: string, periodS
   });
 }
 
-// 優惠項目只在單獨開單時勾選套用（如「台積電特約」——只有首次報名才有，不是學生
-// 長期屬性，不掛在 Student／Enrollment 上）。名稱與金額在這裡凍結進 detail 快照，
-// 之後改 DiscountItem 主表的金額不會動到已開的帳單。
-async function resolveDiscounts(discountItemIds?: string[]): Promise<{ name: string; amount: number }[]> {
-  if (!discountItemIds || discountItemIds.length === 0) return [];
-  const items = await prisma.discountItem.findMany({ where: { id: { in: discountItemIds } } });
-  return items.map((i) => ({ name: i.name, amount: i.amount }));
-}
+// 優惠項目只在單獨開單時套用（如「台積電特約」——只有首次報名才有，不是學生
+// 長期屬性，不掛在 Student／Enrollment 上）。名稱與金額由行政在試算前自行輸入
+// （DiscountItem 主表只是前端帶入用的預設清單），在這裡原樣凍結進 detail 快照，
+// 之後改主表不會動到已開的帳單。
+export type BillDiscount = { name: string; amount: number };
 
 // 單行完整算式：毛額 － 優惠項目1 － 優惠項目2 ＝ 最終金額（手動調整）。只在有優
 // 惠項目時呼叫；finalAmount 用實際寫進 Bill.amountDue 的值（可能經行政手動調整過）。
@@ -69,12 +66,12 @@ async function computeClassBillCore(studentId: string, classId: string, periodSt
 }
 
 export async function previewStandaloneClassBill(input: {
-  studentId: string; classId: string; periodStart: Date; periodEnd: Date; discountItemIds?: string[];
+  studentId: string; classId: string; periodStart: Date; periodEnd: Date; discounts?: BillDiscount[];
 }) {
-  const [core, existing, discounts] = await Promise.all([
+  const discounts = input.discounts ?? [];
+  const [core, existing] = await Promise.all([
     computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd),
     findOverlappingClassBill(input.studentId, input.classId, input.periodStart, input.periodEnd),
-    resolveDiscounts(input.discountItemIds),
   ]);
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
@@ -94,12 +91,10 @@ export async function previewStandaloneClassBill(input: {
 
 export async function createStandaloneClassBill(input: {
   studentId: string; classId: string; periodStart: Date; periodEnd: Date;
-  billedSessions: number; amountDue: number; note?: string; notifyNow: boolean; discountItemIds?: string[];
+  billedSessions: number; amountDue: number; note?: string; notifyNow: boolean; discounts?: BillDiscount[];
 }): Promise<{ billId: string }> {
-  const [core, discounts] = await Promise.all([
-    computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd),
-    resolveDiscounts(input.discountItemIds),
-  ]);
+  const discounts = input.discounts ?? [];
+  const core = await computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd);
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
 
@@ -158,15 +153,15 @@ export async function createStandaloneClassBill(input: {
 }
 
 export async function previewStandaloneTutoringBill(input: {
-  enrollmentId: string; periodStart: Date; periodEnd: Date; discountItemIds?: string[];
+  enrollmentId: string; periodStart: Date; periodEnd: Date; discounts?: BillDiscount[];
 }) {
-  const [enrollment, existing, discounts] = await Promise.all([
+  const discounts = input.discounts ?? [];
+  const [enrollment, existing] = await Promise.all([
     prisma.tutoringEnrollment.findUniqueOrThrow({
       where: { id: input.enrollmentId },
       select: { feeTier: { select: { monthlyFee: true } } },
     }),
     findOverlappingTutoringBill(input.enrollmentId, input.periodStart, input.periodEnd),
-    resolveDiscounts(input.discountItemIds),
   ]);
   if (!enrollment.feeTier) throw new Error('NO_FEE_TIER');
   const prorationRatio = computeTutoringProration(input.periodStart, input.periodEnd);
@@ -183,15 +178,13 @@ export async function previewStandaloneTutoringBill(input: {
 
 export async function createStandaloneTutoringBill(input: {
   enrollmentId: string; periodStart: Date; periodEnd: Date; amountDue: number; note?: string; notifyNow: boolean;
-  discountItemIds?: string[];
+  discounts?: BillDiscount[];
 }): Promise<{ billId: string }> {
-  const [enrollment, discounts] = await Promise.all([
-    prisma.tutoringEnrollment.findUniqueOrThrow({
-      where: { id: input.enrollmentId },
-      select: { studentId: true, feeTier: { select: { name: true, monthlyFee: true } } },
-    }),
-    resolveDiscounts(input.discountItemIds),
-  ]);
+  const discounts = input.discounts ?? [];
+  const enrollment = await prisma.tutoringEnrollment.findUniqueOrThrow({
+    where: { id: input.enrollmentId },
+    select: { studentId: true, feeTier: { select: { name: true, monthlyFee: true } } },
+  });
   if (!enrollment.feeTier) throw new Error('NO_FEE_TIER');
   const prorationRatio = computeTutoringProration(input.periodStart, input.periodEnd);
   const grossAmountDue = Math.round(enrollment.feeTier.monthlyFee * prorationRatio);

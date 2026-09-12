@@ -18,7 +18,24 @@ export async function GET() {
 }
 
 // body: { kind: 'CLASS'|'TUTORING', preview: boolean, periodStart, periodEnd,
-//         studentId?, classId?, enrollmentId?, billedSessions?, amountDue?, note?, notifyNow? }
+//         studentId?, classId?, enrollmentId?, billedSessions?, amountDue?, note?, notifyNow?,
+//         discounts?: {name, amount}[] }（優惠由行政試算前自行輸入，可自訂項目）
+function parseDiscounts(raw: unknown): { ok: true; discounts?: { name: string; amount: number }[] } | { ok: false } {
+  if (raw === undefined) return { ok: true };
+  if (!Array.isArray(raw)) return { ok: false };
+  const discounts: { name: string; amount: number }[] = [];
+  for (const d of raw) {
+    if (
+      d === null || typeof d !== 'object' ||
+      typeof (d as { name?: unknown }).name !== 'string' || (d as { name: string }).name.trim() === '' ||
+      !Number.isInteger((d as { amount?: unknown }).amount) || (d as { amount: number }).amount <= 0
+    ) {
+      return { ok: false };
+    }
+    discounts.push({ name: (d as { name: string }).name.trim(), amount: (d as { amount: number }).amount });
+  }
+  return { ok: true, discounts };
+}
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const body = await req.json().catch(() => ({}));
@@ -26,29 +43,31 @@ export async function POST(req: NextRequest) {
   try {
     const periodStart = new Date(body.periodStart);
     const periodEnd = new Date(body.periodEnd);
-    const discountItemIds: string[] | undefined = Array.isArray(body.discountItemIds) ? body.discountItemIds : undefined;
+    const parsed = parseDiscounts(body.discounts);
+    if (!parsed.ok) return NextResponse.json({ error: 'INVALID_DISCOUNTS' }, { status: 400 });
+    const discounts = parsed.discounts;
     if (body.kind === 'CLASS') {
       if (!body.studentId || !body.classId) return NextResponse.json({ error: 'MISSING_FIELDS' }, { status: 400 });
       if (body.preview) {
         return NextResponse.json(
-          await previewStandaloneClassBill({ studentId: body.studentId, classId: body.classId, periodStart, periodEnd, discountItemIds })
+          await previewStandaloneClassBill({ studentId: body.studentId, classId: body.classId, periodStart, periodEnd, discounts })
         );
       }
       const result = await createStandaloneClassBill({
         studentId: body.studentId, classId: body.classId, periodStart, periodEnd,
-        billedSessions: body.billedSessions, amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow, discountItemIds,
+        billedSessions: body.billedSessions, amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow, discounts,
       });
       return NextResponse.json(result);
     }
     if (!body.enrollmentId) return NextResponse.json({ error: 'MISSING_FIELDS' }, { status: 400 });
     if (body.preview) {
       return NextResponse.json(
-        await previewStandaloneTutoringBill({ enrollmentId: body.enrollmentId, periodStart, periodEnd, discountItemIds })
+        await previewStandaloneTutoringBill({ enrollmentId: body.enrollmentId, periodStart, periodEnd, discounts })
       );
     }
     const result = await createStandaloneTutoringBill({
       enrollmentId: body.enrollmentId, periodStart, periodEnd,
-      amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow, discountItemIds,
+      amountDue: body.amountDue, note: body.note, notifyNow: !!body.notifyNow, discounts,
     });
     return NextResponse.json(result);
   } catch (e) {

@@ -5,7 +5,6 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { createProgram } from './tutoringProgramService';
 import { seedDefaultFeeTiers, listFeeTiers, setEnrollmentFeeTier } from './tutoringFeeTierService';
-import { createDiscountItem } from './discountItemService';
 import {
   previewStandaloneClassBill, createStandaloneClassBill,
   previewStandaloneTutoringBill, createStandaloneTutoringBill, listStandaloneBills,
@@ -36,41 +35,45 @@ describe('standalone class bill', () => {
     expect((await listStandaloneBills()).some((b) => b.id === billId)).toBe(true);
   });
 
-  it('applies a discount item after the base amount is calculated, floored at 0', async () => {
+  // 優惠改由呼叫端直接傳 {name, amount}（試算前自行輸入、可自訂項目），
+  // 不再查 DiscountItem 主表——主表只是前端帶入用的預設清單。
+  it('applies caller-supplied discounts (multiple, custom names) after the base amount, floored at 0', async () => {
     const teacher = await createTeacher({ name: '陳老師', email: `sb-d-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
     const student = await createStudent({ name: '王小明', email: `sb-ds-${Date.now()}@example.com`, password: 'x' });
     const cls = await createClass({ name: '週六班B', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 6, startTime: '10:00', endTime: '12:00', feePerSession: 500 });
     await enrollStudent(cls.id, student.id);
-    const discount = await createDiscountItem({ name: '台積電特約', amount: 500 });
+    const discounts = [
+      { name: '台積電特約', amount: 500 },
+      { name: '手足同行', amount: 200 }, // 自訂項目，不在主表裡
+    ];
 
     const preview = await previewStandaloneClassBill({
-      studentId: student.id, classId: cls.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), discountItemIds: [discount.id],
+      studentId: student.id, classId: cls.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), discounts,
     });
-    // 4 堂 × 500 = 2000，扣 500 優惠 = 1500
-    expect(preview.amountDue).toBe(1500);
-    expect(preview.detail.discounts).toEqual([{ name: '台積電特約', amount: 500 }]);
+    // 4 堂 × 500 = 2000，扣 500 + 200 優惠 = 1300
+    expect(preview.amountDue).toBe(1300);
+    expect(preview.detail.discounts).toEqual(discounts);
     // formula 只顯示未扣優惠的毛額（4 堂 × 500 ＝ 2000 元），不能把已扣優惠的淨額塞進乘法算式；
     // netFormula 是「毛額－優惠項目＝淨額」單行完整算式（迴歸測試：曾經錯寫成「4 堂 × 500 ＝ 1500 元」）。
     expect(preview.detail.formula).toContain('4 堂 × 500 ＝ 2,000 元');
-    expect(preview.detail.formula).not.toContain('1,500');
-    expect(preview.detail.netFormula).toBe('2,000 元 － 台積電特約 500 元 ＝ 1,500 元');
+    expect(preview.detail.formula).not.toContain('1,300');
+    expect(preview.detail.netFormula).toBe('2,000 元 － 台積電特約 500 元 － 手足同行 200 元 ＝ 1,300 元');
 
     const { billId } = await createStandaloneClassBill({
       studentId: student.id, classId: cls.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30),
-      billedSessions: 4, amountDue: 1500, notifyNow: false, discountItemIds: [discount.id],
+      billedSessions: 4, amountDue: 1300, notifyNow: false, discounts,
     });
     const bill = await prisma.bill.findUniqueOrThrow({ where: { id: billId } });
-    expect(bill.amountDue).toBe(1500);
+    expect(bill.amountDue).toBe(1300);
     const detail = bill.detail as { discounts: { name: string; amount: number }[]; formula: string; netFormula?: string };
-    expect(detail.discounts).toEqual([{ name: '台積電特約', amount: 500 }]);
+    expect(detail.discounts).toEqual(discounts);
     expect(detail.formula).toContain('4 堂 × 500 ＝ 2,000 元');
-    expect(detail.formula).not.toContain('1,500');
-    expect(detail.netFormula).toBe('2,000 元 － 台積電特約 500 元 ＝ 1,500 元'); // 1500 等於試算算出的淨額，不算手動調整
+    expect(detail.formula).not.toContain('1,300');
+    expect(detail.netFormula).toBe('2,000 元 － 台積電特約 500 元 － 手足同行 200 元 ＝ 1,300 元'); // 1300 等於試算算出的淨額，不算手動調整
 
     // 優惠金額大於原始金額時，不會變成負數帳單
-    const bigDiscount = await createDiscountItem({ name: '全額招待', amount: 9999 });
     const zeroed = await previewStandaloneClassBill({
-      studentId: student.id, classId: cls.id, periodStart: D(2026, 11, 1), periodEnd: D(2026, 11, 30), discountItemIds: [bigDiscount.id],
+      studentId: student.id, classId: cls.id, periodStart: D(2026, 11, 1), periodEnd: D(2026, 11, 30), discounts: [{ name: '全額招待', amount: 9999 }],
     });
     expect(zeroed.amountDue).toBe(0);
   });
@@ -102,23 +105,22 @@ describe('standalone tutoring bill', () => {
     expect((await prisma.bill.findUniqueOrThrow({ where: { id: billId } })).prorationRatio).toBe(0.5);
   });
 
-  it('applies a discount item to a tutoring bill too', async () => {
+  it('applies a caller-supplied discount to a tutoring bill too', async () => {
     await seedDefaultFeeTiers();
     const tiers = await listFeeTiers();
     const student = await createStudent({ name: '林小柔B', email: `sb-td-${Date.now()}@example.com`, password: 'x' });
     const program = await createProgram({ name: '數學個別輔導' });
     const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
     await setEnrollmentFeeTier(enrollment.id, tiers[0].id); // 3000
-    const discount = await createDiscountItem({ name: '友達特約', amount: 300 });
 
     const preview = await previewStandaloneTutoringBill({
-      enrollmentId: enrollment.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), discountItemIds: [discount.id],
+      enrollmentId: enrollment.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), discounts: [{ name: '友達特約', amount: 300 }],
     });
     expect(preview.amountDue).toBe(2700);
     expect(preview.discounts).toEqual([{ name: '友達特約', amount: 300 }]);
 
     const { billId } = await createStandaloneTutoringBill({
-      enrollmentId: enrollment.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), amountDue: 2700, notifyNow: false, discountItemIds: [discount.id],
+      enrollmentId: enrollment.id, periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), amountDue: 2700, notifyNow: false, discounts: [{ name: '友達特約', amount: 300 }],
     });
     const bill = await prisma.bill.findUniqueOrThrow({ where: { id: billId } });
     expect(bill.amountDue).toBe(2700);

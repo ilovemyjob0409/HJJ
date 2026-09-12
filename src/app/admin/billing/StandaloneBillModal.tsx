@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 
@@ -70,7 +71,8 @@ export default function StandaloneBillModal({
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [enrollments, setEnrollments] = useState<EnrollmentOption[]>([]);
   const [discountItems, setDiscountItems] = useState<DiscountItemOption[]>([]);
-  const [selectedDiscountIds, setSelectedDiscountIds] = useState<string[]>([]);
+  // 優惠列（試算前自行輸入）：名稱與金額都可編輯；可從預設項目帶入或加自訂列。
+  const [discountRows, setDiscountRows] = useState<{ name: string; amount: string }[]>([]);
   const [search, setSearch] = useState('');
   const [studentId, setStudentId] = useState('');
   const [target, setTarget] = useState<Target | null>(null);
@@ -95,7 +97,7 @@ export default function StandaloneBillModal({
     setTutoringPreview(null);
     setBilledSessionsDraft('');
     setAmountDueDraft('');
-    setSelectedDiscountIds([]);
+    setDiscountRows([]);
   }, [open]);
 
   useEffect(() => {
@@ -114,10 +116,29 @@ export default function StandaloneBillModal({
       .then((data) => setDiscountItems(data.discountItems ?? []));
   }, [open]);
 
-  function toggleDiscountItem(id: string) {
-    setSelectedDiscountIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  // 任何優惠列變動都會讓既有試算失效（同原本勾選預設項目的行為）。
+  function mutateDiscountRows(mutate: (rows: { name: string; amount: string }[]) => { name: string; amount: string }[]) {
+    setDiscountRows(mutate);
     setClassPreview(null);
     setTutoringPreview(null);
+  }
+
+  function addPresetDiscount(id: string) {
+    const item = discountItems.find((d) => d.id === id);
+    if (!item) return;
+    mutateDiscountRows((rows) => [...rows, { name: item.name, amount: String(item.amount) }]);
+  }
+
+  // 送 API 前的優惠列整理：全空列自動忽略，半填列擋下請行政補完。
+  function collectDiscounts(): { name: string; amount: number }[] | null {
+    const filled = discountRows.filter((r) => r.name.trim() !== '' || r.amount.trim() !== '');
+    const discounts: { name: string; amount: number }[] = [];
+    for (const r of filled) {
+      const amount = Number(r.amount);
+      if (r.name.trim() === '' || !Number.isInteger(amount) || amount <= 0) return null;
+      discounts.push({ name: r.name.trim(), amount });
+    }
+    return discounts;
   }
 
   const matches = useMemo(() => {
@@ -145,14 +166,19 @@ export default function StandaloneBillModal({
 
   async function runPreview() {
     if (!target || !periodStart || !periodEnd) return;
+    const discounts = collectDiscounts();
+    if (discounts === null) {
+      showToast('請填寫完整的優惠項目資訊');
+      return;
+    }
     setPreviewing(true);
     setClassPreview(null);
     setTutoringPreview(null);
     try {
       const body =
         target.kind === 'CLASS'
-          ? { kind: 'CLASS', preview: true, periodStart, periodEnd, studentId, classId: target.classId, discountItemIds: selectedDiscountIds }
-          : { kind: 'TUTORING', preview: true, periodStart, periodEnd, enrollmentId: target.enrollmentId, discountItemIds: selectedDiscountIds };
+          ? { kind: 'CLASS', preview: true, periodStart, periodEnd, studentId, classId: target.classId, discounts }
+          : { kind: 'TUTORING', preview: true, periodStart, periodEnd, enrollmentId: target.enrollmentId, discounts };
       const res = await fetch('/api/admin/billing/standalone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -185,6 +211,12 @@ export default function StandaloneBillModal({
 
   async function submit(notifyNow: boolean) {
     if (!target) return;
+    // 建立時優惠列一定跟試算時一致（改動列會清空試算、按鈕就不可按），這裡再守一次以防萬一。
+    const discounts = collectDiscounts();
+    if (discounts === null) {
+      showToast('請填寫完整的優惠項目資訊');
+      return;
+    }
     setCreating(true);
     try {
       const amountDue = Number(amountDueDraft);
@@ -200,7 +232,7 @@ export default function StandaloneBillModal({
               billedSessions: Number(billedSessionsDraft),
               amountDue,
               notifyNow,
-              discountItemIds: selectedDiscountIds,
+              discounts,
             }
           : {
               kind: 'TUTORING',
@@ -210,7 +242,7 @@ export default function StandaloneBillModal({
               enrollmentId: target.enrollmentId,
               amountDue,
               notifyNow,
-              discountItemIds: selectedDiscountIds,
+              discounts,
             };
       const res = await fetch('/api/admin/billing/standalone', {
         method: 'POST',
@@ -305,23 +337,59 @@ export default function StandaloneBillModal({
                 收費區間訖
                 <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
               </label>
-              {discountItems.length > 0 && (
-                <div>
-                  <p className="mb-1 text-sm font-medium text-ink">優惠項目（僅套用於這張帳單，可複選）</p>
-                  <div className="flex flex-col gap-1 rounded-lg border border-borderSubtle p-2">
-                    {discountItems.map((d) => (
-                      <label key={d.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm text-ink hover:bg-stripe">
-                        <input
-                          type="checkbox"
-                          checked={selectedDiscountIds.includes(d.id)}
-                          onChange={() => toggleDiscountItem(d.id)}
-                        />
-                        {d.name}（－{d.amount.toLocaleString('en-US')} 元）
-                      </label>
-                    ))}
+              <div>
+                <p className="mb-1 text-sm font-medium text-ink">優惠項目（僅套用於這張帳單，名稱與金額可自行輸入）</p>
+                <div className="flex flex-col gap-2 rounded-lg border border-borderSubtle p-2">
+                  {discountRows.map((row, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        placeholder="優惠名稱"
+                        value={row.name}
+                        onChange={(e) => mutateDiscountRows((rows) => rows.map((r, i) => (i === index ? { ...r, name: e.target.value } : r)))}
+                        className="min-w-0 flex-1"
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="金額"
+                        value={row.amount}
+                        onChange={(e) => mutateDiscountRows((rows) => rows.map((r, i) => (i === index ? { ...r, amount: e.target.value } : r)))}
+                        className="w-24 shrink-0"
+                      />
+                      <button
+                        type="button"
+                        aria-label="移除優惠項目"
+                        onClick={() => mutateDiscountRows((rows) => rows.filter((_, i) => i !== index))}
+                        className="shrink-0 rounded p-1 text-inkMuted transition-colors hover:text-rejected"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {discountItems.length > 0 && (
+                      <Select value="" onChange={(e) => addPresetDiscount(e.target.value)} className="min-w-0 flex-1">
+                        <option value="" disabled>
+                          從預設項目帶入…
+                        </option>
+                        {discountItems.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}（－{d.amount.toLocaleString('en-US')} 元）
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => mutateDiscountRows((rows) => [...rows, { name: '', amount: '' }])}
+                      className="shrink-0"
+                    >
+                      ＋ 自訂優惠
+                    </Button>
                   </div>
                 </div>
-              )}
+              </div>
               <Button variant="secondary" disabled={!canPreview} loading={previewing} onClick={runPreview}>
                 試算
               </Button>
