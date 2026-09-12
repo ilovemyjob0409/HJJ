@@ -93,9 +93,9 @@ function exportCellText(cell: MatrixCell | undefined): string {
 // 共用同一個元件，權限與範圍差異都在 API 層
 // （見 /api/classes/[id]/attendance-overview），這裡只負責顯示。
 // canBackfill（行政頁限定）：按「補登」進入補登模式後，「未點名」格子才換
-// 成核取方塊（平常保持乾淨，同批量處理模式慣例）；勾選當下即補登為「出席」
-// （不帶時間），成功後格子直接變成簽到——已是簽到就不能在這裡反悔，要改得
-// 走點名頁。
+// 成核取方塊（平常保持乾淨，同批量處理模式慣例）。勾選只是暫存、可再取消
+// （防誤觸），按「儲存」才批量補登為「出席」（不帶時間）並讓格子變成簽到；
+// 已是簽到就不能在這裡反悔，要改得走點名頁。「取消」退出模式並丟棄勾選。
 export default function ClassAttendanceOverview({
   classId,
   backHref,
@@ -110,7 +110,8 @@ export default function ClassAttendanceOverview({
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [backfillMode, setBackfillMode] = useState(false); // 補登模式：開啟才把「未點名」格換成核取方塊（同批量處理模式慣例）
-  const [pendingCells, setPendingCells] = useState<Set<string>>(new Set());
+  const [checkedCells, setCheckedCells] = useState<Set<string>>(new Set()); // `${studentId}|${date}`，儲存前只是暫存勾選
+  const [saving, setSaving] = useState(false);
   const [backfillError, setBackfillError] = useState(false);
 
   useEffect(() => {
@@ -120,41 +121,56 @@ export default function ClassAttendanceOverview({
       .finally(() => setLoading(false));
   }, [classId]);
 
-  const handleBackfill = useCallback(
-    async (studentId: string, date: string) => {
-      const cellKey = `${studentId}|${date}`;
-      setPendingCells((prev) => new Set(prev).add(cellKey));
-      try {
-        const res = await fetch(`/api/classes/${classId}/attendance-backfill`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: [{ studentId, date }] }),
-        });
-        if (!res.ok) throw new Error('BACKFILL_FAILED');
-        setData((prev) =>
-          prev === null
-            ? prev
-            : {
-                ...prev,
-                students: prev.students.map((s) =>
-                  s.studentId === studentId
-                    ? { ...s, cells: { ...s.cells, [date]: { kind: 'PRESENT', makeupDate: null, makeupPending: false } } }
-                    : s
-                ),
-              }
-        );
-      } catch {
-        setBackfillError(true);
-      } finally {
-        setPendingCells((prev) => {
-          const next = new Set(prev);
-          next.delete(cellKey);
-          return next;
-        });
-      }
-    },
-    [classId]
-  );
+  const toggleCell = useCallback((studentId: string, date: string) => {
+    const cellKey = `${studentId}|${date}`;
+    setCheckedCells((prev) => {
+      const next = new Set(prev);
+      if (next.has(cellKey)) next.delete(cellKey);
+      else next.add(cellKey);
+      return next;
+    });
+  }, []);
+
+  function exitBackfillMode() {
+    setBackfillMode(false);
+    setCheckedCells(new Set());
+  }
+
+  async function saveBackfill() {
+    const items = Array.from(checkedCells, (key) => {
+      const [studentId, date] = key.split('|');
+      return { studentId, date };
+    });
+    if (items.length === 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/classes/${classId}/attendance-backfill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      if (!res.ok) throw new Error('BACKFILL_FAILED');
+      setData((prev) =>
+        prev === null
+          ? prev
+          : {
+              ...prev,
+              students: prev.students.map((s) => {
+                const updated = items.filter((i) => i.studentId === s.studentId);
+                if (updated.length === 0) return s;
+                const cells = { ...s.cells };
+                for (const i of updated) cells[i.date] = { kind: 'PRESENT', makeupDate: null, makeupPending: false };
+                return { ...s, cells };
+              }),
+            }
+      );
+      exitBackfillMode();
+    } catch {
+      setBackfillError(true);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const exportColumns = data
     ? [
@@ -188,13 +204,23 @@ export default function ClassAttendanceOverview({
             <>
               <div className="mb-2 flex items-center gap-2">
                 {canBackfill && backfillMode && (
-                  <p className="text-xs text-inkMuted">「未點名」格子可勾選，勾選後立即補登為出席（不帶時間）</p>
+                  <p className="text-xs text-inkMuted">勾選要補登的「未點名」格子，按「儲存」才會一律補為出席（不帶時間）</p>
                 )}
                 <div className="ml-auto flex shrink-0 gap-2">
-                  {canBackfill && (
-                    <Button variant="secondary" onClick={() => setBackfillMode((v) => !v)}>
-                      {backfillMode ? '結束補登' : '補登'}
+                  {canBackfill && !backfillMode && (
+                    <Button variant="secondary" onClick={() => setBackfillMode(true)}>
+                      補登
                     </Button>
+                  )}
+                  {canBackfill && backfillMode && (
+                    <>
+                      <Button variant="secondary" onClick={exitBackfillMode} disabled={saving}>
+                        取消
+                      </Button>
+                      <Button onClick={saveBackfill} loading={saving} disabled={checkedCells.size === 0}>
+                        儲存{checkedCells.size > 0 ? `（${checkedCells.size}）` : ''}
+                      </Button>
+                    </>
                   )}
                   <ExportExcelButton rows={data.students} columns={exportColumns} filename={`出缺勤總表_${data.class.name}`} />
                 </div>
@@ -224,10 +250,10 @@ export default function ClassAttendanceOverview({
                                   <input
                                     type="checkbox"
                                     aria-label={`補登 ${s.studentName} ${formatShortDate(key)} 為出席`}
-                                    title="勾選後立即補登為出席"
-                                    checked={pendingCells.has(`${s.studentId}|${key}`)}
-                                    disabled={pendingCells.has(`${s.studentId}|${key}`)}
-                                    onChange={() => handleBackfill(s.studentId, key)}
+                                    title="勾選後按「儲存」補登為出席"
+                                    checked={checkedCells.has(`${s.studentId}|${key}`)}
+                                    disabled={saving}
+                                    onChange={() => toggleCell(s.studentId, key)}
                                   />
                                 ) : (
                                   <MatrixCellContent cell={cell} />
