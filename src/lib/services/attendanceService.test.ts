@@ -7,7 +7,7 @@ import { createClass, enrollStudent, addEnrollmentSessions } from './classServic
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
 import { setTeacherAvailability } from './availabilityService';
-import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance, getClassAttendanceOverview, getTutoringWindowAttendanceOverview, getTutoringEnrollmentAttendance } from './attendanceService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance, getClassAttendanceOverview, getTutoringWindowAttendanceOverview, getTutoringEnrollmentAttendance, updateStudentAttendance, listClassBackfillDates, backfillClassAttendance } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
@@ -488,7 +488,129 @@ describe('listMyAttendance', () => {
   });
 });
 
+describe('updateStudentAttendance', () => {
+  it('saves a class record (status + times) and clears it with NONE', async () => {
+    const { student, cls } = await setupClassWithStudent();
+    await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'ABSENT' }]);
+
+    const rows = await listMyAttendance(student.id);
+    expect(rows[0].classId).toBe(cls.id);
+
+    await updateStudentAttendance({
+      studentId: student.id,
+      markedById: 'marker-1',
+      type: 'CLASS',
+      date: rows[0].date,
+      status: 'PRESENT',
+      checkInTime: '14:05',
+      checkOutTime: null,
+      classId: cls.id,
+    });
+    const after = await prisma.classAttendance.findFirstOrThrow({ where: { studentId: student.id } });
+    expect(after.status).toBe('PRESENT');
+    expect(after.checkInTime).toBe('14:05');
+
+    await updateStudentAttendance({
+      studentId: student.id,
+      markedById: 'marker-1',
+      type: 'CLASS',
+      date: rows[0].date,
+      status: 'NONE',
+      checkInTime: null,
+      checkOutTime: null,
+      classId: cls.id,
+    });
+    expect(await prisma.classAttendance.count({ where: { studentId: student.id } })).toBe(0);
+  });
+
+  it('backfills a tutoring NO_SHOW booking into a real attendance record', async () => {
+    const teacher = await createTeacher({ name: '輔導老師', email: 'usa-tutor@example.com', password: 'x', subjects: '英文' });
+    const student = await createStudent({ name: '小美', email: 'usa-mei@example.com', password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    const window = await createWindow({ programId: program.id, weekday: 5, startTime: '16:00', endTime: '21:00', capacity: 8, teacherId: teacher.id });
+    const enrollment = await prisma.tutoringEnrollment.create({ data: { programId: program.id, studentId: student.id } });
+    // 過期未點名的預約（createBooking 擋過去日期，直接插）
+    const past = new Date(Date.UTC(2026, 7, 7));
+    await prisma.tutoringBooking.create({
+      data: { enrollmentId: enrollment.id, windowId: window.id, date: past, startTime: '16:00', endTime: '16:40', status: 'BOOKED' },
+    });
+
+    const rows = await listMyAttendance(student.id);
+    const noShow = rows.find((r) => r.type === 'TUTORING');
+    expect(noShow?.status).toBe('NO_SHOW');
+    expect(noShow?.windowId).toBe(window.id);
+    expect(noShow?.bookingId).toBeTruthy();
+
+    await updateStudentAttendance({
+      studentId: student.id,
+      markedById: 'marker-1',
+      type: 'TUTORING',
+      date: past,
+      status: 'PRESENT',
+      checkInTime: '16:00',
+      checkOutTime: '16:40',
+      windowId: window.id,
+      bookingId: noShow!.bookingId,
+    });
+    const att = await prisma.tutoringAttendance.findUniqueOrThrow({ where: { bookingId: noShow!.bookingId! } });
+    expect(att.status).toBe('PRESENT');
+    expect(att.checkInTime).toBe('16:00');
+  });
+
+  it('rejects when the type-specific reference ids are missing', async () => {
+    await expect(
+      updateStudentAttendance({
+        studentId: 'x',
+        markedById: 'marker-1',
+        type: 'CLASS',
+        date: new Date('2026-08-04'),
+        status: 'PRESENT',
+        checkInTime: null,
+        checkOutTime: null,
+      })
+    ).rejects.toThrow('MISSING_REF');
+  });
+});
+
+describe('listClassBackfillDates / backfillClassAttendance', () => {
+  it('expands past class weekdays minus closed/recorded days, and backfills PRESENT without clobbering', async () => {
+    const { student, cls } = await setupClassWithStudent(); // 週二班
+    const now = new Date(Date.UTC(2026, 7, 20)); // 2026-08-20（四）
+    await saveClassAttendance(cls.id, new Date(Date.UTC(2026, 7, 4)), 'marker-1', [{ studentId: student.id, status: 'ON_LEAVE' }]);
+    await prisma.closedDay.create({ data: { date: new Date(Date.UTC(2026, 7, 11)), name: '颱風假' } });
+
+    const groups = await listClassBackfillDates(student.id, { now, daysBack: 30 });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].classId).toBe(cls.id);
+    expect(groups[0].className).toBe('週二基礎班');
+    const dates = groups[0].dates;
+    expect(dates).toContain('2026-08-18');
+    expect(dates).not.toContain('2026-08-04'); // 已點名（請假）
+    expect(dates).not.toContain('2026-08-11'); // 停課日
+    expect(dates.every((d) => d <= '2026-08-20')).toBe(true);
+    expect(dates.every((d) => new Date(d).getUTCDay() === 2)).toBe(true);
+
+    const result = await backfillClassAttendance(student.id, 'marker-1', [
+      { classId: cls.id, date: '2026-08-18' },
+      { classId: cls.id, date: '2026-08-04' }, // 已有請假紀錄 → 跳過不覆蓋
+    ]);
+    expect(result).toEqual({ created: 1, skipped: 1 });
+
+    const rec = await prisma.classAttendance.findFirstOrThrow({
+      where: { studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 7, 18)) },
+    });
+    expect(rec.status).toBe('PRESENT');
+    expect(rec.checkInTime).toBeNull();
+    const kept = await prisma.classAttendance.findFirstOrThrow({
+      where: { studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 7, 4)) },
+    });
+    expect(kept.status).toBe('ON_LEAVE');
+  });
+});
+
 describe('getAttendanceStats', () => {
+
+
   it('counts each status within the date range for the given class', async () => {
     const { student, cls } = await setupClassWithStudent();
     await saveClassAttendance(cls.id, new Date('2026-08-04'), 'marker-1', [{ studentId: student.id, status: 'PRESENT' }]);

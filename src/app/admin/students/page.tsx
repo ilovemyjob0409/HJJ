@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
 import FamilySiblingModal from './FamilySiblingModal';
+import StudentAttendancePanel from './StudentAttendancePanel';
 
 interface EnrollmentQuota {
   classId: string;
@@ -124,6 +125,8 @@ function StudentsContent() {
   const [formClassQuery, setFormClassQuery] = useState('');
   const [formError, setFormError] = useState('');
   const [editing, setEditing] = useState<StudentRow | null>(null);
+  // 點列展開該生出缺勤（一次一列，再點收合）；「編輯」鈕才開編輯彈窗
+  const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [familyModalStudent, setFamilyModalStudent] = useState<StudentRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', parentPhone: '', studentNumber: '' });
   const [editEnrollments, setEditEnrollments] = useState<Record<string, string>>({});
@@ -645,8 +648,10 @@ function StudentsContent() {
           rows={filteredStudents}
           keyField={(s) => s.id}
           loading={loading}
-          onRowClick={openEdit}
+          onRowClick={(s) => setExpandedStudentId((prev) => (prev === s.id ? null : s.id))}
           rowClassName={() => 'cursor-pointer hover:bg-stripe'}
+          expandedKey={expandedStudentId}
+          renderExpanded={(s) => <StudentAttendancePanel studentId={s.id} />}
           emptyText="目前沒有學生"
         />
       </Card>

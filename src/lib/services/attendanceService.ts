@@ -721,18 +721,26 @@ export interface MyAttendanceRow {
   status: AttendanceStatusValue | 'NO_SHOW';
   checkInTime: string | null;
   checkOutTime: string | null;
+  // 各類型補簽到存檔需要的參照（只填自己那型的）
+  classId?: string;
+  makeupRequestId?: string;
+  sessionId?: string;
+  activityId?: string;
+  windowId?: string;
+  bookingId?: string;
 }
 
 export async function listMyAttendance(studentId: string): Promise<MyAttendanceRow[]> {
   const [classRows, oneOnOneRows, goHallRows, activityRows, tutoringRows] = await Promise.all([
     prisma.classAttendance.findMany({
       where: { studentId },
-      select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, class: { select: { name: true } } },
+      select: { id: true, classId: true, date: true, status: true, checkInTime: true, checkOutTime: true, class: { select: { name: true } } },
     }),
     prisma.oneOnOneAttendance.findMany({
       where: { makeupRequest: { type: 'ONE_ON_ONE', leaveRequest: { studentId } } },
       select: {
         id: true,
+        makeupRequestId: true,
         status: true,
         checkInTime: true,
         checkOutTime: true,
@@ -741,11 +749,11 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
     }),
     prisma.goHallAttendance.findMany({
       where: { studentId },
-      select: { id: true, status: true, checkInTime: true, checkOutTime: true, session: { select: { date: true } } },
+      select: { id: true, sessionId: true, status: true, checkInTime: true, checkOutTime: true, session: { select: { date: true } } },
     }),
     prisma.activityAttendance.findMany({
       where: { studentId },
-      select: { id: true, date: true, status: true, checkInTime: true, checkOutTime: true, activity: { select: { title: true } } },
+      select: { id: true, activityId: true, date: true, status: true, checkInTime: true, checkOutTime: true, activity: { select: { title: true } } },
     }),
     // 個別輔導改走「我的出缺勤紀錄」同一個來源：有點名紀錄的預約
     // ＋過期未點名的「未到課」，兩張表逐列一致。
@@ -761,6 +769,7 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       status: r.status as AttendanceStatusValue,
       checkInTime: r.checkInTime,
       checkOutTime: r.checkOutTime,
+      classId: r.classId,
     })),
     ...oneOnOneRows.map((r) => ({
       id: `one-on-one-${r.id}`,
@@ -770,6 +779,7 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       status: r.status as AttendanceStatusValue,
       checkInTime: r.checkInTime,
       checkOutTime: r.checkOutTime,
+      makeupRequestId: r.makeupRequestId,
     })),
     ...goHallRows.map((r) => ({
       id: `go-hall-${r.id}`,
@@ -779,6 +789,7 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       status: r.status as AttendanceStatusValue,
       checkInTime: r.checkInTime,
       checkOutTime: r.checkOutTime,
+      sessionId: r.sessionId,
     })),
     ...activityRows.map((r) => ({
       id: `activity-${r.id}`,
@@ -788,6 +799,7 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       status: r.status as AttendanceStatusValue,
       checkInTime: r.checkInTime,
       checkOutTime: r.checkOutTime,
+      activityId: r.activityId,
     })),
     ...tutoringRows.map((r) => ({
       id: `tutoring-${r.id}`,
@@ -798,6 +810,8 @@ export async function listMyAttendance(studentId: string): Promise<MyAttendanceR
       status: r.attendanceStatus ?? ('NO_SHOW' as const),
       checkInTime: r.checkInTime,
       checkOutTime: r.checkOutTime,
+      windowId: r.windowId,
+      bookingId: r.id,
     })),
   ];
 
@@ -1497,4 +1511,166 @@ export async function getTutoringEnrollmentAttendance(enrollmentId: string, now:
       isMakeup: b.kind === 'MAKEUP',
     })),
   };
+}
+
+// 行政從學生管理補簽到：單筆改狀態/簽到退時間。一律走各類型點名頁的
+// save/clear 函式——扣堂、弈廳扣退堂票、個輔未到課補建等業務邏輯原封重用。
+// status 'NONE' ＝ 清成未點名。
+export type StudentAttendanceStatusInput = AttendanceStatusValue | 'NONE';
+
+export async function updateStudentAttendance(input: {
+  studentId: string;
+  markedById: string;
+  type: AttendanceSessionType;
+  date: Date;
+  status: StudentAttendanceStatusInput;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  classId?: string;
+  makeupRequestId?: string;
+  sessionId?: string;
+  activityId?: string;
+  windowId?: string;
+  bookingId?: string;
+}): Promise<void> {
+  const times = { checkInTime: input.checkInTime, checkOutTime: input.checkOutTime };
+  switch (input.type) {
+    case 'CLASS': {
+      if (!input.classId) throw new Error('MISSING_REF');
+      if (input.status === 'NONE') {
+        await clearClassAttendance(input.classId, input.date, [{ studentId: input.studentId }]);
+      } else {
+        await saveClassAttendance(input.classId, input.date, input.markedById, [
+          { studentId: input.studentId, status: input.status, ...times },
+        ]);
+      }
+      return;
+    }
+    case 'ONE_ON_ONE': {
+      if (!input.makeupRequestId) throw new Error('MISSING_REF');
+      if (input.status === 'NONE') {
+        await clearOneOnOneAttendance(input.makeupRequestId);
+      } else {
+        await saveOneOnOneAttendance(input.makeupRequestId, input.markedById, {
+          status: input.status,
+          checkInTime: input.checkInTime ?? undefined,
+          checkOutTime: input.checkOutTime ?? undefined,
+        });
+      }
+      return;
+    }
+    case 'GO_HALL': {
+      if (!input.sessionId) throw new Error('MISSING_REF');
+      if (input.status === 'NONE') {
+        await clearGoHallAttendance(input.sessionId, [input.studentId]);
+      } else {
+        await saveGoHallAttendance(input.sessionId, input.markedById, [
+          { studentId: input.studentId, status: input.status, ...times },
+        ]);
+      }
+      return;
+    }
+    case 'ACTIVITY': {
+      if (!input.activityId) throw new Error('MISSING_REF');
+      if (input.status === 'NONE') {
+        await clearActivityAttendance(input.activityId, input.date, [input.studentId]);
+      } else {
+        await saveActivityAttendance(input.activityId, input.date, input.markedById, [
+          { studentId: input.studentId, status: input.status, ...times },
+        ]);
+      }
+      return;
+    }
+    case 'TUTORING': {
+      if (!input.windowId || !input.bookingId) throw new Error('MISSING_REF');
+      if (input.status === 'NONE') {
+        await clearTutoringAttendance(input.windowId, [input.bookingId]);
+      } else {
+        await saveTutoringAttendance(input.windowId, input.markedById, [
+          { bookingId: input.bookingId, status: input.status, ...times },
+        ]);
+      }
+      return;
+    }
+  }
+}
+
+// 補簽到日期清單：各班每週上課日往回展開（扣停課日曆），過去（含今天）
+// 沒有任何點名紀錄的日子才列出。日期一律 UTC 日曆日字串，「今天」以台北為準。
+export interface ClassBackfillGroup {
+  classId: string;
+  className: string;
+  weekday: number;
+  startTime: string;
+  dates: string[]; // 'YYYY-MM-DD'，新→舊
+}
+
+export async function listClassBackfillDates(
+  studentId: string,
+  opts: { now?: Date; daysBack?: number } = {}
+): Promise<ClassBackfillGroup[]> {
+  const { now = new Date(), daysBack = 60 } = opts;
+  const enrollments = await prisma.classEnrollment.findMany({
+    where: { studentId, class: { active: true } },
+    select: { classId: true, class: { select: { name: true, weekday: true, startTime: true } } },
+  });
+  if (enrollments.length === 0) return [];
+
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const todayUtc = new Date(Date.UTC(y, m - 1, d));
+  const startUtc = new Date(todayUtc.getTime() - daysBack * 86_400_000);
+  const closedRows = await prisma.closedDay.findMany({
+    where: { date: { gte: startUtc, lte: todayUtc } },
+    select: { date: true },
+  });
+  const closed = new Set(closedRows.map((c) => c.date.toISOString().slice(0, 10)));
+
+  const groups: ClassBackfillGroup[] = [];
+  for (const e of enrollments) {
+    const candidates: string[] = [];
+    const cur = new Date(startUtc);
+    cur.setUTCDate(cur.getUTCDate() + ((e.class.weekday - cur.getUTCDay() + 7) % 7));
+    for (; cur.getTime() <= todayUtc.getTime(); cur.setUTCDate(cur.getUTCDate() + 7)) {
+      const key = cur.toISOString().slice(0, 10);
+      if (!closed.has(key)) candidates.push(key);
+    }
+    if (candidates.length === 0) continue;
+    const recorded = await prisma.classAttendance.findMany({
+      where: { classId: e.classId, studentId, date: { gte: startUtc, lte: todayUtc } },
+      select: { date: true },
+    });
+    const recordedKeys = new Set(recorded.map((r) => r.date.toISOString().slice(0, 10)));
+    const open = candidates.filter((k) => !recordedKeys.has(k)).reverse();
+    if (open.length > 0) {
+      groups.push({ classId: e.classId, className: e.class.name, weekday: e.class.weekday, startTime: e.class.startTime, dates: open });
+    }
+  }
+  return groups;
+}
+
+// 勾選日期批量補「出席」（不帶時間）。已有紀錄的日子一律跳過，
+// 不覆蓋既有狀態（可能是請假/缺席）；扣堂等邏輯由 saveClassAttendance 原封生效。
+export async function backfillClassAttendance(
+  studentId: string,
+  markedById: string,
+  items: { classId: string; date: string }[]
+): Promise<{ created: number; skipped: number }> {
+  let created = 0;
+  let skipped = 0;
+  for (const item of items) {
+    const [y, m, d] = item.date.split('-').map(Number);
+    if (!y || !m || !d) throw new Error('INVALID_DATE');
+    const dateUtc = new Date(Date.UTC(y, m - 1, d));
+    const existing = await prisma.classAttendance.findFirst({
+      where: { classId: item.classId, studentId, date: dateUtc },
+      select: { id: true },
+    });
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+    await saveClassAttendance(item.classId, dateUtc, markedById, [{ studentId, status: 'PRESENT' }]);
+    created += 1;
+  }
+  return { created, skipped };
 }

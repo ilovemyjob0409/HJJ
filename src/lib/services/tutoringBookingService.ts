@@ -474,6 +474,7 @@ export async function listAvailability(enrollmentId: string, days = 14): Promise
 
 export interface StudentBookingRow {
   id: string;
+  windowId: string;
   programName: string;
   date: Date;
   // MAKEUP／PENDING_ADMIN／CANCELLED_LATE／REJECTED 僅存在於歷史資料
@@ -502,6 +503,7 @@ export async function listAttendanceForStudent(studentId: string, now: Date = ne
     },
     select: {
       id: true,
+      windowId: true,
       date: true,
       kind: true,
       status: true,
@@ -512,6 +514,7 @@ export async function listAttendanceForStudent(studentId: string, now: Date = ne
   });
   return bookings.map((b) => ({
     id: b.id,
+    windowId: b.windowId,
     programName: b.window.program.name,
     date: b.date,
     kind: b.kind as 'REGULAR' | 'MAKEUP',
