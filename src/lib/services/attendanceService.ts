@@ -1310,7 +1310,9 @@ const ATTENDANCE_STATUS_TO_CELL_KIND: Record<AttendanceStatusValue, ClassAttenda
 // 整班出缺勤矩陣：欄位＝近 daysBack 天內該班上課日（依 weekday 展開、排除
 // 休假日、只到今天為止，同 listClassBackfillDates 的邏輯），縱軸＝學生。
 // 合併 ClassAttendance（點名紀錄）與 LeaveRequest（請假，獨立的表）＋其
-// MakeupRequest。在班學生沒有紀錄的上課日標 UNMARKED（未點名）；插班訪客
+// MakeupRequest。在班學生沒有紀錄的上課日標 UNMARKED（未點名）；但開過收
+// 費單的學生，收費區間（該班所有 Bill periodStart~periodEnd 聯集）以外的
+// 上課日改標 NOT_REGISTERED（未報名）——沒開過單的學生維持未點名。插班訪客
 // 與已退班學生只列窗內有紀錄的日期，列在在班學生後面。同日「請假＋後來
 // 仍被點名」以點名狀態為準，補課日期只留在 ON_LEAVE 格子上。
 export async function getClassAttendanceOverview(
@@ -1322,7 +1324,7 @@ export async function getClassAttendanceOverview(
   const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
   const startUtc = new Date(todayUtc.getTime() - daysBack * 86_400_000);
 
-  const [cls, closedRows, enrollments, attendances, leaves] = await Promise.all([
+  const [cls, closedRows, enrollments, attendances, leaves, bills] = await Promise.all([
     prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { weekday: true } }),
     prisma.closedDay.findMany({ where: { date: { gte: startUtc, lte: todayUtc } }, select: { date: true } }),
     prisma.classEnrollment.findMany({
@@ -1343,6 +1345,7 @@ export async function getClassAttendanceOverview(
         makeupRequest: { select: { status: true, type: true, targetDate: true, slotDate: true } },
       },
     }),
+    prisma.bill.findMany({ where: { classId }, select: { studentId: true, periodStart: true, periodEnd: true } }),
   ]);
 
   const closed = new Set(closedRows.map((c) => toDateKey(c.date)));
@@ -1368,9 +1371,20 @@ export async function getClassAttendanceOverview(
     return bucket;
   }
 
+  const billRanges = new Map<string, { start: string; end: string }[]>();
+  for (const b of bills) {
+    const list = billRanges.get(b.studentId) ?? [];
+    list.push({ start: toDateKey(b.periodStart), end: toDateKey(b.periodEnd) });
+    billRanges.set(b.studentId, list);
+  }
+
   for (const e of enrollments) {
+    const ranges = billRanges.get(e.studentId);
     const cells: Record<string, ClassAttendanceMatrixCell> = {};
-    for (const key of dates) cells[key] = { kind: 'UNMARKED', makeupDate: null, makeupPending: false };
+    for (const key of dates) {
+      const outOfPeriod = ranges !== undefined && !ranges.some((r) => r.start <= key && key <= r.end);
+      cells[key] = { kind: outOfPeriod ? 'NOT_REGISTERED' : 'UNMARKED', makeupDate: null, makeupPending: false };
+    }
     byStudent.set(e.studentId, { studentName: e.student.user.name, cells });
   }
 
@@ -1686,6 +1700,46 @@ export async function backfillClassAttendance(
       continue;
     }
     await saveClassAttendance(item.classId, dateUtc, markedById, [{ studentId, status: 'PRESENT' }]);
+    created += 1;
+  }
+  return { created, skipped };
+}
+
+// 出缺勤總表的格子補登：勾「未點名」格即補「出席」（不帶時間，同
+// backfillClassAttendance 語意）。只允許本班在班學生、日期需符合班級星期
+// 且不晚於今天（台北）；已有紀錄的格子跳過不覆蓋，扣堂邏輯由
+// saveClassAttendance 原封生效。
+export async function backfillClassAttendanceCells(
+  classId: string,
+  markedById: string,
+  items: { studentId: string; date: string }[]
+): Promise<{ created: number; skipped: number }> {
+  const cls = await prisma.class.findUnique({ where: { id: classId }, select: { weekday: true } });
+  if (!cls) throw new Error('CLASS_NOT_FOUND');
+  const todayKey = taipeiDateKey(new Date());
+
+  let created = 0;
+  let skipped = 0;
+  for (const item of items) {
+    const [y, m, d] = item.date.split('-').map(Number);
+    if (!y || !m || !d) throw new Error('INVALID_DATE');
+    const dateUtc = new Date(Date.UTC(y, m - 1, d));
+    if (dateUtc.getUTCDay() !== cls.weekday) throw new Error('INVALID_DATE');
+    if (toDateKey(dateUtc) > todayKey) throw new Error('INVALID_DATE');
+    const enrollment = await prisma.classEnrollment.findUnique({
+      where: { studentId_classId: { studentId: item.studentId, classId } },
+      select: { id: true },
+    });
+    if (!enrollment) throw new Error('NOT_ENROLLED');
+    const existing = await prisma.classAttendance.findFirst({
+      where: { classId, studentId: item.studentId, date: dateUtc },
+      select: { id: true },
+    });
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+    await saveClassAttendance(classId, dateUtc, markedById, [{ studentId: item.studentId, status: 'PRESENT' }]);
     created += 1;
   }
   return { created, skipped };

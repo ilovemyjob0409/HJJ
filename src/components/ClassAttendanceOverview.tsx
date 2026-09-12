@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import AlertModal from '@/components/ui/AlertModal';
 import Card from '@/components/ui/Card';
 import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
@@ -90,17 +91,24 @@ function exportCellText(cell: MatrixCell | undefined): string {
 // 學生姓名欄 sticky 固定在左側，表格本體橫向捲動（手機同樣橫捲）。老師／行政
 // 共用同一個元件，權限與範圍差異都在 API 層
 // （見 /api/classes/[id]/attendance-overview），這裡只負責顯示。
+// canBackfill（行政頁限定）：「未點名」格子改成核取方塊，勾選當下即補登為
+// 「出席」（不帶時間），成功後格子直接變成簽到——已是簽到就不能在這裡反悔，
+// 要改得走點名頁。
 export default function ClassAttendanceOverview({
   classId,
   backHref,
   backLabel,
+  canBackfill = false,
 }: {
   classId: string;
   backHref: string;
   backLabel: string;
+  canBackfill?: boolean;
 }) {
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingCells, setPendingCells] = useState<Set<string>>(new Set());
+  const [backfillError, setBackfillError] = useState(false);
 
   useEffect(() => {
     fetch(`/api/classes/${classId}/attendance-overview`)
@@ -108,6 +116,42 @@ export default function ClassAttendanceOverview({
       .then(setData)
       .finally(() => setLoading(false));
   }, [classId]);
+
+  const handleBackfill = useCallback(
+    async (studentId: string, date: string) => {
+      const cellKey = `${studentId}|${date}`;
+      setPendingCells((prev) => new Set(prev).add(cellKey));
+      try {
+        const res = await fetch(`/api/classes/${classId}/attendance-backfill`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: [{ studentId, date }] }),
+        });
+        if (!res.ok) throw new Error('BACKFILL_FAILED');
+        setData((prev) =>
+          prev === null
+            ? prev
+            : {
+                ...prev,
+                students: prev.students.map((s) =>
+                  s.studentId === studentId
+                    ? { ...s, cells: { ...s.cells, [date]: { kind: 'PRESENT', makeupDate: null, makeupPending: false } } }
+                    : s
+                ),
+              }
+        );
+      } catch {
+        setBackfillError(true);
+      } finally {
+        setPendingCells((prev) => {
+          const next = new Set(prev);
+          next.delete(cellKey);
+          return next;
+        });
+      }
+    },
+    [classId]
+  );
 
   const exportColumns = data
     ? [
@@ -139,7 +183,8 @@ export default function ClassAttendanceOverview({
             <p className="text-sm text-inkMuted">目前沒有學生</p>
           ) : (
             <>
-              <div className="mb-2 flex">
+              <div className="mb-2 flex items-center gap-2">
+                {canBackfill && <p className="text-xs text-inkMuted">「未點名」格子可勾選，勾選後立即補登為出席（不帶時間）</p>}
                 <ExportExcelButton
                   rows={data.students}
                   columns={exportColumns}
@@ -164,11 +209,25 @@ export default function ClassAttendanceOverview({
                       {data.students.map((s) => (
                         <tr key={s.studentId} className="border-b border-borderSubtle last:border-b-0">
                           <td className="sticky left-0 z-10 whitespace-nowrap border-r border-borderSubtle bg-card px-4 py-2.5 font-semibold text-ink">{s.studentName}</td>
-                          {data.dates.map((key) => (
-                            <td key={key} className="px-3 py-2.5 text-center">
-                              <MatrixCellContent cell={s.cells[key]} />
-                            </td>
-                          ))}
+                          {data.dates.map((key) => {
+                            const cell = s.cells[key];
+                            return (
+                              <td key={key} className="px-3 py-2.5 text-center">
+                                {canBackfill && cell?.kind === 'UNMARKED' ? (
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`補登 ${s.studentName} ${formatShortDate(key)} 為出席`}
+                                    title="勾選後立即補登為出席"
+                                    checked={pendingCells.has(`${s.studentId}|${key}`)}
+                                    disabled={pendingCells.has(`${s.studentId}|${key}`)}
+                                    onChange={() => handleBackfill(s.studentId, key)}
+                                  />
+                                ) : (
+                                  <MatrixCellContent cell={cell} />
+                                )}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -179,6 +238,9 @@ export default function ClassAttendanceOverview({
           )}
         </>
       )}
+      <AlertModal open={backfillError} onClose={() => setBackfillError(false)} title="補登失敗">
+        這一格沒有補登成功，可能是連線問題或資料已變動，請重新整理頁面後再試一次。
+      </AlertModal>
     </>
   );
 }

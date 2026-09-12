@@ -7,7 +7,7 @@ import { createClass, enrollStudent, addEnrollmentSessions } from './classServic
 import { createLeaveRequest } from './leaveRequestService';
 import { createInsertionMakeupRequest, decideMakeupRequest, createOneOnOneMakeupRequest } from './makeupRequestService';
 import { setTeacherAvailability } from './availabilityService';
-import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance, getClassAttendanceOverview, getTutoringWindowAttendanceOverview, getTutoringEnrollmentAttendance, updateStudentAttendance, listClassBackfillDates, backfillClassAttendance } from './attendanceService';
+import { getClassRoster, saveClassAttendance, clearClassAttendance, getClassEnrollmentQuota, getClassAttendanceLedger, getOneOnOneAttendance, saveOneOnOneAttendance, clearOneOnOneAttendance, getGoHallRoster, saveGoHallAttendance, clearGoHallAttendance, getActivityRoster, saveActivityAttendance, clearActivityAttendance, listAttendanceSessionsForDate, checkInByStudentNumber, resolveCheckIn, listClassQuotaSummaries, getTutoringRoster, saveTutoringAttendance, clearTutoringAttendance, getClassAttendanceOverview, getTutoringWindowAttendanceOverview, getTutoringEnrollmentAttendance, updateStudentAttendance, listClassBackfillDates, backfillClassAttendance, backfillClassAttendanceCells } from './attendanceService';
 import { createSessions, registerForSession } from './goHallService';
 import { createActivity, createCategory, registerForActivity } from './activityService';
 import { purchaseTickets as buyGoHallTickets, addSeasonPass as addGoHallSeasonPass, getTicketBalance as goHallBalance } from './goHallTicketService';
@@ -1633,6 +1633,117 @@ describe('getClassAttendanceOverview', () => {
 
     expect(overview.dates).toEqual(['2026-07-15', '2026-07-08', '2026-07-01', '2026-06-24']);
     expect(overview.students).toEqual([]);
+  });
+
+  // 收費區間規則：有收費單的學生，收費區間（該班所有帳單 periodStart~periodEnd
+  // 聯集）以外的上課日預設「未報名」；完全沒開過單的學生維持「未點名」。
+  function createBill(studentId: string, classId: string, periodStart: string, periodEnd: string) {
+    return prisma.bill.create({
+      data: { studentId, classId, periodStart: new Date(periodStart), periodEnd: new Date(periodEnd), amountDue: 0, detail: {} },
+    });
+  }
+
+  it('defaults a billed student\'s out-of-period dates to NOT_REGISTERED; unbilled students stay UNMARKED', async () => {
+    const { cls, studentA, studentB } = await setup();
+    await createBill(studentA.id, cls.id, '2026-07-01', '2026-07-31');
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const rowA = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(rowA.cells['2026-06-24'].kind).toBe('NOT_REGISTERED');
+    expect(rowA.cells['2026-07-01'].kind).toBe('UNMARKED'); // 起日含
+    expect(rowA.cells['2026-07-15'].kind).toBe('UNMARKED');
+    const rowB = overview.students.find((s) => s.studentId === studentB.id)!;
+    expect(rowB.cells['2026-06-24'].kind).toBe('UNMARKED');
+  });
+
+  it('unions multiple bill periods with inclusive end dates', async () => {
+    const { cls, studentA } = await setup();
+    await createBill(studentA.id, cls.id, '2026-06-01', '2026-06-24');
+    await createBill(studentA.id, cls.id, '2026-07-08', '2026-07-31');
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(row.cells['2026-06-24'].kind).toBe('UNMARKED'); // 迄日含
+    expect(row.cells['2026-07-01'].kind).toBe('NOT_REGISTERED'); // 兩段區間中間
+    expect(row.cells['2026-07-08'].kind).toBe('UNMARKED');
+  });
+
+  it('lets real records override the out-of-period default and ignores other classes\' bills', async () => {
+    const { cls, studentA, studentB, teacher } = await setup();
+    const otherClass = await createClass({
+      name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
+    });
+    await createBill(studentA.id, cls.id, '2026-07-01', '2026-07-31');
+    await createBill(studentB.id, otherClass.id, '2026-06-01', '2026-06-30'); // 只有別班帳單＝本班視同沒開單
+    await saveClassAttendance(cls.id, new Date('2026-06-24'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const rowA = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(rowA.cells['2026-06-24'].kind).toBe('PRESENT'); // 真實紀錄蓋過未報名預設
+    const rowB = overview.students.find((s) => s.studentId === studentB.id)!;
+    for (const key of overview.dates) expect(rowB.cells[key].kind).toBe('UNMARKED');
+  });
+});
+
+describe('backfillClassAttendanceCells', () => {
+  async function setup() {
+    const teacher = await createTeacher({ name: '陳老師', email: `cellfill-chen-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
+    const cls = await createClass({ name: '週三基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 3, startTime: '17:10', endTime: '18:40' });
+    const student = await createStudent({ name: '小明', email: `cellfill-ming-${Date.now()}@example.com`, password: 'x' });
+    await enrollStudent(cls.id, student.id);
+    return { cls, student };
+  }
+
+  it('backfills PRESENT without times and skips cells that already have a record', async () => {
+    const { cls, student } = await setup();
+    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: student.id, status: 'ON_LEAVE' }]);
+
+    const result = await backfillClassAttendanceCells(cls.id, 'marker-1', [
+      { studentId: student.id, date: '2026-07-08' },
+      { studentId: student.id, date: '2026-07-01' },
+    ]);
+
+    expect(result).toEqual({ created: 1, skipped: 1 });
+    const created = await prisma.classAttendance.findFirstOrThrow({
+      where: { classId: cls.id, studentId: student.id, date: new Date('2026-07-08') },
+    });
+    expect(created.status).toBe('PRESENT');
+    expect(created.checkInTime).toBeNull();
+    const kept = await prisma.classAttendance.findFirstOrThrow({
+      where: { classId: cls.id, studentId: student.id, date: new Date('2026-07-01') },
+    });
+    expect(kept.status).toBe('ON_LEAVE'); // 既有紀錄不被覆蓋
+  });
+
+  it('rejects a date whose weekday does not match the class', async () => {
+    const { cls, student } = await setup();
+    await expect(
+      backfillClassAttendanceCells(cls.id, 'marker-1', [{ studentId: student.id, date: '2026-07-07' }]) // 週二
+    ).rejects.toThrow('INVALID_DATE');
+  });
+
+  it('rejects a future date', async () => {
+    const { cls, student } = await setup();
+    await expect(
+      backfillClassAttendanceCells(cls.id, 'marker-1', [{ studentId: student.id, date: '2099-01-07' }]) // 週三但在未來
+    ).rejects.toThrow('INVALID_DATE');
+  });
+
+  it('rejects a student not enrolled in the class', async () => {
+    const { cls } = await setup();
+    const outsider = await createStudent({ name: '路人', email: `cellfill-out-${Date.now()}@example.com`, password: 'x' });
+    await expect(
+      backfillClassAttendanceCells(cls.id, 'marker-1', [{ studentId: outsider.id, date: '2026-07-08' }])
+    ).rejects.toThrow('NOT_ENROLLED');
+  });
+
+  it('throws CLASS_NOT_FOUND for a missing class', async () => {
+    await expect(backfillClassAttendanceCells('nope', 'marker-1', [{ studentId: 'x', date: '2026-07-08' }])).rejects.toThrow(
+      'CLASS_NOT_FOUND'
+    );
   });
 });
 
