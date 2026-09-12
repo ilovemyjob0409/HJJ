@@ -260,9 +260,9 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
           <div className="flex flex-col gap-3">
             {viewingPrize.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-              <img src={viewingPrize.imageUrl} alt={viewingPrize.name} className="max-h-72 w-full rounded-lg object-contain" />
+              <img src={viewingPrize.imageUrl} alt={viewingPrize.name} className="aspect-square w-full rounded-lg object-cover" />
             ) : (
-              <div className="flex h-40 w-full items-center justify-center rounded-lg bg-stripe text-5xl" aria-hidden="true">
+              <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-stripe text-5xl" aria-hidden="true">
                 🎁
               </div>
             )}
