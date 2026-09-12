@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import AlertModal from '@/components/ui/AlertModal';
+import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
@@ -91,9 +92,10 @@ function exportCellText(cell: MatrixCell | undefined): string {
 // 學生姓名欄 sticky 固定在左側，表格本體橫向捲動（手機同樣橫捲）。老師／行政
 // 共用同一個元件，權限與範圍差異都在 API 層
 // （見 /api/classes/[id]/attendance-overview），這裡只負責顯示。
-// canBackfill（行政頁限定）：「未點名」格子改成核取方塊，勾選當下即補登為
-// 「出席」（不帶時間），成功後格子直接變成簽到——已是簽到就不能在這裡反悔，
-// 要改得走點名頁。
+// canBackfill（行政頁限定）：按「補登」進入補登模式後，「未點名」格子才換
+// 成核取方塊（平常保持乾淨，同批量處理模式慣例）；勾選當下即補登為「出席」
+// （不帶時間），成功後格子直接變成簽到——已是簽到就不能在這裡反悔，要改得
+// 走點名頁。
 export default function ClassAttendanceOverview({
   classId,
   backHref,
@@ -107,6 +109,7 @@ export default function ClassAttendanceOverview({
 }) {
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [backfillMode, setBackfillMode] = useState(false); // 補登模式：開啟才把「未點名」格換成核取方塊（同批量處理模式慣例）
   const [pendingCells, setPendingCells] = useState<Set<string>>(new Set());
   const [backfillError, setBackfillError] = useState(false);
 
@@ -184,13 +187,17 @@ export default function ClassAttendanceOverview({
           ) : (
             <>
               <div className="mb-2 flex items-center gap-2">
-                {canBackfill && <p className="text-xs text-inkMuted">「未點名」格子可勾選，勾選後立即補登為出席（不帶時間）</p>}
-                <ExportExcelButton
-                  rows={data.students}
-                  columns={exportColumns}
-                  filename={`出缺勤總表_${data.class.name}`}
-                  className="ml-auto shrink-0"
-                />
+                {canBackfill && backfillMode && (
+                  <p className="text-xs text-inkMuted">「未點名」格子可勾選，勾選後立即補登為出席（不帶時間）</p>
+                )}
+                <div className="ml-auto flex shrink-0 gap-2">
+                  {canBackfill && (
+                    <Button variant="secondary" onClick={() => setBackfillMode((v) => !v)}>
+                      {backfillMode ? '結束補登' : '補登'}
+                    </Button>
+                  )}
+                  <ExportExcelButton rows={data.students} columns={exportColumns} filename={`出缺勤總表_${data.class.name}`} />
+                </div>
               </div>
               <Card className="p-0">
                 <div className="overflow-x-auto rounded-xl">
@@ -213,7 +220,7 @@ export default function ClassAttendanceOverview({
                             const cell = s.cells[key];
                             return (
                               <td key={key} className="px-3 py-2.5 text-center">
-                                {canBackfill && cell?.kind === 'UNMARKED' ? (
+                                {canBackfill && backfillMode && cell?.kind === 'UNMARKED' ? (
                                   <input
                                     type="checkbox"
                                     aria-label={`補登 ${s.studentName} ${formatShortDate(key)} 為出席`}
