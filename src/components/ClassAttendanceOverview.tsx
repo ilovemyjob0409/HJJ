@@ -3,28 +3,18 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
-import StatusBadge from '@/components/ui/StatusBadge';
-import DataTable, { Column } from '@/components/ui/DataTable';
-import { WEEKDAY_LABELS, formatDateWithWeekday } from '@/lib/dateFormat';
+import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
-interface OverviewMakeup {
-  status: 'PENDING_ADMIN' | 'APPROVED' | 'REJECTED';
-  type: 'INSERTION' | 'ONE_ON_ONE';
-  label: string;
+interface MatrixCell {
+  kind: 'PRESENT' | 'ON_LEAVE' | 'MAKEUP' | 'ABSENT' | 'NOT_REGISTERED' | 'UNMARKED';
+  makeupDate: string | null;
+  makeupPending: boolean;
 }
 
-interface OverviewRecord {
-  date: string;
-  status: 'PRESENT' | 'LATE' | 'LEFT_EARLY' | 'ON_LEAVE' | 'ABSENT' | 'NOT_REGISTERED';
-  checkInTime: string | null;
-  checkOutTime: string | null;
-  makeup: OverviewMakeup | null;
-}
-
-interface OverviewStudent {
+interface MatrixStudent {
   studentId: string;
   studentName: string;
-  records: OverviewRecord[];
+  cells: Record<string, MatrixCell>;
 }
 
 interface OverviewResponse {
@@ -38,31 +28,56 @@ interface OverviewResponse {
     endTime: string;
     teacherName: string;
   };
-  students: OverviewStudent[];
+  dates: string[];
+  students: MatrixStudent[];
 }
 
-const recordColumns: Column<OverviewRecord>[] = [
-  { header: '日期', render: (r) => formatDateWithWeekday(r.date), sortValue: (r) => r.date },
-  { header: '狀態', render: (r) => <StatusBadge status={r.status} />, sortValue: (r) => r.status },
-  {
-    header: '補課狀態',
-    render: (r) =>
-      r.status !== 'ON_LEAVE' ? (
-        <span className="text-inkMuted">—</span>
-      ) : r.makeup === null ? (
-        <span className="text-inkMuted">尚未安排</span>
-      ) : r.makeup.status === 'APPROVED' ? (
-        <span className="text-approved">已核准・{r.makeup.label}</span>
-      ) : (
-        <StatusBadge status={r.makeup.status} />
-      ),
-  },
-];
+// 'YYYY-MM-DD' → 「9/10（三）」；矩陣欄頭空間小，用短月日仍維持日期（星期）慣例。
+function formatShortDate(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return `${m}/${d}（${WEEKDAY_LABELS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}）`;
+}
 
-// 整班出缺勤總表：依學生分組，每個學生區塊預設收合（比照
-// src/app/admin/tutoring/page.tsx 的 <details className="group"> 慣例），
-// 點開才看到完整表格。老師／行政共用同一個元件，權限與範圍差異都在 API
-// 層（見 /api/classes/[id]/attendance-overview），這裡只負責顯示。
+function formatShortMonthDay(key: string): string {
+  const [, m, d] = key.split('-').map(Number);
+  return `${m}/${d}`;
+}
+
+const CELL_BADGE: Record<Exclude<MatrixCell['kind'], 'ON_LEAVE'>, { label: string; className: string }> = {
+  PRESENT: { label: '簽到', className: 'bg-approvedBg text-approved' },
+  MAKEUP: { label: '補課', className: 'bg-pendingBg text-pending' },
+  ABSENT: { label: '缺席', className: 'bg-rejectedBg text-rejected' },
+  NOT_REGISTERED: { label: '未報名', className: 'bg-borderSubtle text-inkMuted' },
+  UNMARKED: { label: '未點名', className: 'text-inkMuted' },
+};
+
+function MatrixCellContent({ cell }: { cell: MatrixCell | undefined }) {
+  // 沒有格子＝該生該日與本班無關（插班／已退班學生的其他日期），留空。
+  if (!cell) return <span className="text-inkMuted/50">—</span>;
+  if (cell.kind === 'ON_LEAVE') {
+    return (
+      <span className="inline-flex flex-col items-center gap-0.5">
+        <span className="inline-block whitespace-nowrap rounded-full bg-assignedBg px-2 py-0.5 text-xs font-semibold text-assigned">請假</span>
+        {cell.makeupDate !== null && (
+          <span
+            className={`whitespace-nowrap text-xs ${cell.makeupPending ? 'text-pending' : 'text-approved'}`}
+            title={cell.makeupPending ? '補課待審核' : '補課已核准'}
+          >
+            補於{formatShortMonthDay(cell.makeupDate)}
+          </span>
+        )}
+      </span>
+    );
+  }
+  const { label, className } = CELL_BADGE[cell.kind];
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}>{label}</span>;
+}
+
+// 整班出缺勤總表（矩陣式）：橫軸＝近三個月該班上課日（新→舊）、縱軸＝學生，
+// 每格一種標籤（簽到／請假＋補於日期／補課／未點名，缺席與未報名照實顯示）。
+// 學生姓名欄 sticky 固定在左側，表格本體橫向捲動（手機同樣橫捲）。老師／行政
+// 共用同一個元件，權限與範圍差異都在 API 層
+// （見 /api/classes/[id]/attendance-overview），這裡只負責顯示。
 export default function ClassAttendanceOverview({
   classId,
   backHref,
@@ -104,25 +119,34 @@ export default function ClassAttendanceOverview({
           {data.students.length === 0 ? (
             <p className="text-sm text-inkMuted">目前沒有學生</p>
           ) : (
-            data.students.map((s) => {
-              const pendingCount = s.records.filter((r) => r.status === 'ON_LEAVE' && r.makeup === null).length;
-              return (
-                <Card key={s.studentId} className="mb-3">
-                  <details className="group">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-                      <span className="flex items-center gap-2 font-semibold text-ink">
-                        <span className="text-inkMuted transition-transform group-open:rotate-180">▾</span>
-                        {s.studentName}
-                      </span>
-                      {pendingCount > 0 && <span className="text-xs text-pending">{pendingCount} 筆待安排補課</span>}
-                    </summary>
-                    <div className="mt-3">
-                      <DataTable columns={recordColumns} rows={s.records} keyField={(r) => r.date} emptyText="尚無紀錄" />
-                    </div>
-                  </details>
-                </Card>
-              );
-            })
+            <Card className="p-0">
+              <div className="overflow-x-auto rounded-xl">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-borderSubtle">
+                      <th className="sticky left-0 z-10 border-r border-borderSubtle bg-card px-4 py-2.5 text-left font-semibold text-inkMuted">學生</th>
+                      {data.dates.map((key) => (
+                        <th key={key} className="whitespace-nowrap px-3 py-2.5 text-center text-xs font-semibold text-inkMuted">
+                          {formatShortDate(key)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.students.map((s) => (
+                      <tr key={s.studentId} className="border-b border-borderSubtle last:border-b-0">
+                        <td className="sticky left-0 z-10 whitespace-nowrap border-r border-borderSubtle bg-card px-4 py-2.5 font-semibold text-ink">{s.studentName}</td>
+                        {data.dates.map((key) => (
+                          <td key={key} className="px-3 py-2.5 text-center">
+                            <MatrixCellContent cell={s.cells[key]} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           )}
         </>
       )}

@@ -1,6 +1,5 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
-import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { notifyUser } from './notificationService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
@@ -1272,128 +1271,145 @@ export async function resolveCheckIn(
   return { result: action, studentName: student.user.name, sessionTitle: match.title, time: timeStr };
 }
 
-export interface ClassAttendanceOverviewMakeup {
-  status: 'PENDING_ADMIN' | 'APPROVED' | 'REJECTED';
-  type: 'INSERTION' | 'ONE_ON_ONE';
-  label: string;
+export type ClassAttendanceMatrixCellKind = 'PRESENT' | 'ON_LEAVE' | 'MAKEUP' | 'ABSENT' | 'NOT_REGISTERED' | 'UNMARKED';
+
+export interface ClassAttendanceMatrixCell {
+  kind: ClassAttendanceMatrixCellKind;
+  // 'YYYY-MM-DD'；只在 ON_LEAVE 且補課已安排（待審或已核准）時有值
+  makeupDate: string | null;
+  makeupPending: boolean;
 }
 
-export interface ClassAttendanceOverviewRecord {
-  date: Date;
-  status: AttendanceStatusValue;
-  checkInTime: string | null;
-  checkOutTime: string | null;
-  makeup: ClassAttendanceOverviewMakeup | null;
-}
-
-export interface ClassAttendanceOverviewStudent {
+export interface ClassAttendanceMatrixStudent {
   studentId: string;
   studentName: string;
-  records: ClassAttendanceOverviewRecord[];
+  // 以 'YYYY-MM-DD' 為 key；在班學生每個上課日都有格子（預設 UNMARKED），
+  // 插班／已退班學生只有實際有紀錄的日期，其餘由前端留空
+  cells: Record<string, ClassAttendanceMatrixCell>;
+}
+
+export interface ClassAttendanceMatrix {
+  dates: string[]; // 'YYYY-MM-DD'，新→舊
+  students: ClassAttendanceMatrixStudent[];
 }
 
 function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-// 整班出缺勤總表（依學生分組，含補課狀態）：合併 ClassAttendance（點名紀錄）
-// 與 LeaveRequest（請假，本身不會自動產生點名紀錄，是分開的表）＋其
-// MakeupRequest。只列有紀錄的日期，不枚舉理論上課日。曾經在班但已退班的
-// 學生，只要還有歷史點名/請假紀錄，一樣列出（不因為 ClassEnrollment 被刪
-// 就把歷史藏起來）。未來日期（例如續報時預先標記的 NOT_REGISTERED）不列
-// 入，避免它們排在新到舊排序的最上方、蓋過真正的歷史紀錄。
-export async function getClassAttendanceOverview(classId: string): Promise<ClassAttendanceOverviewStudent[]> {
-  const todayKey = taipeiDateKey(new Date());
-  const [ty, tm, td] = todayKey.split('-').map(Number);
-  const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
+// 遲到／早退是點名選項精簡前的舊資料，總表格子一律視為「有到課」。
+const ATTENDANCE_STATUS_TO_CELL_KIND: Record<AttendanceStatusValue, ClassAttendanceMatrixCellKind> = {
+  PRESENT: 'PRESENT',
+  LATE: 'PRESENT',
+  LEFT_EARLY: 'PRESENT',
+  ON_LEAVE: 'ON_LEAVE',
+  ABSENT: 'ABSENT',
+  NOT_REGISTERED: 'NOT_REGISTERED',
+};
 
-  const [enrollments, attendances, leaves] = await Promise.all([
+// 整班出缺勤矩陣：欄位＝近 daysBack 天內該班上課日（依 weekday 展開、排除
+// 休假日、只到今天為止，同 listClassBackfillDates 的邏輯），縱軸＝學生。
+// 合併 ClassAttendance（點名紀錄）與 LeaveRequest（請假，獨立的表）＋其
+// MakeupRequest。在班學生沒有紀錄的上課日標 UNMARKED（未點名）；插班訪客
+// 與已退班學生只列窗內有紀錄的日期，列在在班學生後面。同日「請假＋後來
+// 仍被點名」以點名狀態為準，補課日期只留在 ON_LEAVE 格子上。
+export async function getClassAttendanceOverview(
+  classId: string,
+  opts: { now?: Date; daysBack?: number } = {}
+): Promise<ClassAttendanceMatrix> {
+  const { now = new Date(), daysBack = 90 } = opts;
+  const [ty, tm, td] = taipeiDateKey(now).split('-').map(Number);
+  const todayUtc = new Date(Date.UTC(ty, tm - 1, td));
+  const startUtc = new Date(todayUtc.getTime() - daysBack * 86_400_000);
+
+  const [cls, closedRows, enrollments, attendances, leaves] = await Promise.all([
+    prisma.class.findUniqueOrThrow({ where: { id: classId }, select: { weekday: true } }),
+    prisma.closedDay.findMany({ where: { date: { gte: startUtc, lte: todayUtc } }, select: { date: true } }),
     prisma.classEnrollment.findMany({
       where: { classId },
       select: { studentId: true, student: { select: NAME_SELECT } },
       orderBy: { student: { user: { name: 'asc' } } },
     }),
     prisma.classAttendance.findMany({
-      where: { classId, date: { lte: todayUtc } },
-      select: {
-        studentId: true,
-        student: { select: NAME_SELECT },
-        date: true,
-        status: true,
-        checkInTime: true,
-        checkOutTime: true,
-        makeupRequestId: true,
-      },
+      where: { classId, date: { gte: startUtc, lte: todayUtc } },
+      select: { studentId: true, student: { select: NAME_SELECT }, date: true, status: true, makeupRequestId: true },
     }),
     prisma.leaveRequest.findMany({
-      where: { classId, date: { lte: todayUtc } },
+      where: { classId, date: { gte: startUtc, lte: todayUtc } },
       select: {
         studentId: true,
         student: { select: NAME_SELECT },
         date: true,
-        makeupRequest: {
-          select: {
-            status: true,
-            type: true,
-            targetDate: true,
-            targetClass: { select: { name: true } },
-            teacher: { select: { user: { select: { name: true } } } },
-            slotDate: true,
-            slotStartTime: true,
-            slotEndTime: true,
-          },
-        },
+        makeupRequest: { select: { status: true, type: true, targetDate: true, slotDate: true } },
       },
     }),
   ]);
 
-  const byStudent = new Map<string, { studentName: string; records: Map<string, ClassAttendanceOverviewRecord> }>();
+  const closed = new Set(closedRows.map((c) => toDateKey(c.date)));
+  const dates: string[] = [];
+  const cur = new Date(startUtc);
+  cur.setUTCDate(cur.getUTCDate() + ((cls.weekday - cur.getUTCDay() + 7) % 7));
+  for (; cur.getTime() <= todayUtc.getTime(); cur.setUTCDate(cur.getUTCDate() + 7)) {
+    const key = toDateKey(cur);
+    if (!closed.has(key)) dates.push(key);
+  }
+  dates.reverse(); // 新→舊
+  const dateKeySet = new Set(dates);
+
+  const byStudent = new Map<string, { studentName: string; cells: Record<string, ClassAttendanceMatrixCell> }>();
+  const extraStudentIds: string[] = []; // 插班／已退班（非在班）學生，排在在班學生後面
   function bucketFor(studentId: string, studentName: string) {
     let bucket = byStudent.get(studentId);
     if (!bucket) {
-      bucket = { studentName, records: new Map() };
+      bucket = { studentName, cells: {} };
       byStudent.set(studentId, bucket);
+      extraStudentIds.push(studentId);
     }
     return bucket;
   }
 
-  for (const e of enrollments) bucketFor(e.studentId, e.student.user.name);
+  for (const e of enrollments) {
+    const cells: Record<string, ClassAttendanceMatrixCell> = {};
+    for (const key of dates) cells[key] = { kind: 'UNMARKED', makeupDate: null, makeupPending: false };
+    byStudent.set(e.studentId, { studentName: e.student.user.name, cells });
+  }
 
   for (const l of leaves) {
+    const key = toDateKey(l.date);
+    if (!dateKeySet.has(key)) continue;
     const bucket = bucketFor(l.studentId, l.student.user.name);
-    let makeup: ClassAttendanceOverviewMakeup | null = null;
-    if (l.makeupRequest) {
-      const m = l.makeupRequest;
-      const label =
-        m.type === 'INSERTION'
-          ? `補到 ${formatDateWithWeekday(m.targetDate!)} ${m.targetClass?.name ?? ''}`
-          : `${m.teacher?.user.name ?? ''} 一對一 ${formatDateWithWeekday(m.slotDate!)} ${m.slotStartTime}-${m.slotEndTime}`;
-      makeup = { status: m.status, type: m.type, label };
-    }
-    bucket.records.set(toDateKey(l.date), { date: l.date, status: 'ON_LEAVE', checkInTime: null, checkOutTime: null, makeup });
+    const m = l.makeupRequest;
+    const arranged = m !== null && m.status !== 'REJECTED';
+    bucket.cells[key] = {
+      kind: 'ON_LEAVE',
+      makeupDate: arranged ? toDateKey(m.type === 'INSERTION' ? m.targetDate! : m.slotDate!) : null,
+      makeupPending: arranged && m.status === 'PENDING_ADMIN',
+    };
   }
 
   for (const a of attendances) {
+    const key = toDateKey(a.date);
+    if (!dateKeySet.has(key)) continue;
     // 插班補課的點名紀錄會寫進目標班級的 ClassAttendance（帶 makeupRequestId），
     // 這些學生不是本班的人，顯示名字加註（插班）區分（同 AttendanceHub 慣例）。
     const studentName = a.makeupRequestId ? `${a.student.user.name}（插班）` : a.student.user.name;
     const bucket = bucketFor(a.studentId, studentName);
-    const key = toDateKey(a.date);
-    const existing = bucket.records.get(key);
-    bucket.records.set(key, {
-      date: a.date,
-      status: a.status as AttendanceStatusValue,
-      checkInTime: a.checkInTime,
-      checkOutTime: a.checkOutTime,
-      makeup: existing?.makeup ?? null,
-    });
+    const kind = a.makeupRequestId ? 'MAKEUP' : ATTENDANCE_STATUS_TO_CELL_KIND[a.status as AttendanceStatusValue];
+    const prev = bucket.cells[key];
+    const keepMakeup = kind === 'ON_LEAVE' && prev?.kind === 'ON_LEAVE';
+    bucket.cells[key] = {
+      kind,
+      makeupDate: keepMakeup ? prev.makeupDate : null,
+      makeupPending: keepMakeup ? prev.makeupPending : false,
+    };
   }
 
-  return Array.from(byStudent.entries()).map(([studentId, v]) => ({
-    studentId,
-    studentName: v.studentName,
-    records: Array.from(v.records.values()).sort((a, b) => b.date.getTime() - a.date.getTime()),
-  }));
+  const toStudent = (studentId: string) => ({ studentId, ...byStudent.get(studentId)! });
+  const students = [
+    ...enrollments.map((e) => toStudent(e.studentId)),
+    ...extraStudentIds.map(toStudent).sort((a, b) => a.studentName.localeCompare(b.studentName, 'zh-TW')),
+  ];
+  return { dates, students };
 }
 
 export interface TutoringWindowOverviewRecord {

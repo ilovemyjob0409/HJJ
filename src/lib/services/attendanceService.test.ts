@@ -1439,6 +1439,13 @@ describe('checkInByStudentNumber with a go-hall registration', () => {
 });
 
 describe('getClassAttendanceOverview', () => {
+  // 矩陣式總表：欄位＝近 daysBack 天內該班上課日（依 weekday 展開、排除休假
+  // 日、只到今天），新→舊；每格一種 kind。now 固定傳入讓測試不隨執行日漂移
+  // （同 listClassBackfillDates 測試慣例）。2026-07-15 是週三，往回 21 天的
+  // 週三上課日＝6/24、7/1、7/8、7/15。
+  const now = new Date('2026-07-15');
+  const opts = { now, daysBack: 21 };
+
   async function setup() {
     const teacher = await createTeacher({ name: '陳老師', email: `overview-chen-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
     const cls = await createClass({ name: '週三基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 3, startTime: '17:10', endTime: '18:40' });
@@ -1449,30 +1456,59 @@ describe('getClassAttendanceOverview', () => {
     return { teacher, cls, studentA, studentB };
   }
 
-  it('lists a plain attendance record with no makeup info', async () => {
+  it('enumerates session dates newest-first and defaults enrolled students to UNMARKED', async () => {
     const { cls, studentA } = await setup();
-    const date = new Date('2026-07-01');
-    await saveClassAttendance(cls.id, date, 'marker-1', [
-      { studentId: studentA.id, status: 'PRESENT', checkInTime: '17:10', checkOutTime: '18:40' },
-    ]);
 
-    const overview = await getClassAttendanceOverview(cls.id);
-    const row = overview.find((s) => s.studentId === studentA.id)!;
-    expect(row.records).toEqual([{ date, status: 'PRESENT', checkInTime: '17:10', checkOutTime: '18:40', makeup: null }]);
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    expect(overview.dates).toEqual(['2026-07-15', '2026-07-08', '2026-07-01', '2026-06-24']);
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    for (const key of overview.dates) {
+      expect(row.cells[key]).toEqual({ kind: 'UNMARKED', makeupDate: null, makeupPending: false });
+    }
   });
 
-  it('shows a leave with no makeup request yet as ON_LEAVE with makeup: null', async () => {
+  it('skips closed days when enumerating session dates', async () => {
+    const { cls } = await setup();
+    await prisma.closedDay.create({ data: { date: new Date('2026-07-08'), name: '休假' } });
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    expect(overview.dates).toEqual(['2026-07-15', '2026-07-01', '2026-06-24']);
+  });
+
+  it('folds present-family statuses into PRESENT and keeps ABSENT / NOT_REGISTERED distinct', async () => {
+    const { cls, studentA, studentB } = await setup();
+    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [
+      { studentId: studentA.id, status: 'PRESENT', checkInTime: '17:10' },
+      { studentId: studentB.id, status: 'LATE' },
+    ]);
+    await saveClassAttendance(cls.id, new Date('2026-07-08'), 'marker-1', [
+      { studentId: studentA.id, status: 'ABSENT' },
+      { studentId: studentB.id, status: 'NOT_REGISTERED' },
+    ]);
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const rowA = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(rowA.cells['2026-07-01'].kind).toBe('PRESENT');
+    expect(rowA.cells['2026-07-08'].kind).toBe('ABSENT');
+    const rowB = overview.students.find((s) => s.studentId === studentB.id)!;
+    expect(rowB.cells['2026-07-01'].kind).toBe('PRESENT');
+    expect(rowB.cells['2026-07-08'].kind).toBe('NOT_REGISTERED');
+  });
+
+  it('shows a leave with no makeup request as ON_LEAVE without a makeup date', async () => {
     const { cls, studentA } = await setup();
     await createLeaveRequest({ studentId: studentA.id, classId: cls.id, date: new Date('2026-07-01'), reason: '事假' });
 
-    const overview = await getClassAttendanceOverview(cls.id);
-    const row = overview.find((s) => s.studentId === studentA.id)!;
-    expect(row.records).toEqual([
-      { date: new Date('2026-07-01'), status: 'ON_LEAVE', checkInTime: null, checkOutTime: null, makeup: null },
-    ]);
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(row.cells['2026-07-01']).toEqual({ kind: 'ON_LEAVE', makeupDate: null, makeupPending: false });
   });
 
-  it('shows an approved insertion makeup with a descriptive label', async () => {
+  it('attaches an approved insertion makeup target date to the leave cell', async () => {
     const { cls, studentA, teacher } = await setup();
     const targetClass = await createClass({
       name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
@@ -1481,14 +1517,13 @@ describe('getClassAttendanceOverview', () => {
     const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: new Date('2026-07-06') });
     await decideMakeupRequest(makeup.id, 'APPROVED');
 
-    const overview = await getClassAttendanceOverview(cls.id);
-    const row = overview.find((s) => s.studentId === studentA.id)!;
-    expect(row.records).toHaveLength(1);
-    expect(row.records[0].status).toBe('ON_LEAVE');
-    expect(row.records[0].makeup).toEqual({ status: 'APPROVED', type: 'INSERTION', label: '補到 2026/7/6（一） 週一基礎2A' });
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(row.cells['2026-07-01']).toEqual({ kind: 'ON_LEAVE', makeupDate: '2026-07-06', makeupPending: false });
   });
 
-  it('shows a pending one-on-one makeup with teacher and time', async () => {
+  it('attaches a pending one-on-one makeup slot date with makeupPending', async () => {
     const { cls, studentA, teacher } = await setup();
     await setTeacherAvailability(teacher.id, [{ weekday: 3, startTime: '16:00', endTime: '18:00' }]);
     const leave = await createLeaveRequest({ studentId: studentA.id, classId: cls.id, date: new Date('2026-07-01'), reason: '事假' });
@@ -1496,78 +1531,33 @@ describe('getClassAttendanceOverview', () => {
       leaveRequestId: leave.id, studentId: studentA.id, teacherId: teacher.id, slotDate: new Date('2026-07-08'), slotStartTime: '16:00',
     });
 
-    const overview = await getClassAttendanceOverview(cls.id);
-    const row = overview.find((s) => s.studentId === studentA.id)!;
-    expect(row.records[0].makeup).toEqual({ status: 'PENDING_ADMIN', type: 'ONE_ON_ONE', label: '陳老師 一對一 2026/7/8（三） 16:00-16:40' });
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(row.cells['2026-07-01']).toEqual({ kind: 'ON_LEAVE', makeupDate: '2026-07-08', makeupPending: true });
   });
 
-  it('shows an absence without leave as ABSENT with no makeup', async () => {
-    const { cls, studentA } = await setup();
-    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: studentA.id, status: 'ABSENT' }]);
-
-    const overview = await getClassAttendanceOverview(cls.id);
-    const row = overview.find((s) => s.studentId === studentA.id)!;
-    expect(row.records[0]).toMatchObject({ status: 'ABSENT', makeup: null });
-  });
-
-  it('groups records by student and sorts each student\'s records newest first', async () => {
-    const { cls, studentA, studentB } = await setup();
-    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
-    await saveClassAttendance(cls.id, new Date('2026-07-15'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
-    await saveClassAttendance(cls.id, new Date('2026-07-08'), 'marker-1', [{ studentId: studentB.id, status: 'PRESENT' }]);
-
-    const overview = await getClassAttendanceOverview(cls.id);
-    expect(overview.map((s) => s.studentId).sort()).toEqual([studentA.id, studentB.id].sort());
-
-    const rowA = overview.find((s) => s.studentId === studentA.id)!;
-    expect(rowA.records.map((r) => r.date)).toEqual([new Date('2026-07-15'), new Date('2026-07-01')]);
-
-    const rowB = overview.find((s) => s.studentId === studentB.id)!;
-    expect(rowB.records).toHaveLength(1);
-  });
-
-  it('includes historical records for a student no longer enrolled in the class', async () => {
-    const { cls, studentA } = await setup();
-    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
-    await prisma.classEnrollment.delete({ where: { studentId_classId: { studentId: studentA.id, classId: cls.id } } });
-
-    const overview = await getClassAttendanceOverview(cls.id);
-    const row = overview.find((s) => s.studentId === studentA.id);
-    expect(row?.studentName).toBe('小明');
-    expect(row?.records).toHaveLength(1);
-  });
-
-  it('returns an empty array for a class with no students', async () => {
-    const teacher = await createTeacher({ name: '陳老師', email: `overview-empty-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
-    const cls = await createClass({ name: '空班', subject: '圍棋', level: '基礎1', teacherId: teacher.id, weekday: 3, startTime: '17:10', endTime: '18:40' });
-    expect(await getClassAttendanceOverview(cls.id)).toEqual([]);
-  });
-
-  // 未來日期用 2099 年，讓「今天起」的過濾在任何執行時間都穩定（同
-  // classService.test.ts 的續報未來日期測試慣例）。
-  it('excludes future-dated attendance and leave records from the overview', async () => {
-    const { cls, studentA, studentB } = await setup();
-    const past = new Date('2026-07-01');
-    await saveClassAttendance(cls.id, past, 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
-    const future = new Date('2099-01-07'); // 週三，跟 cls.weekday 對上，才不會被 createLeaveRequest 的星期檢查擋下
-    await saveClassAttendance(cls.id, future, 'marker-1', [{ studentId: studentA.id, status: 'NOT_REGISTERED' }]);
-    await createLeaveRequest({ studentId: studentB.id, classId: cls.id, date: future, reason: '未來請假' });
-
-    const overview = await getClassAttendanceOverview(cls.id);
-
-    const rowA = overview.find((s) => s.studentId === studentA.id)!;
-    expect(rowA.records).toHaveLength(1);
-    expect(rowA.records[0]).toMatchObject({ date: past, status: 'PRESENT' });
-
-    const rowB = overview.find((s) => s.studentId === studentB.id)!;
-    expect(rowB.records).toEqual([]);
-  });
-
-  it('marks an insertion-makeup visitor\'s studentName with （插班） in the target class overview', async () => {
-    const { teacher, cls: homeClass, studentA } = await setup();
+  it('shows a rejected makeup as a plain ON_LEAVE cell', async () => {
+    const { cls, studentA, teacher } = await setup();
     const targetClass = await createClass({
       name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
     });
+    const leave = await createLeaveRequest({ studentId: studentA.id, classId: cls.id, date: new Date('2026-07-01'), reason: '事假' });
+    const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: new Date('2026-07-06') });
+    await decideMakeupRequest(makeup.id, 'REJECTED');
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(row.cells['2026-07-01']).toEqual({ kind: 'ON_LEAVE', makeupDate: null, makeupPending: false });
+  });
+
+  it('lists an insertion visitor after enrolled students with （插班） and a MAKEUP cell only on the visited date', async () => {
+    const { teacher, cls: homeClass, studentA, studentB } = await setup();
+    const targetClass = await createClass({
+      name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
+    });
+    await enrollStudent(targetClass.id, studentB.id);
     const date = new Date('2026-07-06');
     const leave = await createLeaveRequest({ studentId: studentA.id, classId: homeClass.id, date: new Date('2026-07-01'), reason: '事假' });
     const makeup = await createInsertionMakeupRequest({ leaveRequestId: leave.id, targetClassId: targetClass.id, targetDate: date });
@@ -1576,13 +1566,17 @@ describe('getClassAttendanceOverview', () => {
       { studentId: studentA.id, status: 'PRESENT', makeupRequestId: makeup.id },
     ]);
 
-    const overview = await getClassAttendanceOverview(targetClass.id);
-    const row = overview.find((s) => s.studentId === studentA.id)!;
-    expect(row.studentName).toBe('小明（插班）');
-    expect(row.records[0]).toMatchObject({ status: 'PRESENT' });
+    const overview = await getClassAttendanceOverview(targetClass.id, opts);
+
+    // 週一上課日：6/29、7/6、7/13
+    expect(overview.dates).toEqual(['2026-07-13', '2026-07-06', '2026-06-29']);
+    expect(overview.students.map((s) => s.studentName)).toEqual(['呂昕曄', '小明（插班）']);
+    const guest = overview.students[1];
+    expect(guest.cells['2026-07-06']).toEqual({ kind: 'MAKEUP', makeupDate: null, makeupPending: false });
+    expect(Object.keys(guest.cells)).toEqual(['2026-07-06']);
   });
 
-  it('merges a same-date leave+makeup with an attendance record: attendance status wins, makeup carried over', async () => {
+  it('lets a same-date attendance record win over the leave; makeup date only survives on ON_LEAVE cells', async () => {
     const { cls, studentA, teacher } = await setup();
     const targetClass = await createClass({
       name: '週一基礎2A', subject: '圍棋', level: '基礎2', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '20:30',
@@ -1595,11 +1589,50 @@ describe('getClassAttendanceOverview', () => {
     // 學生後來還是在原班出席了同一天。
     await saveClassAttendance(cls.id, date, 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
 
-    const overview = await getClassAttendanceOverview(cls.id);
-    const row = overview.find((s) => s.studentId === studentA.id)!;
-    expect(row.records).toHaveLength(1);
-    expect(row.records[0].status).toBe('PRESENT');
-    expect(row.records[0].makeup).toEqual({ status: 'APPROVED', type: 'INSERTION', label: '補到 2026/7/6（一） 週一基礎2A' });
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(row.cells['2026-07-01']).toEqual({ kind: 'PRESENT', makeupDate: null, makeupPending: false });
+  });
+
+  it('ignores records outside the window and omits visitors with no in-window records', async () => {
+    const { cls, studentA, studentB } = await setup();
+    // 6/17 也是週三，但在 6/24 起算的窗外。
+    await saveClassAttendance(cls.id, new Date('2026-06-17'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+    await createLeaveRequest({ studentId: studentB.id, classId: cls.id, date: new Date('2026-06-17'), reason: '事假' });
+    await prisma.classEnrollment.delete({ where: { studentId_classId: { studentId: studentB.id, classId: cls.id } } });
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    expect(overview.dates).toEqual(['2026-07-15', '2026-07-08', '2026-07-01', '2026-06-24']);
+    const rowA = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(Object.keys(rowA.cells).sort()).toEqual(['2026-06-24', '2026-07-01', '2026-07-08', '2026-07-15']);
+    expect(rowA.cells['2026-07-01'].kind).toBe('UNMARKED');
+    // 已退班且窗內無紀錄的學生不出現
+    expect(overview.students.find((s) => s.studentId === studentB.id)).toBeUndefined();
+  });
+
+  it('lists a formerly enrolled student with only their recorded dates (no UNMARKED fill)', async () => {
+    const { cls, studentA } = await setup();
+    await saveClassAttendance(cls.id, new Date('2026-07-01'), 'marker-1', [{ studentId: studentA.id, status: 'PRESENT' }]);
+    await prisma.classEnrollment.delete({ where: { studentId_classId: { studentId: studentA.id, classId: cls.id } } });
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    const row = overview.students.find((s) => s.studentId === studentA.id)!;
+    expect(row.studentName).toBe('小明');
+    expect(Object.keys(row.cells)).toEqual(['2026-07-01']);
+    expect(row.cells['2026-07-01'].kind).toBe('PRESENT');
+  });
+
+  it('returns the date columns but no students for an empty class', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: `overview-empty-${Date.now()}@example.com`, password: 'x', subjects: '圍棋' });
+    const cls = await createClass({ name: '空班', subject: '圍棋', level: '基礎1', teacherId: teacher.id, weekday: 3, startTime: '17:10', endTime: '18:40' });
+
+    const overview = await getClassAttendanceOverview(cls.id, opts);
+
+    expect(overview.dates).toEqual(['2026-07-15', '2026-07-08', '2026-07-01', '2026-06-24']);
+    expect(overview.students).toEqual([]);
   });
 });
 

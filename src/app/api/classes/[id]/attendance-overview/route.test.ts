@@ -64,7 +64,14 @@ describe('GET /api/classes/[id]/attendance-overview', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.class).toMatchObject({ id: cls.id, name: '週三基礎2A', subject: '圍棋', level: '基礎2', weekday: 3, teacherName: '陳老師' });
-    expect(body.students).toEqual([{ studentId: student.id, studentName: '小明', records: [] }]);
+    // 矩陣形狀：dates＝近三個月上課日（相對今天，無法斷言精確清單），
+    // 在班學生每個上課日都有格子、無紀錄為 UNMARKED。
+    expect(body.dates.length).toBeGreaterThan(0);
+    expect(body.students).toHaveLength(1);
+    expect(body.students[0]).toMatchObject({ studentId: student.id, studentName: '小明' });
+    for (const key of body.dates) {
+      expect(body.students[0].cells[key]).toEqual({ kind: 'UNMARKED', makeupDate: null, makeupPending: false });
+    }
   });
 
   it('200 for ADMIN on any class', async () => {

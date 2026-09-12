@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     if (cls.teacherId !== teacher.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const students = await getClassAttendanceOverview(cls.id);
+  const { dates, students } = await getClassAttendanceOverview(cls.id);
   return NextResponse.json({
     class: {
       id: cls.id,
@@ -44,6 +44,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       endTime: cls.endTime,
       teacherName: cls.teacher.user.name,
     },
+    dates,
     students,
   });
 }
