@@ -29,6 +29,45 @@ export async function createSubstituteRequest(input: CreateSubstituteRequestInpu
   return prisma.substituteRequest.create({ data: { ...input, status: 'PENDING_ASSIGNMENT' } });
 }
 
+// 行政幫老師請假：原老師取自班級，可同時直接指派代課老師（不指派則進待安排）。
+export interface AdminCreateSubstituteRequestInput {
+  classId: string;
+  date: Date;
+  reason: string;
+  substituteTeacherId?: string;
+}
+
+export async function adminCreateSubstituteRequest(input: AdminCreateSubstituteRequestInput) {
+  const cls = await prisma.class.findUniqueOrThrow({
+    where: { id: input.classId },
+    select: { name: true, teacherId: true, teacher: { select: { userId: true } } },
+  });
+  const created = await createSubstituteRequest({
+    classId: input.classId,
+    originalTeacherId: cls.teacherId,
+    date: input.date,
+    reason: input.reason,
+  });
+  const result = input.substituteTeacherId
+    ? await assignSubstituteTeacher(created.id, input.substituteTeacherId)
+    : created;
+  const subName = input.substituteTeacherId
+    ? (
+        await prisma.teacher.findUniqueOrThrow({
+          where: { id: input.substituteTeacherId },
+          select: { user: { select: { name: true } } },
+        })
+      ).user.name
+    : null;
+  // 讓原老師知道行政已代為登記（notifyUser 永不 throw，不影響建立）。
+  await notifyUser(cls.teacher.userId, {
+    title: '行政代為登記請假',
+    body: `行政已為您登記 ${formatDateWithWeekday(input.date, 'zh-TW')}「${cls.name}」請假，${subName ? `代課老師：${subName}` : '代課老師待安排'}`,
+    url: '/teacher',
+  });
+  return result;
+}
+
 const SAFE_USER_SELECT = { name: true, email: true } as const;
 
 export function listPendingSubstituteRequests() {

@@ -7,6 +7,7 @@ import {
   createSubstituteRequest,
   listPendingSubstituteRequests,
   assignSubstituteTeacher,
+  adminCreateSubstituteRequest,
   listAssignedSubstituteRequestsForTeacher,
   teacherCanAccessClass,
 } from './substituteRequestService';
@@ -68,6 +69,66 @@ describe('assignSubstituteTeacher', () => {
 
     expect(updated.status).toBe('ASSIGNED');
     expect(updated.substituteTeacherId).toBe(substitute.id);
+  });
+});
+
+describe('adminCreateSubstituteRequest', () => {
+  it('derives the original teacher from the class, creates PENDING_ASSIGNMENT, and notifies the original teacher', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'admsub-a@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    const req = await adminCreateSubstituteRequest({ classId: cls.id, date: new Date(Date.UTC(2026, 6, 20)), reason: '家中有事' });
+
+    expect(req.status).toBe('PENDING_ASSIGNMENT');
+    expect(req.originalTeacherId).toBe(teacher.id);
+
+    const pending = await listPendingSubstituteRequests();
+    expect(pending.map((p) => p.id)).toContain(req.id);
+
+    const { userId } = await prisma.teacher.findUniqueOrThrow({ where: { id: teacher.id }, select: { userId: true } });
+    const notes = await prisma.notification.findMany({ where: { userId } });
+    expect(notes).toHaveLength(1);
+    expect(notes[0].title).toBe('行政代為登記請假');
+    expect(notes[0].body).toContain('數學A班');
+    expect(notes[0].body).toContain('代課老師待安排');
+  });
+
+  it('throws INVALID_WEEKDAY when the date does not fall on the class weekday', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'admsub-b@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    await expect(
+      // 2026-07-21 是週二，班級週一上課
+      adminCreateSubstituteRequest({ classId: cls.id, date: new Date(Date.UTC(2026, 6, 21)), reason: '出差' })
+    ).rejects.toThrow('INVALID_WEEKDAY');
+  });
+
+  it('assigns the substitute in the same call when substituteTeacherId is given, notifying both teachers', async () => {
+    const teacher = await createTeacher({ name: '陳老師', email: 'admsub-c@example.com', password: 'x', subjects: '數學' });
+    const substitute = await createTeacher({ name: '林老師', email: 'admsub-d@example.com', password: 'x', subjects: '數學' });
+    const cls = await createClass({ name: '數學A班', subject: '數學', level: '國一', teacherId: teacher.id, weekday: 1, startTime: '19:00', endTime: '21:00' });
+
+    const req = await adminCreateSubstituteRequest({
+      classId: cls.id,
+      date: new Date(Date.UTC(2026, 6, 20)),
+      reason: '出差',
+      substituteTeacherId: substitute.id,
+    });
+
+    expect(req.status).toBe('ASSIGNED');
+    expect(req.substituteTeacherId).toBe(substitute.id);
+
+    const pending = await listPendingSubstituteRequests();
+    expect(pending.map((p) => p.id)).not.toContain(req.id);
+
+    const subUser = await prisma.teacher.findUniqueOrThrow({ where: { id: substitute.id }, select: { userId: true } });
+    const subNotes = await prisma.notification.findMany({ where: { userId: subUser.userId } });
+    expect(subNotes.some((n) => n.title === '代課指派')).toBe(true);
+
+    const origUser = await prisma.teacher.findUniqueOrThrow({ where: { id: teacher.id }, select: { userId: true } });
+    const origNotes = await prisma.notification.findMany({ where: { userId: origUser.userId } });
+    expect(origNotes).toHaveLength(1);
+    expect(origNotes[0].body).toContain('代課老師：林老師');
   });
 });
 
