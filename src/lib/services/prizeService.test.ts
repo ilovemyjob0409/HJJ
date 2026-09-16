@@ -101,6 +101,31 @@ describe('redeemPrize', () => {
 
 });
 
+describe('redeemPrize（行政代兌換）', () => {
+  it('with operator: creates a PICKED_UP row with operator/pickedUpAt, deducts points and stock, notifies without deadline', async () => {
+    const { student, prize } = await setup({ regular: 100, points: 50 });
+    const result = await redeemPrize({ studentId: student.id, prizeId: prize.id, operator: '王行政' });
+
+    const row = await prisma.prizeRedemption.findUniqueOrThrow({ where: { id: result.id } });
+    expect(row.status).toBe('PICKED_UP');
+    expect(row.operator).toBe('王行政');
+    expect(row.pickedUpAt).not.toBeNull();
+    expect(row.regularUsed).toBe(50);
+    expect((await prisma.prize.findUniqueOrThrow({ where: { id: prize.id } })).stock).toBe(2);
+
+    const { userId } = await prisma.student.findUniqueOrThrow({ where: { id: student.id }, select: { userId: true } });
+    const note = await prisma.notification.findFirstOrThrow({ where: { userId } });
+    expect(note.body).toContain('已為你兌換');
+    expect(note.body).not.toContain('請於');
+  });
+
+  it('with operator: the PICKED_UP row still occupies the per-student limit', async () => {
+    const { student, prize } = await setup({ regular: 200 });
+    await redeemPrize({ studentId: student.id, prizeId: prize.id, operator: '王行政' });
+    await expect(redeemPrize({ studentId: student.id, prizeId: prize.id, operator: '王行政' })).rejects.toThrow('ALREADY_REDEEMED');
+  });
+});
+
 describe('cancelRedemption', () => {
   it('refunds each bucket per snapshot, restocks, marks CANCELLED with operator', async () => {
     const { student, prize } = await setup({ regular: 40, redeemOnly: 30, points: 50 });

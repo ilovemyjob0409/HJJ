@@ -27,15 +27,31 @@ const REDEEM_ERROR_CODES = new Set(['PRIZE_UNAVAILABLE', 'OUT_OF_STOCK', 'ALREAD
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'STUDENT') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  const student = await prisma.student.findUnique({ where: { userId: session.user.id }, select: { id: true } });
-  if (!student) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!session || (session.user.role !== 'STUDENT' && session.user.role !== 'ADMIN')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   try {
     const body = await req.json();
     if (typeof body?.prizeId !== 'string' || !body.prizeId) {
       return NextResponse.json({ error: 'INVALID_INPUT' }, { status: 400 });
     }
-    const result = await redeemPrize({ studentId: student.id, prizeId: body.prizeId });
+    let studentId: string;
+    let operator: string | undefined;
+    if (session.user.role === 'ADMIN') {
+      // 行政代兌換：body 指定學生，service 會直接建成已領取
+      if (typeof body?.studentId !== 'string' || !body.studentId) {
+        return NextResponse.json({ error: 'INVALID_INPUT' }, { status: 400 });
+      }
+      const target = await prisma.student.findUnique({ where: { id: body.studentId }, select: { id: true } });
+      if (!target) return NextResponse.json({ error: 'STUDENT_NOT_FOUND' }, { status: 422 });
+      studentId = target.id;
+      operator = session.user.name ?? '行政';
+    } else {
+      const student = await prisma.student.findUnique({ where: { userId: session.user.id }, select: { id: true } });
+      if (!student) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      studentId = student.id;
+    }
+    const result = await redeemPrize({ studentId, prizeId: body.prizeId, operator });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof SyntaxError) return NextResponse.json({ error: 'INVALID_INPUT' }, { status: 400 });

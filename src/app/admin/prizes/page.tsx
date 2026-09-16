@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import AlertModal from '@/components/ui/AlertModal';
+import CollapsibleSearchInput from '@/components/ui/CollapsibleSearchInput';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 import PrizeFormModal, { PrizeRow } from './PrizeFormModal';
+import AdminRedeemModal from './AdminRedeemModal';
 import PrizeRulesManager from './PrizeRulesManager';
 
 interface RedemptionRow {
@@ -54,6 +56,8 @@ export default function AdminPrizesPage() {
   const [prizesLoading, setPrizesLoading] = useState(true);
   const [prizeModal, setPrizeModal] = useState<PrizeModalState>(null);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+  const [prizeSearch, setPrizeSearch] = useState('');
+  const [redeemTarget, setRedeemTarget] = useState<PrizeRow | null>(null);
 
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
 
@@ -220,6 +224,9 @@ export default function AdminPrizesPage() {
       header: '操作',
       render: (p) => (
         <div className="flex justify-end gap-3 sm:justify-start">
+          <Button variant="link" disabled={!p.active || p.stock === 0} onClick={() => setRedeemTarget(p)}>
+            代兌換
+          </Button>
           <Button variant="link" onClick={() => setPrizeModal({ mode: 'edit', prize: p })}>
             編輯
           </Button>
@@ -230,6 +237,12 @@ export default function AdminPrizesPage() {
       ),
     },
   ];
+
+  const filteredPrizes = useMemo(() => {
+    const q = prizeSearch.trim().toLowerCase();
+    if (!q) return prizes;
+    return prizes.filter((p) => p.name.toLowerCase().includes(q));
+  }, [prizes, prizeSearch]);
 
   return (
     <>
@@ -249,18 +262,31 @@ export default function AdminPrizesPage() {
       </Card>
 
       <Card>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-bold text-ink">獎品清單</h2>
-          <Button onClick={() => setPrizeModal({ mode: 'create' })}>＋ 新增獎品</Button>
+        <div className="mb-3 flex items-center gap-3">
+          <h2 className="shrink-0 whitespace-nowrap font-bold text-ink">獎品清單</h2>
+          <CollapsibleSearchInput placeholder="搜尋獎品名稱" value={prizeSearch} onChange={setPrizeSearch} />
+          <Button className="ml-auto shrink-0" onClick={() => setPrizeModal({ mode: 'create' })}>
+            ＋ 新增獎品
+          </Button>
         </div>
         <DataTable
           columns={prizeColumns}
-          rows={prizes}
+          rows={filteredPrizes}
           keyField={(p) => p.id}
           loading={prizesLoading}
-          emptyText="目前沒有獎品，點右上角新增"
+          emptyText={prizeSearch.trim() ? '沒有符合搜尋的獎品' : '目前沒有獎品，點右上角新增'}
         />
       </Card>
+
+      <AdminRedeemModal
+        open={redeemTarget !== null}
+        prize={redeemTarget}
+        onClose={() => setRedeemTarget(null)}
+        onRedeemed={() => {
+          setRedeemTarget(null);
+          loadPrizes();
+        }}
+      />
 
       <PrizeFormModal
         open={prizeModal !== null}

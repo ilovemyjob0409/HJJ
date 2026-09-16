@@ -46,7 +46,8 @@ async function sumBucket(tx: Prisma.TransactionClient, studentId: string, bucket
 
 // 兌換：檢查上架/庫存/限換/餘額 → 扣點（先兌換專用、不足扣一般）→ 扣庫存。
 // 全程單一 Serializable 交易，防兩個並發兌換同時通過庫存/餘額檢查。
-export async function redeemPrize(input: { studentId: string; prizeId: string }) {
+// 帶 operator＝行政櫃台代兌換：視為現場交付，直接建成已領取，不進待領清單。
+export async function redeemPrize(input: { studentId: string; prizeId: string; operator?: string }) {
   const result = await runSerializableWithRetry(() =>
     prisma.$transaction(
       async (tx) => {
@@ -83,7 +84,14 @@ export async function redeemPrize(input: { studentId: string; prizeId: string })
         await tx.prize.update({ where: { id: prize.id }, data: { stock: { decrement: 1 } } });
 
         const row = await tx.prizeRedemption.create({
-          data: { studentId: input.studentId, prizeId: prize.id, prizeName: prize.name, redeemOnlyUsed, regularUsed },
+          data: {
+            studentId: input.studentId,
+            prizeId: prize.id,
+            prizeName: prize.name,
+            redeemOnlyUsed,
+            regularUsed,
+            ...(input.operator ? { status: 'PICKED_UP' as const, pickedUpAt: new Date(), operator: input.operator } : {}),
+          },
         });
         return { id: row.id, prizeName: prize.name, points: prize.points, createdAt: row.createdAt };
       },
@@ -93,7 +101,9 @@ export async function redeemPrize(input: { studentId: string; prizeId: string })
   const deadlineKey = prizeDeadlineKey(result.createdAt);
   await notifyStudent(
     input.studentId,
-    `兌換成功：${result.prizeName}，請於 ${formatDateWithWeekday(deadlineKey)} 前至櫃台領取`
+    input.operator
+      ? `已為你兌換：${result.prizeName}（已完成領取），扣 ${result.points} 點`
+      : `兌換成功：${result.prizeName}，請於 ${formatDateWithWeekday(deadlineKey)} 前至櫃台領取`
   );
   return { ...result, deadlineKey };
 }

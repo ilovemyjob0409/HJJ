@@ -40,9 +40,9 @@ describe('POST /api/prize-redemptions (student redeem)', () => {
     expect(body.deadlineKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('403 for admin/anon; 422 with error code on business failure', async () => {
+  it('403 for teacher/anon; 422 with error code on business failure', async () => {
     const { user } = await makeStudent('pzr-b@example.com');
-    asUser('admin-1', 'ADMIN');
+    asUser('teacher-1', 'TEACHER');
     expect((await POST(postReq({ prizeId: 'x' }))).status).toBe(403);
     sessionMock.mockResolvedValue(null);
     expect((await POST(postReq({ prizeId: 'x' }))).status).toBe(403);
@@ -58,6 +58,43 @@ describe('POST /api/prize-redemptions (student redeem)', () => {
     const res = await POST(postReq({}));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe('INVALID_INPUT');
+  });
+});
+
+describe('POST /api/prize-redemptions (admin redeems for student)', () => {
+  it('201 creates a PICKED_UP redemption with operator for the chosen student', async () => {
+    const { student } = await makeStudent('pzr-i@example.com');
+    const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 1, sortOrder: 0 } });
+    asUser('admin-1', 'ADMIN', '王行政');
+    const res = await POST(postReq({ prizeId: prize.id, studentId: student.id }));
+    expect(res.status).toBe(201);
+    const row = await prisma.prizeRedemption.findFirstOrThrow({ where: { studentId: student.id } });
+    expect(row.status).toBe('PICKED_UP');
+    expect(row.operator).toBe('王行政');
+  });
+
+  it('400 INVALID_INPUT without studentId; 422 STUDENT_NOT_FOUND for unknown studentId', async () => {
+    const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 1, sortOrder: 0 } });
+    asUser('admin-1', 'ADMIN');
+    const res1 = await POST(postReq({ prizeId: prize.id }));
+    expect(res1.status).toBe(400);
+    expect((await res1.json()).error).toBe('INVALID_INPUT');
+    const res2 = await POST(postReq({ prizeId: prize.id, studentId: 'nope' }));
+    expect(res2.status).toBe(422);
+    expect((await res2.json()).error).toBe('STUDENT_NOT_FOUND');
+  });
+
+  it('student-sent studentId is ignored — always redeems PENDING for the logged-in student', async () => {
+    const { user, student } = await makeStudent('pzr-j@example.com');
+    const { student: other } = await makeStudent('pzr-k@example.com');
+    const prize = await prisma.prize.create({ data: { name: '貼紙', points: 10, stock: 2, sortOrder: 0 } });
+    asUser(user.id, 'STUDENT');
+    const res = await POST(postReq({ prizeId: prize.id, studentId: other.id }));
+    expect(res.status).toBe(201);
+    expect(await prisma.prizeRedemption.count({ where: { studentId: other.id } })).toBe(0);
+    const row = await prisma.prizeRedemption.findFirstOrThrow({ where: { studentId: student.id } });
+    expect(row.status).toBe('PENDING');
+    expect(row.operator).toBeNull();
   });
 });
 
