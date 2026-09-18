@@ -95,7 +95,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   ALREADY_PAID: '這筆帳單已繳清，不需提醒繳費',
   PARTIAL_TOPUP_FAILURE: '定案成功，但部分學生的堂數補登失敗，請檢查該生報名狀態後手動補登',
   BILL_HAS_PAYMENTS: '這筆帳單已有繳款紀錄，請先處理繳款後再刪除',
-  BILL_CREDITS_SESSIONS: '這筆班級帳單已把堂數計入學生總堂數，無法直接刪除，請聯絡工程處理',
+  BILL_SESSIONS_CONSUMED: '這筆帳單開的堂數已有部分被上課使用，扣回會讓剩餘堂數變負，請先調整出缺勤或改用退班結算',
+  BILL_ENROLLMENT_GONE: '找不到對應的班級報名（學生可能已退班或換班），無法自動扣回堂數，請聯絡工程處理',
 };
 
 export default function AdminBillingBatchPage({ params }: { params: { batchId: string } }) {
@@ -180,7 +181,13 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
   }
 
   async function deleteBill(bill: BillRow) {
-    if (!(await confirm('確定要刪除這筆帳單嗎？此動作無法復原。', { danger: true }))) return;
+    // 已定案的班級帳單刪除時會同步把開單堂數扣回（草稿還沒充值，不用提）。
+    const rollbackSessions = batch?.status === 'FINALIZED' && bill.classId ? (bill.billedSessions ?? 0) : 0;
+    const message =
+      rollbackSessions > 0
+        ? `確定要刪除這筆帳單嗎？將同時從學生剩餘堂數扣回開單的 ${rollbackSessions} 堂。此動作無法復原。`
+        : '確定要刪除這筆帳單嗎？此動作無法復原。';
+    if (!(await confirm(message, { danger: true }))) return;
     setDeletingBillId(bill.id);
     try {
       const res = await fetch(`/api/admin/billing/bills/${bill.id}`, { method: 'DELETE' });
@@ -420,10 +427,8 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
             b.notifiedAt && state !== 'PAID'
               ? { key: 'remind', label: '提醒繳費', loading: remindingId === b.id, onClick: () => remindBill(b.id) }
               : null;
-          // 刪除鈕預先擋掉班級帳單已充值堂數的情況（跟服務層的 BILL_CREDITS_SESSIONS
-          // 是同一條規則，這裡先隱藏選項給更直接的引導；已有繳款的情況沒有預先擋，
-          // 讓伺服器的 BILL_HAS_PAYMENTS 錯誤訊息說明原因即可）。
-          const canDelete = !(b.classId && (b.billedSessions ?? 0) > 0);
+          // 班級帳單已充值堂數的情況，刪除時服務層會原子地把堂數扣回（帳本留負數
+          // 期別）；已有繳款或堂數已被上課用掉時由伺服器錯誤訊息說明原因。
           return (
             <div className="flex justify-center">
               <ActionMenu
@@ -431,9 +436,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
                   { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(b.id) },
                   ...(remindItem ? [remindItem] : []),
                   ...(b.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(b.id) }]),
-                  ...(canDelete
-                    ? [{ key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingBillId === b.id, onClick: () => deleteBill(b) }]
-                    : []),
+                  { key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingBillId === b.id, onClick: () => deleteBill(b) },
                 ]}
               />
             </div>

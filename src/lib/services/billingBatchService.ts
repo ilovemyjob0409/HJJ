@@ -178,18 +178,38 @@ export async function updateDraftBill(billId: string, input: { billedSessions?: 
   await prisma.bill.update({ where: { id: billId }, data });
 }
 
-// 草稿帳單刪除永遠安全（定案前不會有堂數充值或通知）；已定案帳單則要擋兩種
-// 不可逆的情況：已有繳款紀錄（刪了帳單錢會對不到）、班級帳單已把 billedSessions
-// 充進學生總堂數（addEnrollmentSessions，見 finalizeBatch／createStandaloneClassBill）
-// ——單刪帳單列不會把那些堂數扣回來，需要人工介入，不在這裡自動處理。
+// 草稿帳單刪除永遠安全（定案前不會有堂數充值或通知）。已定案帳單：有繳款紀錄
+// 一律擋（刪了帳單錢會對不到）；班級帳單已把 billedSessions 充進學生總堂數
+// （addEnrollmentSessions，見 finalizeBatch／createStandaloneClassBill）的話，刪除
+// 時原子地扣回——總堂數減回去＋帳本留一筆負數期別（與行政「減堂」同語意），
+// 與刪帳單同一個 transaction。扣回後剩餘會變負（堂數已被上課用掉）或報名已不
+// 存在（退班／換班）時不自動處理，丟錯讓行政先處理。
 export async function deleteBill(billId: string): Promise<void> {
   const bill = await prisma.bill.findUniqueOrThrow({
     where: { id: billId },
-    select: { status: true, classId: true, billedSessions: true, payments: { select: { id: true } } },
+    select: { status: true, classId: true, studentId: true, billedSessions: true, payments: { select: { id: true } } },
   });
   if (bill.payments.length > 0) throw new Error('BILL_HAS_PAYMENTS');
-  if (bill.status === 'FINALIZED' && bill.classId && (bill.billedSessions ?? 0) > 0) throw new Error('BILL_CREDITS_SESSIONS');
-  await prisma.bill.delete({ where: { id: billId } });
+  const credited = bill.status === 'FINALIZED' && bill.classId !== null && (bill.billedSessions ?? 0) > 0;
+  if (!credited) {
+    await prisma.bill.delete({ where: { id: billId } });
+    return;
+  }
+  const classId = bill.classId as string;
+  const amount = bill.billedSessions as number;
+  const enrollment = await prisma.classEnrollment.findUnique({
+    where: { studentId_classId: { studentId: bill.studentId, classId } },
+  });
+  if (!enrollment) throw new Error('BILL_ENROLLMENT_GONE');
+  const used = await prisma.classAttendance.count({
+    where: { classId, studentId: bill.studentId, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } },
+  });
+  if ((enrollment.totalSessions ?? 0) - amount < used) throw new Error('BILL_SESSIONS_CONSUMED');
+  await prisma.$transaction([
+    prisma.$executeRaw`UPDATE "ClassEnrollment" SET "totalSessions" = COALESCE("totalSessions", 0) - ${amount} WHERE "id" = ${enrollment.id}`,
+    prisma.enrollmentPeriod.create({ data: { enrollmentId: enrollment.id, sessions: -amount } }),
+    prisma.bill.delete({ where: { id: billId } }),
+  ]);
 }
 
 export async function deleteDraftBatch(batchId: string): Promise<void> {

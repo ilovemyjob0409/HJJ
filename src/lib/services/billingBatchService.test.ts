@@ -10,6 +10,7 @@ import { seedDefaultFeeTiers, listFeeTiers, setEnrollmentFeeTier } from './tutor
 import { createClassBatch, createTutoringBatch, listBatches, getBatchDetail, updateDraftBill, deleteDraftBatch, deleteBill, finalizeBatch } from './billingBatchService';
 import { notifyBills } from './billNotifyService';
 import { addPayment } from './billPaymentService';
+import { createStandaloneClassBill } from './standaloneBillService';
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
@@ -247,16 +248,75 @@ describe('deleteBill', () => {
     expect(await prisma.bill.findUnique({ where: { id: bill.id } })).not.toBeNull();
   });
 
-  it('refuses to delete a finalized class bill that already credited sessions to the enrollment', async () => {
+  it('deletes a finalized class bill and rolls the credited sessions back (negative ledger period)', async () => {
     const { student, cls } = await setupClassFixture();
     const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
     await finalizeBatch(batchId, { notifyNow: false });
     const bill = (await getBatchDetail(batchId)).bills[0];
+    // 定案已把 4 堂充進總堂數
+    const before = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(before.totalSessions).toBe(4);
 
-    await expect(deleteBill(bill.id)).rejects.toThrow('BILL_CREDITS_SESSIONS');
+    await deleteBill(bill.id);
+
+    expect(await prisma.bill.findUnique({ where: { id: bill.id } })).toBeNull();
+    const after = await prisma.classEnrollment.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.totalSessions).toBe(0);
+    // 帳本留一筆負數期別（與行政「減堂」同語意），歷史可追
+    const periods = await prisma.enrollmentPeriod.findMany({ where: { enrollmentId: before.id }, orderBy: { createdAt: 'asc' } });
+    expect(periods.map((p) => p.sessions)).toEqual([4, -4]);
+  });
+
+  it('refuses with BILL_SESSIONS_CONSUMED when the credited sessions are already partly used', async () => {
+    const { student, cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+    // 上了一堂：total 4 − 開單 4 ＝ 0 < used 1 → 扣回會變負
+    const marker = await prisma.user.findFirstOrThrow();
+    await prisma.classAttendance.create({
+      data: { classId: cls.id, studentId: student.id, date: D(2026, 9, 5), status: 'PRESENT', markedById: marker.id },
+    });
+
+    await expect(deleteBill(bill.id)).rejects.toThrow('BILL_SESSIONS_CONSUMED');
     expect(await prisma.bill.findUnique({ where: { id: bill.id } })).not.toBeNull();
-    // 堂數確實已充值進去（這正是擋刪除的原因），沒有因為刪除失敗而被動到
     const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
     expect(enrollment.totalSessions).toBe(4);
+    const periods = await prisma.enrollmentPeriod.findMany({ where: { enrollmentId: enrollment.id } });
+    expect(periods.map((p) => p.sessions)).toEqual([4]);
+  });
+
+  it('refuses with BILL_ENROLLMENT_GONE when the enrollment no longer exists', async () => {
+    const { student, cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    await prisma.enrollmentPeriod.deleteMany({ where: { enrollmentId: enrollment.id } });
+    await prisma.classEnrollment.delete({ where: { id: enrollment.id } });
+
+    await expect(deleteBill(bill.id)).rejects.toThrow('BILL_ENROLLMENT_GONE');
+    expect(await prisma.bill.findUnique({ where: { id: bill.id } })).not.toBeNull();
+  });
+
+  it('rolls back sessions when deleting a standalone class bill (the 單獨開單 case)', async () => {
+    const { student, cls } = await setupClassFixture();
+    const { billId } = await createStandaloneClassBill({
+      studentId: student.id,
+      classId: cls.id,
+      periodStart: D(2026, 9, 1),
+      periodEnd: D(2026, 9, 30),
+      billedSessions: 4,
+      amountDue: 2000,
+      notifyNow: false,
+    });
+    const before = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(before.totalSessions).toBe(4);
+
+    await deleteBill(billId);
+
+    expect(await prisma.bill.findUnique({ where: { id: billId } })).toBeNull();
+    const after = await prisma.classEnrollment.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.totalSessions).toBe(0);
   });
 });
