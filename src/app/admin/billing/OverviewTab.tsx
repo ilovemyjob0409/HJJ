@@ -16,6 +16,7 @@ import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/d
 import { taipeiDateKey } from '@/lib/taipeiDate';
 import PaymentModal from './PaymentModal';
 import SettleModal from './SettleModal';
+import EditBillModal, { EditableBillInfo } from './EditBillModal';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 
 interface OverviewBillRow {
@@ -35,6 +36,9 @@ interface OverviewBillRow {
   settledAsWithdrawal: boolean;
   classId: string | null;
   billedSessions: number | null;
+  unitPrice: number | null;
+  monthlyFee: number | null;
+  prorationRatio: number | null;
   detail: BillDetailJson;
 }
 
@@ -97,6 +101,7 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
   const [remindingId, setRemindingId] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editBill, setEditBill] = useState<EditableBillInfo | null>(null);
 
   const rangeInvalid = !!startDate && !!endDate && startDate > endDate;
 
@@ -264,6 +269,28 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
                 ...(r.batchId
                   ? [{ key: 'batch', label: '查看批次', onClick: () => router.push(`/admin/billing/${r.batchId}`) }]
                   : []),
+                // 只開放完全未繳的帳單編輯（伺服器另有 BILL_HAS_PAYMENTS 守門）
+                ...(r.state === 'UNPAID'
+                  ? [{
+                      key: 'edit',
+                      label: '編輯帳單',
+                      onClick: () =>
+                        setEditBill({
+                          id: r.id,
+                          studentName: r.studentName,
+                          itemName: r.targetName,
+                          periodStart: r.periodStart,
+                          periodEnd: r.periodEnd,
+                          classId: r.classId,
+                          billedSessions: r.billedSessions,
+                          unitPrice: r.unitPrice,
+                          monthlyFee: r.monthlyFee,
+                          prorationRatio: r.prorationRatio,
+                          amountDue: r.amountDue,
+                          discounts: r.detail?.discounts ?? [],
+                        }),
+                    }]
+                  : []),
                 { key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingId === r.id, onClick: () => deleteBill(r.id, rollbackSessions) },
               ]}
             />
@@ -420,6 +447,7 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
       </div>
 
       <PaymentModal bill={paymentBill} onClose={() => setPaymentBillId(null)} onChanged={reload} />
+      <EditBillModal bill={editBill} onClose={() => setEditBill(null)} onSaved={() => { setEditBill(null); reload(); }} />
       <SettleModal bill={settleBill} onClose={() => setSettleBillId(null)} onChanged={reload} />
       {ConfirmDialog}
     </>

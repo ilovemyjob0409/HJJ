@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/apiGuards';
+import { prisma } from '@/lib/db';
 import { updateDraftBill, deleteBill } from '@/lib/services/billingBatchService';
+import { updateFinalizedBill } from '@/lib/services/billEditService';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const body = await req.json().catch(() => ({}));
   try {
+    // 依帳單狀態分流：草稿走批次頁的草稿編輯，已定案走未繳帳單編輯（優惠／堂數連動）。
+    const bill = await prisma.bill.findUniqueOrThrow({ where: { id: params.id }, select: { status: true } });
+    if (bill.status === 'FINALIZED') {
+      await updateFinalizedBill(params.id, {
+        billedSessions: body.billedSessions,
+        amountDue: body.amountDue,
+        discounts: body.discounts ?? [],
+      });
+      return NextResponse.json({ success: true });
+    }
     await updateDraftBill(params.id, {
       billedSessions: body.billedSessions,
       amountDue: body.amountDue,

@@ -21,6 +21,10 @@ export interface OverviewBillRow {
   settledAsWithdrawal: boolean;
   classId: string | null;
   billedSessions: number | null;
+  // 編輯彈窗現算建議金額用：班級＝unitPrice、個輔＝monthlyFee×prorationRatio
+  unitPrice: number | null;
+  monthlyFee: number | null;
+  prorationRatio: number | null;
   detail: unknown; // BillDetailJson 快照，點列展開明細用
 }
 
@@ -71,6 +75,9 @@ export async function getBillingOverview(periodStart?: Date, periodEnd?: Date): 
       settledAsWithdrawal: b.settledAsWithdrawal,
       classId: b.classId,
       billedSessions: b.billedSessions,
+      unitPrice: b.unitPrice,
+      monthlyFee: b.monthlyFee,
+      prorationRatio: b.prorationRatio,
       detail: b.detail,
     };
   });

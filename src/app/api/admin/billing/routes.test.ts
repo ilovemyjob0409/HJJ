@@ -7,6 +7,7 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 import { NextRequest } from 'next/server';
 import { GET as listBatchesGET, POST as createBatchPOST } from './batches/route';
 import { POST as addPaymentPOST } from './bills/[id]/payments/route';
+import { PATCH as updateBillPATCH } from './bills/[id]/route';
 import { GET as overviewGET } from './overview/route';
 import { prisma } from '@/lib/db';
 import { createTeacher } from '@/lib/services/teacherService';
@@ -157,5 +158,51 @@ describe('POST /api/admin/billing/bills/[id]/payments', () => {
     const payments = await prisma.billPayment.findMany({ where: { billId } });
     expect(payments).toHaveLength(1);
     expect(payments[0]).toMatchObject({ amount: 1000, method: 'CASH', createdById: 'admin-1' });
+  });
+});
+
+describe('PATCH /api/admin/billing/bills/[id]（已定案帳單編輯）', () => {
+  function patchReq(body: unknown): Request {
+    return new Request('http://localhost/api/admin/billing/bills/x', { method: 'PATCH', body: JSON.stringify(body) }) as never;
+  }
+
+  it('已定案未繳帳單可改堂數、優惠與金額（含堂數帳連動）', async () => {
+    const { student, cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+    asAdmin();
+
+    const res = await updateBillPATCH(
+      patchReq({ billedSessions: 5, amountDue: 2300, discounts: [{ name: '早鳥優惠', amount: 200 }] }) as never,
+      { params: { id: bill.id } }
+    );
+
+    expect(res.status).toBe(200);
+    const updated = await prisma.bill.findUniqueOrThrow({ where: { id: bill.id } });
+    expect(updated.billedSessions).toBe(5);
+    expect(updated.amountDue).toBe(2300);
+    expect((updated.detail as { discounts: unknown[] }).discounts).toHaveLength(1);
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    expect(enrollment.totalSessions).toBe(5);
+  });
+
+  it('草稿帳單 PATCH 走原本的草稿編輯路徑', async () => {
+    const { cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+    asAdmin();
+
+    const res = await updateBillPATCH(patchReq({ billedSessions: 3 }) as never, { params: { id: bill.id } });
+
+    expect(res.status).toBe(200);
+    const updated = await prisma.bill.findUniqueOrThrow({ where: { id: bill.id } });
+    expect(updated).toMatchObject({ billedSessions: 3, status: 'DRAFT' });
+  });
+
+  it('403 when not logged in', async () => {
+    asAnon();
+    const res = await updateBillPATCH(patchReq({}) as never, { params: { id: 'x' } });
+    expect(res.status).toBe(403);
   });
 });

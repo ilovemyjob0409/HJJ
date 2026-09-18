@@ -36,7 +36,7 @@ export type BillDiscount = { name: string; amount: number };
 
 // 單行完整算式：毛額 － 優惠項目1 － 優惠項目2 ＝ 最終金額（手動調整）。只在有優
 // 惠項目時呼叫；finalAmount 用實際寫進 Bill.amountDue 的值（可能經行政手動調整過）。
-function buildNetFormula(grossAmount: number, discounts: { name: string; amount: number }[], finalAmount: number, adjusted: boolean): string {
+export function buildNetFormula(grossAmount: number, discounts: { name: string; amount: number }[], finalAmount: number, adjusted: boolean): string {
   const discountText = discounts.map((d) => `－ ${d.name} ${d.amount.toLocaleString('en-US')} 元`).join(' ');
   return `${grossAmount.toLocaleString('en-US')} 元 ${discountText} ＝ ${finalAmount.toLocaleString('en-US')} 元${adjusted ? '（手動調整）' : ''}`;
 }

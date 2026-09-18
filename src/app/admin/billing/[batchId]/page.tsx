@@ -16,6 +16,7 @@ import { getPaidState } from '@/lib/billingCalc';
 import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 import ActionMenu, { ActionMenuItem } from '@/components/ui/ActionMenu';
 import PaymentModal from '../PaymentModal';
+import EditBillModal, { EditableBillInfo } from '../EditBillModal';
 import SettleModal from '../SettleModal';
 
 const KIND_LABEL: Record<'CLASS' | 'TUTORING', string> = { CLASS: '圍棋班級', TUTORING: '英數個別輔導' };
@@ -57,6 +58,8 @@ interface BillRow {
   periodEnd: string;
   billedSessions: number | null;
   unitPrice: number | null;
+  monthlyFee: number | null;
+  prorationRatio: number | null;
   amountDue: number;
   detail: BillDetailJson;
   payments: Payment[];
@@ -112,6 +115,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
   const [billedSessionsDraft, setBilledSessionsDraft] = useState<Record<string, string>>({});
   const [savingBillId, setSavingBillId] = useState<string | null>(null);
   const [deletingBillId, setDeletingBillId] = useState<string | null>(null);
+  const [editBill, setEditBill] = useState<EditableBillInfo | null>(null);
   const [deletingBatch, setDeletingBatch] = useState(false);
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -436,6 +440,28 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
                   { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(b.id) },
                   ...(remindItem ? [remindItem] : []),
                   ...(b.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(b.id) }]),
+                  // 只開放完全未繳的帳單編輯（伺服器另有 BILL_HAS_PAYMENTS 守門）
+                  ...(b.payments.length === 0
+                    ? [{
+                        key: 'edit',
+                        label: '編輯帳單',
+                        onClick: () =>
+                          setEditBill({
+                            id: b.id,
+                            studentName: b.student.user.name,
+                            itemName: b.class?.name ?? b.tutoringEnrollment?.program.name ?? '',
+                            periodStart: b.periodStart,
+                            periodEnd: b.periodEnd,
+                            classId: b.classId,
+                            billedSessions: b.billedSessions,
+                            unitPrice: b.unitPrice,
+                            monthlyFee: b.monthlyFee,
+                            prorationRatio: b.prorationRatio,
+                            amountDue: b.amountDue,
+                            discounts: b.detail?.discounts ?? [],
+                          }),
+                      }]
+                    : []),
                   { key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingBillId === b.id, onClick: () => deleteBill(b) },
                 ]}
               />
@@ -503,6 +529,7 @@ export default function AdminBillingBatchPage({ params }: { params: { batchId: s
 
         <PaymentModal bill={paymentBill} onClose={() => setPaymentBillId(null)} onChanged={load} />
         <SettleModal bill={settleTargetBill} onClose={() => setSettleBillId(null)} onChanged={load} />
+        <EditBillModal bill={editBill} onClose={() => setEditBill(null)} onSaved={() => { setEditBill(null); load(); }} />
 
         {ConfirmDialog}
       </>
