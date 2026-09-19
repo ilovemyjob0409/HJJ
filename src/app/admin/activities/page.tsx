@@ -8,6 +8,8 @@ import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { useToast } from '@/components/ui/Toast';
+import ExportExcelButton from '@/components/ui/ExportExcelButton';
+import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 import ActivityDetail from '@/components/ActivityDetail';
 import ActivityCardGrid from '@/components/ActivityCardGrid';
 import ActivityFormFields, { ActivityFormValues, EMPTY_ACTIVITY_FORM } from '@/components/ActivityFormFields';
@@ -311,6 +313,21 @@ export default function AdminActivitiesPage() {
             管理分類
           </Button>
         )}
+        <ExportExcelButton
+          rows={activities}
+          filename="活動資料"
+          columns={[
+            { header: '活動名稱', value: (a) => a.title },
+            { header: '分類', value: (a) => a.category.name },
+            { header: '開始日期', value: (a) => formatDateWithWeekday(a.startDate) },
+            { header: '結束日期', value: (a) => formatDateWithWeekday(a.endDate) },
+            { header: '地點', value: (a) => a.location ?? '' },
+            { header: '帶隊老師', value: (a) => a.teachers.map((t) => t.teacher.user.name).join('、') },
+            { header: '名額', value: (a) => a.capacity },
+            { header: '報名人數', value: (a) => a._count.registrations },
+            { header: '報名學生', value: (a) => a.registrations.map((r) => r.student.user.name).join('、') },
+          ]}
+        />
       </div>
 
       {showAddForm && (
@@ -427,6 +444,15 @@ export default function AdminActivitiesPage() {
             onImagesChanged={load}
             rosterHeaderAction={
               <div className="flex items-center gap-2">
+                <ExportExcelButton
+                  rows={viewing.registrations}
+                  filename={`${viewing.title}報名名單`}
+                  className="px-2 py-1 text-xs"
+                  columns={[
+                    { header: '學生姓名', value: (r) => r.student.user.name },
+                    { header: '報名時間', value: (r) => formatTimestampWithWeekdayTaipei(r.createdAt) },
+                  ]}
+                />
                 <Select
                   value={addStudentId}
                   onChange={(e) => setAddStudentId(e.target.value)}
