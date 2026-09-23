@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { notifyUser } from './notificationService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { getPaidState } from '@/lib/billingCalc';
+import { goHallItemName } from '@/lib/goHallBillItem';
 
 const BILL_NOTIFY_INCLUDE = {
   student: { select: { userId: true } },
@@ -9,8 +10,18 @@ const BILL_NOTIFY_INCLUDE = {
   tutoringEnrollment: { select: { program: { select: { name: true } } } },
 } as const;
 
-export function billTargetName(bill: { class: { name: string } | null; tutoringEnrollment: { program: { name: string } } | null }): string {
-  return bill.class?.name ?? bill.tutoringEnrollment?.program.name ?? '';
+export function billTargetName(bill: {
+  class: { name: string } | null;
+  tutoringEnrollment: { program: { name: string } } | null;
+  goHallItem?: 'TICKETS' | 'SEASON_PASS' | null;
+  goHallTickets?: number | null;
+}): string {
+  return (
+    bill.class?.name ??
+    bill.tutoringEnrollment?.program.name ??
+    goHallItemName({ goHallItem: bill.goHallItem ?? null, goHallTickets: bill.goHallTickets ?? null }) ??
+    ''
+  );
 }
 
 export async function notifyBills(billIds: string[]): Promise<void> {
