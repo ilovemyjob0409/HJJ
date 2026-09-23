@@ -99,10 +99,15 @@ export async function getClassMakeupBacklogs(
       if (d.leave === 'APPROVED') continue;
       if (d.attendance === 'ABSENT') {
         items.push({ date, reason: 'ABSENT', makeupPending: false });
-      } else if (d.attendance !== 'PRESENT' && (d.leave !== undefined || d.attendance === 'ON_LEAVE')) {
+      } else if (
+        (d.attendance === undefined || d.attendance === 'ON_LEAVE') &&
+        (d.leave !== undefined || d.attendance === 'ON_LEAVE')
+      ) {
         // 行政可能直接在點名面板標 ON_LEAVE、不另外建 LeaveRequest（d.leave 為
         // undefined），此時也算請假未補；makeupPending 只在真有 LeaveRequest
-        // 且待審時才成立。
+        // 且待審時才成立。但請假後當天若點了 LATE／LEFT_EARLY（人有到場）或
+        // NOT_REGISTERED（未報名不該算），一律不算——只有「沒點名」或「點了
+        // ON_LEAVE」才算請假未補。
         items.push({ date, reason: 'LEAVE', makeupPending: d.leave === 'PENDING' });
       }
     }

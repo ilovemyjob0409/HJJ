@@ -32,7 +32,13 @@ async function leave(studentId: string, classId: string, date: Date, makeupStatu
   }
 }
 
-async function attend(studentId: string, classId: string, date: Date, status: 'PRESENT' | 'ABSENT' | 'ON_LEAVE', markedById: string) {
+async function attend(
+  studentId: string,
+  classId: string,
+  date: Date,
+  status: 'PRESENT' | 'ABSENT' | 'ON_LEAVE' | 'LATE' | 'LEFT_EARLY' | 'NOT_REGISTERED',
+  markedById: string
+) {
   await prisma.classAttendance.create({ data: { studentId, classId, date, status, markedById } });
 }
 
@@ -86,6 +92,16 @@ describe('getClassMakeupBacklogs', () => {
     await prisma.classAttendance.create({ data: { studentId: student.id, classId: cls.id, date: D(2026, 9, 5), status: 'ABSENT', markedById: markerId, makeupRequestId: m.id } });
     const b = (await getClassMakeupBacklogs([{ studentId: student.id, classId: cls.id }], NOW)).get(backlogKey(student.id, cls.id))!;
     expect(b.count).toBe(0);
+  });
+
+  it('請假後當天點了遲到／未報名，人有到場或本來就不算，不算未補', async () => {
+    const { student, cls, markerId } = await setup();
+    await leave(student.id, cls.id, D(2026, 9, 5));
+    await attend(student.id, cls.id, D(2026, 9, 5), 'LATE', markerId);
+    await leave(student.id, cls.id, D(2026, 9, 12));
+    await attend(student.id, cls.id, D(2026, 9, 12), 'NOT_REGISTERED', markerId);
+    const b = (await getClassMakeupBacklogs([{ studentId: student.id, classId: cls.id }], NOW)).get(backlogKey(student.id, cls.id))!;
+    expect(b).toEqual({ count: 0, items: [] });
   });
 
   it('點名直接標 ON_LEAVE、沒有另外建請假單，也算未補', async () => {
