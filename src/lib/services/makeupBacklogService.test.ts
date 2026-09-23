@@ -123,7 +123,7 @@ describe('getClassMakeupBacklogs', () => {
   });
 
   it('起算只看堂數 > 0 的期別；刪帳單留下的負數修正期別不算新一期', async () => {
-    const { student, cls, markerId } = await setup();
+    const { student, cls } = await setup();
     await leave(student.id, cls.id, D(2026, 9, 5)); // 本期（9/1 起）內請假 → 算
     const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
     await prisma.enrollmentPeriod.create({ data: { enrollmentId: enrollment.id, sessions: -4, createdAt: new Date(Date.UTC(2026, 8, 20, 2, 0)) } });

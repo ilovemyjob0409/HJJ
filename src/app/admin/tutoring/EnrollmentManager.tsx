@@ -371,7 +371,7 @@ export default function EnrollmentManager() {
     ...(bulkMode ? [checkboxColumn] : []),
     { header: '學生', render: (r) => r.studentName, sortValue: (r) => r.studentName },
     { header: '學號', render: (r) => r.studentNumber ?? '-', sortValue: (r) => r.studentNumber ?? null },
-    { header: '帳號', render: (r) => r.email, sortValue: (r) => r.email },
+    { header: '帳號', className: 'break-all', render: (r) => r.email, sortValue: (r) => r.email },
     { header: '課程', render: (r) => r.programName, sortValue: (r) => r.programName },
     {
       header: '收費級距',
@@ -402,7 +402,7 @@ export default function EnrollmentManager() {
       width: 'w-24',
       render: (r) => (
         <MakeupBacklogBadge
-          count={r.makeupBacklog.count}
+          count={r.active ? r.makeupBacklog.count : 0}
           modalTitle={`未補明細・${r.programName}`}
           groups={[
             {
@@ -413,7 +413,7 @@ export default function EnrollmentManager() {
           ]}
         />
       ),
-      sortValue: (r) => r.makeupBacklog.count,
+      sortValue: (r) => (r.active ? r.makeupBacklog.count : 0),
     },
   ];
 

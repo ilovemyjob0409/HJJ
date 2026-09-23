@@ -521,7 +521,7 @@ function StudentsContent() {
   const columns: Column<StudentRow>[] = [
     { header: '姓名', render: (s) => s.user.name, sortValue: (s) => s.user.name },
     { header: '學號', render: (s) => s.studentNumber ?? '-', sortValue: (s) => s.studentNumber ?? null },
-    { header: '帳號', render: (s) => s.user.email, sortValue: (s) => s.user.email },
+    { header: '帳號', className: 'break-all', render: (s) => s.user.email, sortValue: (s) => s.user.email },
     { header: '家長電話', render: (s) => s.parentPhone ?? '-', sortValue: (s) => s.parentPhone ?? null },
     {
       header: '班級數',
