@@ -399,6 +399,7 @@ export default function EnrollmentManager() {
     },
     {
       header: '未補',
+      width: 'w-24',
       render: (r) => (
         <MakeupBacklogBadge
           count={r.makeupBacklog.count}

@@ -530,6 +530,7 @@ function StudentsContent() {
     },
     {
       header: '未補',
+      width: 'w-24',
       render: (s) => {
         const withBacklog = s.enrollments.filter((e) => e.makeupBacklog.count > 0);
         return (
