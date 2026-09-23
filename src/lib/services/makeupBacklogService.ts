@@ -38,20 +38,13 @@ export async function getClassMakeupBacklogs(
   const studentIds = Array.from(new Set(pairs.map((p) => p.studentId)));
   const classIds = Array.from(new Set(pairs.map((p) => p.classId)));
 
-  const [enrollments, leaves, attendances] = await Promise.all([
-    prisma.classEnrollment.findMany({
-      where: { studentId: { in: studentIds }, classId: { in: classIds } },
-      select: { studentId: true, classId: true, periods: { select: { createdAt: true }, orderBy: { createdAt: 'desc' }, take: 1 } },
-    }),
-    prisma.leaveRequest.findMany({
-      where: { studentId: { in: studentIds }, classId: { in: classIds }, date: { lte: todayUtc } },
-      select: { studentId: true, classId: true, date: true, makeupRequest: { select: { status: true } } },
-    }),
-    prisma.classAttendance.findMany({
-      where: { studentId: { in: studentIds }, classId: { in: classIds }, date: { lte: todayUtc }, makeupRequestId: null },
-      select: { studentId: true, classId: true, date: true, status: true },
-    }),
-  ]);
+  const enrollments = await prisma.classEnrollment.findMany({
+    where: { studentId: { in: studentIds }, classId: { in: classIds } },
+    // 只看堂數 > 0 的期別：刪除／修改帳單會補一筆負數的修正期別
+    //（billingBatchService.deleteBill、billEditService），那不是新的一期，
+    // 不能讓起算日往後跳、把未補清零。
+    select: { studentId: true, classId: true, periods: { select: { createdAt: true }, where: { sessions: { gt: 0 } }, orderBy: { createdAt: 'desc' }, take: 1 } },
+  });
 
   const periodStart = new Map<string, string | null>();
   for (const e of enrollments) {
@@ -62,6 +55,36 @@ export async function getClassMakeupBacklogs(
     const start = periodStart.get(key);
     return start === undefined ? false : start === null || date >= start;
   };
+
+  // 查詢下限（優化用）：只要每個 pair 都有起算日，就用最早的起算日縮小查詢範圍；
+  // 任一 pair 沒有期別（起算日為 null）就不設下限，維持現行行為——實際過濾仍靠
+  // 上面 inPeriod，各 pair 用自己的起算日。
+  const starts = pairs.map((p) => periodStart.get(backlogKey(p.studentId, p.classId)));
+  const hasAllStarts = starts.every((s) => s !== undefined && s !== null);
+  const earliestStart = hasAllStarts
+    ? (starts as string[]).reduce((min, s) => (s < min ? s : min))
+    : null;
+  const earliestStartUtc = earliestStart ? new Date(`${earliestStart}T00:00:00Z`) : null;
+
+  const [leaves, attendances] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: {
+        studentId: { in: studentIds },
+        classId: { in: classIds },
+        date: { lte: todayUtc, ...(earliestStartUtc ? { gte: earliestStartUtc } : {}) },
+      },
+      select: { studentId: true, classId: true, date: true, makeupRequest: { select: { status: true } } },
+    }),
+    prisma.classAttendance.findMany({
+      where: {
+        studentId: { in: studentIds },
+        classId: { in: classIds },
+        date: { lte: todayUtc, ...(earliestStartUtc ? { gte: earliestStartUtc } : {}) },
+        makeupRequestId: null,
+      },
+      select: { studentId: true, classId: true, date: true, status: true },
+    }),
+  ]);
 
   // key → date → 當天狀態
   type Day = { leave?: 'OPEN' | 'PENDING' | 'APPROVED'; attendance?: string };
@@ -98,7 +121,9 @@ export async function getClassMakeupBacklogs(
     for (const [date, d] of Array.from(m.entries())) {
       if (d.leave === 'APPROVED') continue;
       if (d.attendance === 'ABSENT') {
-        items.push({ date, reason: 'ABSENT', makeupPending: false });
+        // 同一天請假待審、又被點缺席：原因仍記缺席，但補課待審的狀態要保留，
+        // 讓畫面能顯示「缺席（補課待審）」。
+        items.push({ date, reason: 'ABSENT', makeupPending: d.leave === 'PENDING' });
       } else if (
         (d.attendance === undefined || d.attendance === 'ON_LEAVE') &&
         (d.leave !== undefined || d.attendance === 'ON_LEAVE')
@@ -134,8 +159,10 @@ export function computeTutoringBacklog(
     )
     .map((b) => utcDateKey(b.date))
     .sort((a, b) => (a < b ? 1 : -1));
-  const { locked, upcoming } = classifyQuotaBookings(bookings, todayKey);
-  const available = Math.max(0, quota - locked - upcoming);
+  const { locked, upcoming, pendingOverQuota } = classifyQuotaBookings(bookings, todayKey);
+  // 待審的超額預約也算已另約：一旦核准就會吃掉額度，先扣起來避免顯示未補
+  // 又同時有一筆正在等審核的補課。
+  const available = Math.max(0, quota - locked - upcoming - pendingOverQuota);
   const count = Math.min(absentDates.length, available);
   return { count, absentCount: absentDates.length, rebooked: absentDates.length - count, absentDates };
 }

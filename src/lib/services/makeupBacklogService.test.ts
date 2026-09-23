@@ -76,6 +76,16 @@ describe('getClassMakeupBacklogs', () => {
     expect(b.items).toEqual([{ date: '2026-09-05', reason: 'ABSENT', makeupPending: false }]);
   });
 
+  it('同一天請假待審又被點缺席：原因記缺席，但 makeupPending 保留 true', async () => {
+    const { student, cls, markerId } = await setup();
+    await leave(student.id, cls.id, D(2026, 9, 5), 'PENDING_ADMIN');
+    await attend(student.id, cls.id, D(2026, 9, 5), 'ABSENT', markerId);
+
+    const b = (await getClassMakeupBacklogs([{ studentId: student.id, classId: cls.id }], NOW)).get(backlogKey(student.id, cls.id))!;
+    expect(b.count).toBe(1);
+    expect(b.items).toEqual([{ date: '2026-09-05', reason: 'ABSENT', makeupPending: true }]);
+  });
+
   it('本期起算日之前、今天之後都不算', async () => {
     const { student, cls, markerId } = await setup();
     await leave(student.id, cls.id, D(2026, 8, 29)); // 期別前
@@ -110,6 +120,15 @@ describe('getClassMakeupBacklogs', () => {
     const b = (await getClassMakeupBacklogs([{ studentId: student.id, classId: cls.id }], NOW)).get(backlogKey(student.id, cls.id))!;
     expect(b.count).toBe(1);
     expect(b.items).toEqual([{ date: '2026-09-05', reason: 'LEAVE', makeupPending: false }]);
+  });
+
+  it('起算只看堂數 > 0 的期別；刪帳單留下的負數修正期別不算新一期', async () => {
+    const { student, cls, markerId } = await setup();
+    await leave(student.id, cls.id, D(2026, 9, 5)); // 本期（9/1 起）內請假 → 算
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    await prisma.enrollmentPeriod.create({ data: { enrollmentId: enrollment.id, sessions: -4, createdAt: new Date(Date.UTC(2026, 8, 20, 2, 0)) } });
+    const b = (await getClassMakeupBacklogs([{ studentId: student.id, classId: cls.id }], NOW)).get(backlogKey(student.id, cls.id))!;
+    expect(b.count).toBe(1);
   });
 
   it('沒有期別紀錄時不設下限；空 pairs 回空 Map', async () => {
@@ -164,5 +183,23 @@ describe('computeTutoringBacklog', () => {
     const full = computeTutoringBacklog([bk('2026-09-02', 'BOOKED', null), bk('2026-09-25', 'BOOKED', null)], 1, '2026-09-23');
     expect(full.count).toBe(0);
     expect(full.rebooked).toBe(1);
+  });
+
+  it('待審的超額預約也算已另約，會扣掉還能約的額度', () => {
+    const bkPending = (d: string) => ({ date: new Date(`${d}T00:00:00Z`), status: 'PENDING_ADMIN', attendance: null });
+    const bookings = [
+      bk('2026-09-02', 'BOOKED', 'PRESENT'), // 已上
+      bk('2026-09-09', 'BOOKED', 'ABSENT'), // 缺席
+      bk('2026-09-16', 'BOOKED', 'ABSENT'), // 缺席
+      bkPending('2026-09-25'), // 未來待審超額
+    ];
+    // 額度4：還能約 = 4 − 已上1 − 已約0 − 待審1 = 2 → 未補 = min(2, 2) = 2
+    const r = computeTutoringBacklog(bookings, 4, '2026-09-23');
+    expect(r.count).toBe(2);
+    expect(r.rebooked).toBe(0);
+    // 額度3：還能約 = 3 − 1 − 0 − 1 = 1 → 未補 1、已另約 1
+    const r2 = computeTutoringBacklog(bookings, 3, '2026-09-23');
+    expect(r2.count).toBe(1);
+    expect(r2.rebooked).toBe(1);
   });
 });
