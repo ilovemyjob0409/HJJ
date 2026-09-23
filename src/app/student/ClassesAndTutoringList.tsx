@@ -4,6 +4,7 @@ import { useState } from 'react';
 import ClassAttendanceLedgerModal from '@/components/ClassAttendanceLedgerModal';
 import TutoringDeductionLedgerModal from '@/components/TutoringDeductionLedgerModal';
 import TutoringQuotaBar from '@/components/tutoring/TutoringQuotaBar';
+import MakeupBacklogBadge, { classItemLabel } from '@/components/MakeupBacklogBadge';
 import { WEEKDAY_LABELS } from '@/lib/dateFormat';
 
 interface ClassRow {
@@ -14,6 +15,7 @@ interface ClassRow {
   endTime: string;
   teacher: { user: { name: string } };
   quota: { totalSessions: number | null; usedSessions: number; remaining: number | null };
+  makeupBacklog: { count: number; items: { date: string; reason: 'LEAVE' | 'ABSENT'; makeupPending: boolean }[] };
 }
 
 interface TutoringRow {
@@ -22,6 +24,7 @@ interface TutoringRow {
   locked: number;
   upcoming: number;
   monthlyQuota: number;
+  makeupBacklog: { count: number; absentCount: number; rebooked: number; absentDates: string[] };
 }
 
 // 票券管理卡片裡的「課堂」清單：點某個班級開它自己的扣堂紀錄
@@ -40,11 +43,18 @@ export default function ClassesAndTutoringList({ myClasses, activeTutoring }: { 
   return (
     <>
       {myClasses.map((c, i) => (
-        <button
+        <div
           key={c.id}
-          type="button"
+          role="button"
+          tabIndex={0}
           onClick={() => setOpenClass(c)}
-          className={`flex w-full flex-col gap-1.5 py-2.5 text-left transition-opacity hover:opacity-80 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              setOpenClass(c);
+            }
+          }}
+          className={`flex w-full cursor-pointer flex-col gap-1.5 py-2.5 text-left transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brandDark/50 ${i > 0 ? 'border-t border-borderSubtle' : ''}`}
         >
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm font-semibold text-ink">{c.name}</span>
@@ -63,6 +73,17 @@ export default function ClassesAndTutoringList({ myClasses, activeTutoring }: { 
           <p className="text-xs text-inkMuted">
             每週{WEEKDAY_LABELS[c.weekday]} {c.startTime}-{c.endTime}・{c.teacher.user.name}
           </p>
+          {c.makeupBacklog.count > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-pending">
+              尚有
+              <MakeupBacklogBadge
+                count={c.makeupBacklog.count}
+                modalTitle={`未補明細・${c.name}`}
+                groups={[{ title: c.name, items: c.makeupBacklog.items.map((it) => ({ date: it.date, label: classItemLabel(it) })) }]}
+              />
+              未補
+            </div>
+          )}
           {c.quota.totalSessions !== null && c.quota.totalSessions > 0 && (
             <div className="h-1 overflow-hidden rounded-full bg-stripe">
               <div
@@ -71,20 +92,44 @@ export default function ClassesAndTutoringList({ myClasses, activeTutoring }: { 
               />
             </div>
           )}
-        </button>
+        </div>
       ))}
       {activeTutoring.map((e, i) => (
-        <button
+        <div
           key={e.id}
-          type="button"
+          role="button"
+          tabIndex={0}
           onClick={() => setOpenTutoring(e)}
-          className={`flex w-full flex-col gap-1.5 py-2.5 text-left transition-opacity hover:opacity-80 ${
+          onKeyDown={(ev) => {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              setOpenTutoring(e);
+            }
+          }}
+          className={`flex w-full cursor-pointer flex-col gap-1.5 py-2.5 text-left transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brandDark/50 ${
             myClasses.length + i > 0 ? 'border-t border-borderSubtle' : ''
           }`}
         >
           <span className="text-sm font-semibold text-ink">{e.programName}</span>
           <TutoringQuotaBar locked={e.locked} upcoming={e.upcoming} quota={e.monthlyQuota} dense />
-        </button>
+          {e.makeupBacklog.count > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-pending">
+              本月尚有
+              <MakeupBacklogBadge
+                count={e.makeupBacklog.count}
+                modalTitle={`未補明細・${e.programName}`}
+                groups={[
+                  {
+                    title: e.programName,
+                    note: `本月缺席 ${e.makeupBacklog.absentCount} 堂${e.makeupBacklog.rebooked > 0 ? `，已另約 ${e.makeupBacklog.rebooked} 堂` : ''}，請至個別輔導預約補課`,
+                    items: e.makeupBacklog.absentDates.map((d) => ({ date: d, label: '缺席' })),
+                  },
+                ]}
+              />
+              未補
+            </div>
+          )}
+        </div>
       ))}
       <ClassAttendanceLedgerModal
         classId={openClass?.id ?? null}

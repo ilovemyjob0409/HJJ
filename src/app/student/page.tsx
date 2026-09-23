@@ -9,6 +9,7 @@ import { getMyTickets } from '@/lib/services/goHallTicketService';
 import { getPendingBillSummaryForStudent } from '@/lib/services/billPaymentService';
 import { getPointBalances } from '@/lib/services/pointService';
 import { listEnrollments } from '@/lib/services/tutoringProgramService';
+import { backlogKey, getClassMakeupBacklogs } from '@/lib/services/makeupBacklogService';
 import Card from '@/components/ui/Card';
 import NotificationSetupCard from '@/components/NotificationSetupCard';
 import GoHallSummaryTable from '@/components/GoHallSummaryTable';
@@ -44,6 +45,14 @@ export default async function StudentDashboard() {
     registeredCount: r.session._count.registrations,
   }));
 
+  const classBacklogs = student
+    ? await getClassMakeupBacklogs(myClasses.map((c) => ({ studentId: student.id, classId: c.id })))
+    : new Map();
+  const myClassesWithBacklog = myClasses.map((c) => ({
+    ...c,
+    makeupBacklog: (student && classBacklogs.get(backlogKey(student.id, c.id))) || { count: 0, items: [] },
+  }));
+
   const activeTutoring = tutoringEnrollments.filter((e) => e.active);
 
   return (
@@ -56,7 +65,7 @@ export default async function StudentDashboard() {
         <div className={showLeave ? 'grid gap-5 sm:grid-cols-[1fr_1px_230px]' : undefined}>
           <div>
             <p className="mb-1 text-xs font-semibold text-inkMuted">課堂</p>
-            <ClassesAndTutoringList myClasses={myClasses} activeTutoring={activeTutoring} />
+            <ClassesAndTutoringList myClasses={myClassesWithBacklog} activeTutoring={activeTutoring} />
           </div>
           {showLeave && (
             <>
