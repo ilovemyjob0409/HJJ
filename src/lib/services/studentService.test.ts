@@ -336,3 +336,21 @@ describe('deleteStudent', () => {
     expect(await prisma.student.findUnique({ where: { id: student.id } })).not.toBeNull();
   });
 });
+
+describe('listStudents makeupBacklog', () => {
+  it('每筆班級報名帶未補堂數', async () => {
+    const stamp = `${Date.now()}`;
+    const teacher = await createTeacher({ name: '陳老師', email: `ls-t-${stamp}@example.com`, password: 'x', subjects: '圍棋' });
+    const student = await createStudent({ name: '小明', email: `ls-s-${stamp}@example.com`, password: 'x' });
+    const cls = await createClass({ name: '週六班', subject: '圍棋', level: '基礎', teacherId: teacher.id, weekday: 6, startTime: '10:00', endTime: '12:00' });
+    await enrollStudent(cls.id, student.id);
+    const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
+    await prisma.enrollmentPeriod.deleteMany({ where: { enrollmentId: enrollment.id } });
+    await prisma.leaveRequest.create({ data: { studentId: student.id, classId: cls.id, date: new Date(Date.UTC(2026, 0, 3)), reason: 'x' } });
+
+    const rows = await listStudents();
+    const me = rows.find((r) => r.id === student.id)!;
+    expect(me.enrollments[0].makeupBacklog.count).toBe(1);
+    expect(me.enrollments[0].makeupBacklog.items[0]).toEqual({ date: '2026-01-03', reason: 'LEAVE', makeupPending: false });
+  });
+});

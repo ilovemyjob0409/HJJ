@@ -16,6 +16,7 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
 import FamilySiblingModal from './FamilySiblingModal';
 import StudentAttendancePanel from './StudentAttendancePanel';
+import MakeupBacklogBadge, { classItemLabel } from '@/components/MakeupBacklogBadge';
 
 interface EnrollmentQuota {
   classId: string;
@@ -23,6 +24,7 @@ interface EnrollmentQuota {
   usedSessions: number;
   remaining: number | null;
   feeOverride?: number | null;
+  makeupBacklog: { count: number; items: { date: string; reason: 'LEAVE' | 'ABSENT'; makeupPending: boolean }[] };
 }
 
 interface StudentRow {
@@ -416,6 +418,7 @@ function StudentsContent() {
                 usedSessions: 0,
                 remaining: created.totalSessions,
                 feeOverride: created.feeOverride,
+                makeupBacklog: { count: 0, items: [] },
               },
             ],
           }
@@ -513,6 +516,8 @@ function StudentsContent() {
     );
   });
 
+  const classNameById = new Map(classes.map((c) => [c.id, c.name]));
+
   const columns: Column<StudentRow>[] = [
     { header: '姓名', render: (s) => s.user.name, sortValue: (s) => s.user.name },
     { header: '學號', render: (s) => s.studentNumber ?? '-', sortValue: (s) => s.studentNumber ?? null },
@@ -524,6 +529,23 @@ function StudentsContent() {
       sortValue: (s) => s.enrollments.length + s.tutoringPrograms.length,
     },
     {
+      header: '未補',
+      render: (s) => {
+        const withBacklog = s.enrollments.filter((e) => e.makeupBacklog.count > 0);
+        return (
+          <MakeupBacklogBadge
+            count={s.enrollments.reduce((sum, e) => sum + e.makeupBacklog.count, 0)}
+            modalTitle={`未補明細・${s.user.name}`}
+            groups={withBacklog.map((e) => ({
+              title: classNameById.get(e.classId) ?? '班級',
+              items: e.makeupBacklog.items.map((it) => ({ date: it.date, label: classItemLabel(it) })),
+            }))}
+          />
+        );
+      },
+      sortValue: (s) => s.enrollments.reduce((sum, e) => sum + e.makeupBacklog.count, 0),
+    },
+    {
       header: '操作',
       render: (s) => (
         <Button variant="link" onClick={() => openEdit(s)}>
@@ -532,8 +554,6 @@ function StudentsContent() {
       ),
     },
   ];
-
-  const classNameById = new Map(classes.map((c) => [c.id, c.name]));
   // 匯出採「一列一課程」：學生有幾種課程（一般班級＋個別輔導各算一種）就
   // 展開成幾列，每列重複基本資料，方便 Excel 篩選／樞紐分析；完全沒有
   // 課程的學生保留一列、班級欄留空。

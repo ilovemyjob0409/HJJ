@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/db';
 import { getClassEnrollmentQuota } from './attendanceService';
+import { backlogKey, getClassMakeupBacklogs } from './makeupBacklogService';
 
 export interface CreateStudentInput {
   name: string;
@@ -53,11 +54,18 @@ export async function listStudents() {
     },
     orderBy: { user: { name: 'asc' } },
   });
+  const backlogs = await getClassMakeupBacklogs(
+    students.flatMap((s) => s.enrollments.map((e) => ({ studentId: s.id, classId: e.classId })))
+  );
   return Promise.all(
     students.map(async ({ tutoringEnrollments, ...s }) => ({
       ...s,
       enrollments: await Promise.all(
-        s.enrollments.map(async (e) => ({ classId: e.classId, ...(await getClassEnrollmentQuota(e.classId, s.id)) }))
+        s.enrollments.map(async (e) => ({
+          classId: e.classId,
+          ...(await getClassEnrollmentQuota(e.classId, s.id)),
+          makeupBacklog: backlogs.get(backlogKey(s.id, e.classId)) ?? { count: 0, items: [] },
+        }))
       ),
       tutoringPrograms: tutoringEnrollments.map((e) => e.program),
     }))
