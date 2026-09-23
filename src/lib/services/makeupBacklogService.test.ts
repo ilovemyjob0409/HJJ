@@ -88,6 +88,14 @@ describe('getClassMakeupBacklogs', () => {
     expect(b.count).toBe(0);
   });
 
+  it('點名直接標 ON_LEAVE、沒有另外建請假單，也算未補', async () => {
+    const { student, cls, markerId } = await setup();
+    await attend(student.id, cls.id, D(2026, 9, 5), 'ON_LEAVE', markerId);
+    const b = (await getClassMakeupBacklogs([{ studentId: student.id, classId: cls.id }], NOW)).get(backlogKey(student.id, cls.id))!;
+    expect(b.count).toBe(1);
+    expect(b.items).toEqual([{ date: '2026-09-05', reason: 'LEAVE', makeupPending: false }]);
+  });
+
   it('沒有期別紀錄時不設下限；空 pairs 回空 Map', async () => {
     const { student, cls, markerId } = await setup();
     const enrollment = await prisma.classEnrollment.findFirstOrThrow({ where: { studentId: student.id, classId: cls.id } });
