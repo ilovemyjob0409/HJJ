@@ -33,7 +33,10 @@ interface DiscountItemOption {
   amount: number;
 }
 
-type Target = { kind: 'CLASS'; classId: string } | { kind: 'TUTORING'; enrollmentId: string };
+type Target =
+  | { kind: 'CLASS'; classId: string }
+  | { kind: 'TUTORING'; enrollmentId: string }
+  | { kind: 'GO_HALL'; item: 'TICKETS' | 'SEASON_PASS' };
 
 interface ClassPreview {
   sessionsTotal: number;
@@ -52,9 +55,18 @@ interface TutoringPreview {
   overlapWarning: string | null;
 }
 
+interface GoHallPreview {
+  grossAmount: number;
+  amountDue: number;
+  formula: string;
+  netFormula?: string;
+}
+
 const ERROR_MESSAGES: Record<string, string> = {
   MISSING_FIELDS: '請完整選擇學生、項目與收費區間',
   NO_FEE_TIER: '該報名尚未指定收費級距，請先於個別輔導管理設定',
+  INVALID_INPUT: '請確認堂數、單價與價格為有效數字（堂數至少 1）',
+  INVALID_RANGE: '季票結束日不能早於開始日',
 };
 
 export default function StandaloneBillModal({
@@ -85,6 +97,11 @@ export default function StandaloneBillModal({
   const [amountDueDraft, setAmountDueDraft] = useState('');
   const [creating, setCreating] = useState(false);
   const [notifyModalOpen, setNotifyModalOpen] = useState(false);
+  const [goHallPreview, setGoHallPreview] = useState<GoHallPreview | null>(null);
+  const [goHallSessions, setGoHallSessions] = useState('');
+  const [goHallUnitPrice, setGoHallUnitPrice] = useState('');
+  const [goHallPrice, setGoHallPrice] = useState('');
+  const [goHallDefaults, setGoHallDefaults] = useState({ ticket: 0, pass: 0 });
 
   useEffect(() => {
     if (!open) return;
@@ -98,6 +115,10 @@ export default function StandaloneBillModal({
     setBilledSessionsDraft('');
     setAmountDueDraft('');
     setDiscountRows([]);
+    setGoHallPreview(null);
+    setGoHallSessions('');
+    setGoHallUnitPrice('');
+    setGoHallPrice('');
   }, [open]);
 
   useEffect(() => {
@@ -113,7 +134,10 @@ export default function StandaloneBillModal({
       .then(setEnrollments);
     fetch('/api/admin/billing/settings')
       .then((r) => (r.ok ? r.json() : { discountItems: [] }))
-      .then((data) => setDiscountItems(data.discountItems ?? []));
+      .then((data) => {
+        setDiscountItems(data.discountItems ?? []);
+        setGoHallDefaults({ ticket: data.goHallTicketPrice ?? 0, pass: data.goHallSeasonPassPrice ?? 0 });
+      });
   }, [open]);
 
   // 任何優惠列變動都會讓既有試算失效（同原本勾選預設項目的行為）。
@@ -121,6 +145,7 @@ export default function StandaloneBillModal({
     setDiscountRows(mutate);
     setClassPreview(null);
     setTutoringPreview(null);
+    setGoHallPreview(null);
   }
 
   function addPresetDiscount(id: string) {
@@ -161,11 +186,29 @@ export default function StandaloneBillModal({
     setTarget(null);
     setClassPreview(null);
     setTutoringPreview(null);
+    setGoHallPreview(null);
     setSearch('');
   }
 
+  function selectGoHall(item: 'TICKETS' | 'SEASON_PASS') {
+    setTarget({ kind: 'GO_HALL', item });
+    setClassPreview(null);
+    setTutoringPreview(null);
+    setGoHallPreview(null);
+    if (item === 'TICKETS') setGoHallUnitPrice(goHallDefaults.ticket > 0 ? String(goHallDefaults.ticket) : '');
+    else setGoHallPrice(goHallDefaults.pass > 0 ? String(goHallDefaults.pass) : '');
+  }
+
+  function goHallBody(preview: boolean, discounts: { name: string; amount: number }[]) {
+    if (target?.kind !== 'GO_HALL') return null;
+    return target.item === 'TICKETS'
+      ? { kind: 'GO_HALL', preview, studentId, item: 'TICKETS', sessions: Number(goHallSessions), unitPrice: Number(goHallUnitPrice), discounts }
+      : { kind: 'GO_HALL', preview, studentId, item: 'SEASON_PASS', startDate: periodStart, endDate: periodEnd, price: Number(goHallPrice), discounts };
+  }
+
   async function runPreview() {
-    if (!target || !periodStart || !periodEnd) return;
+    if (!target) return;
+    if (target.kind !== 'GO_HALL' && (!periodStart || !periodEnd)) return;
     const discounts = collectDiscounts();
     if (discounts === null) {
       showToast('請填寫完整的優惠項目資訊');
@@ -174,11 +217,14 @@ export default function StandaloneBillModal({
     setPreviewing(true);
     setClassPreview(null);
     setTutoringPreview(null);
+    setGoHallPreview(null);
     try {
       const body =
-        target.kind === 'CLASS'
-          ? { kind: 'CLASS', preview: true, periodStart, periodEnd, studentId, classId: target.classId, discounts }
-          : { kind: 'TUTORING', preview: true, periodStart, periodEnd, enrollmentId: target.enrollmentId, discounts };
+        target.kind === 'GO_HALL'
+          ? goHallBody(true, discounts)
+          : target.kind === 'CLASS'
+            ? { kind: 'CLASS', preview: true, periodStart, periodEnd, studentId, classId: target.classId, discounts }
+            : { kind: 'TUTORING', preview: true, periodStart, periodEnd, enrollmentId: target.enrollmentId, discounts };
       const res = await fetch('/api/admin/billing/standalone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,7 +235,10 @@ export default function StandaloneBillModal({
         showToast(ERROR_MESSAGES[data.error] ?? '試算失敗，請稍後再試');
         return;
       }
-      if (target.kind === 'CLASS') {
+      if (target.kind === 'GO_HALL') {
+        setGoHallPreview(data);
+        setAmountDueDraft(String(data.amountDue));
+      } else if (target.kind === 'CLASS') {
         setClassPreview(data);
         setBilledSessionsDraft(String(data.billedSessions));
         setAmountDueDraft(String(data.amountDue));
@@ -221,29 +270,31 @@ export default function StandaloneBillModal({
     try {
       const amountDue = Number(amountDueDraft);
       const body =
-        target.kind === 'CLASS'
-          ? {
-              kind: 'CLASS',
-              preview: false,
-              periodStart,
-              periodEnd,
-              studentId,
-              classId: target.classId,
-              billedSessions: Number(billedSessionsDraft),
-              amountDue,
-              notifyNow,
-              discounts,
-            }
-          : {
-              kind: 'TUTORING',
-              preview: false,
-              periodStart,
-              periodEnd,
-              enrollmentId: target.enrollmentId,
-              amountDue,
-              notifyNow,
-              discounts,
-            };
+        target.kind === 'GO_HALL'
+          ? { ...goHallBody(false, discounts)!, amountDue, notifyNow }
+          : target.kind === 'CLASS'
+            ? {
+                kind: 'CLASS',
+                preview: false,
+                periodStart,
+                periodEnd,
+                studentId,
+                classId: target.classId,
+                billedSessions: Number(billedSessionsDraft),
+                amountDue,
+                notifyNow,
+                discounts,
+              }
+            : {
+                kind: 'TUTORING',
+                preview: false,
+                periodStart,
+                periodEnd,
+                enrollmentId: target.enrollmentId,
+                amountDue,
+                notifyNow,
+                discounts,
+              };
       const res = await fetch('/api/admin/billing/standalone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -262,8 +313,13 @@ export default function StandaloneBillModal({
     }
   }
 
-  const canPreview = target !== null && periodStart !== '' && periodEnd !== '' && periodStart <= periodEnd;
-  const canCreate = (classPreview !== null || tutoringPreview !== null) && amountDueDraft !== '';
+  const canPreview =
+    target !== null &&
+    (target.kind === 'GO_HALL' && target.item === 'TICKETS'
+      ? Number(goHallSessions) >= 1 && goHallUnitPrice !== ''
+      : periodStart !== '' && periodEnd !== '' && periodStart <= periodEnd &&
+        (target.kind !== 'GO_HALL' || goHallPrice !== ''));
+  const canCreate = (classPreview !== null || tutoringPreview !== null || goHallPreview !== null) && amountDueDraft !== '';
   const overlapWarning = classPreview?.overlapWarning ?? tutoringPreview?.overlapWarning ?? null;
 
   return (
@@ -304,7 +360,12 @@ export default function StandaloneBillModal({
                       type="radio"
                       name="standalone-target"
                       checked={target?.kind === 'CLASS' && target.classId === c.id}
-                      onChange={() => setTarget({ kind: 'CLASS', classId: c.id })}
+                      onChange={() => {
+                        setTarget({ kind: 'CLASS', classId: c.id });
+                        setClassPreview(null);
+                        setTutoringPreview(null);
+                        setGoHallPreview(null);
+                      }}
                     />
                     {c.name}（班級）
                   </label>
@@ -315,28 +376,104 @@ export default function StandaloneBillModal({
                       type="radio"
                       name="standalone-target"
                       checked={target?.kind === 'TUTORING' && target.enrollmentId === e.id}
-                      onChange={() => setTarget({ kind: 'TUTORING', enrollmentId: e.id })}
+                      onChange={() => {
+                        setTarget({ kind: 'TUTORING', enrollmentId: e.id });
+                        setClassPreview(null);
+                        setTutoringPreview(null);
+                        setGoHallPreview(null);
+                      }}
                     />
                     {e.programName}（個別輔導）
                   </label>
                 ))}
-                {enrolledClasses.length === 0 && studentEnrollments.length === 0 && (
-                  <p className="px-2 py-1.5 text-sm text-inkMuted">該學生沒有可開單的班級或個別輔導報名</p>
-                )}
+                {(['TICKETS', 'SEASON_PASS'] as const).map((item) => (
+                  <label key={`gohall-${item}`} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-ink hover:bg-stripe">
+                    <input
+                      type="radio"
+                      name="standalone-target"
+                      checked={target?.kind === 'GO_HALL' && target.item === item}
+                      onChange={() => selectGoHall(item)}
+                    />
+                    {item === 'TICKETS' ? '弈廳堂票' : '弈廳季票'}（弈廳）
+                  </label>
+                ))}
               </div>
             </div>
           )}
 
           {target && (
             <>
-              <label className="flex flex-col gap-1 text-sm text-ink">
-                收費區間起
-                <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1 text-sm text-ink">
-                收費區間訖
-                <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-              </label>
+              {target.kind === 'GO_HALL' && target.item === 'TICKETS' && (
+                <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-col gap-1 text-sm text-ink">
+                    <span>堂數</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={goHallSessions}
+                      onChange={(e) => {
+                        setGoHallSessions(e.target.value);
+                        setGoHallPreview(null);
+                      }}
+                      className="w-28"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 text-sm text-ink">
+                    <span>單價（元／堂）</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={goHallUnitPrice}
+                      onChange={(e) => {
+                        setGoHallUnitPrice(e.target.value);
+                        setGoHallPreview(null);
+                      }}
+                      className="w-28"
+                    />
+                  </div>
+                </div>
+              )}
+              {!(target.kind === 'GO_HALL' && target.item === 'TICKETS') && (
+                <>
+                  <label className="flex flex-col gap-1 text-sm text-ink">
+                    {target.kind === 'GO_HALL' ? '季票起' : '收費區間起'}
+                    <Input
+                      type="date"
+                      value={periodStart}
+                      onChange={(e) => {
+                        setPeriodStart(e.target.value);
+                        setGoHallPreview(null);
+                      }}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-ink">
+                    {target.kind === 'GO_HALL' ? '季票訖' : '收費區間訖'}
+                    <Input
+                      type="date"
+                      value={periodEnd}
+                      onChange={(e) => {
+                        setPeriodEnd(e.target.value);
+                        setGoHallPreview(null);
+                      }}
+                    />
+                  </label>
+                </>
+              )}
+              {target.kind === 'GO_HALL' && target.item === 'SEASON_PASS' && (
+                <div className="flex flex-col gap-1 text-sm text-ink">
+                  <span>季票價格（元）</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={goHallPrice}
+                    onChange={(e) => {
+                      setGoHallPrice(e.target.value);
+                      setGoHallPreview(null);
+                    }}
+                    className="w-32"
+                  />
+                </div>
+              )}
               <div>
                 <p className="mb-1 text-sm font-medium text-ink">優惠項目（僅套用於這張帳單，名稱與金額可自行輸入）</p>
                 <div className="flex flex-col gap-2 rounded-lg border border-borderSubtle p-2">
@@ -430,6 +567,21 @@ export default function StandaloneBillModal({
                 金額
                 <Input type="number" min={0} value={amountDueDraft} onChange={(e) => setAmountDueDraft(e.target.value)} className="w-32" />
               </label>
+            </div>
+          )}
+
+          {goHallPreview && (
+            <div className="flex flex-col gap-2">
+              <BillDetailBlock
+                detail={{ sessionDates: [], deduction: null, formula: goHallPreview.formula, netFormula: goHallPreview.netFormula, discounts: collectDiscounts() ?? [] }}
+              />
+              <label className="flex flex-col gap-1 text-sm text-ink">
+                金額
+                <Input type="number" min={0} value={amountDueDraft} onChange={(e) => setAmountDueDraft(e.target.value)} className="w-32" />
+              </label>
+              <p className="text-xs text-inkMuted">
+                {target?.kind === 'GO_HALL' && target.item === 'TICKETS' ? '建立後堂票會直接加進學生的弈廳帳本' : '建立後季票會直接生效'}
+              </p>
             </div>
           )}
 
