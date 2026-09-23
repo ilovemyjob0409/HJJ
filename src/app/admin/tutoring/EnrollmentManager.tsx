@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { attendanceDisplayStatus } from '@/lib/attendanceDisplay';
+import MakeupBacklogBadge from '@/components/MakeupBacklogBadge';
 import AdminBookingModal from './AdminBookingModal';
 import BatchAddSessionsModal from './BatchAddSessionsModal';
 
@@ -32,6 +33,7 @@ interface EnrollmentRow {
   locked: number;
   upcoming: number;
   feeTierId: string | null;
+  makeupBacklog: { count: number; absentCount: number; rebooked: number; absentDates: string[] };
 }
 
 interface FeeTierOption {
@@ -394,6 +396,23 @@ export default function EnrollmentManager() {
           )}
         </>
       ),
+    },
+    {
+      header: '未補',
+      render: (r) => (
+        <MakeupBacklogBadge
+          count={r.makeupBacklog.count}
+          modalTitle={`未補明細・${r.programName}`}
+          groups={[
+            {
+              title: r.programName,
+              note: `本月缺席 ${r.makeupBacklog.absentCount} 堂${r.makeupBacklog.rebooked > 0 ? `，已另約 ${r.makeupBacklog.rebooked} 堂` : ''}`,
+              items: r.makeupBacklog.absentDates.map((d) => ({ date: d, label: '缺席' })),
+            },
+          ]}
+        />
+      ),
+      sortValue: (r) => r.makeupBacklog.count,
     },
   ];
 

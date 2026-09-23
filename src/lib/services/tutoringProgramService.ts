@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { classifyQuotaBookings, taipeiDateKey } from './tutoringBookingService';
+import { computeTutoringBacklog } from './makeupBacklogService';
+import type { TutoringMakeupBacklog } from './makeupBacklogService';
 
 // 週課表點個別輔導時段卡的資訊小卡用
 export interface TutoringWindowInfo {
@@ -271,6 +273,7 @@ export interface EnrollmentSummary {
   upcoming: number;
   pendingOverQuota: number;
   feeTierId: string | null;
+  makeupBacklog: TutoringMakeupBacklog;
 }
 
 export async function listEnrollments(studentId?: string): Promise<EnrollmentSummary[]> {
@@ -304,7 +307,9 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
   }
   const todayKey = taipeiDateKey(new Date());
   return enrollments.map((e) => {
-    const { locked, upcoming, pendingOverQuota } = classifyQuotaBookings(byEnrollment.get(e.id) ?? [], todayKey);
+    const monthBookings = byEnrollment.get(e.id) ?? [];
+    const { locked, upcoming, pendingOverQuota } = classifyQuotaBookings(monthBookings, todayKey);
+    const monthlyQuota = e.monthlyQuota ?? e.program.defaultMonthlyQuota;
     return {
       id: e.id,
       studentId: e.studentId,
@@ -314,12 +319,13 @@ export async function listEnrollments(studentId?: string): Promise<EnrollmentSum
       programId: e.programId,
       programName: e.program.name,
       defaultDurationMinutes: e.program.defaultDurationMinutes,
-      monthlyQuota: e.monthlyQuota ?? e.program.defaultMonthlyQuota,
+      monthlyQuota,
       active: e.active,
       locked,
       upcoming,
       pendingOverQuota,
       feeTierId: e.feeTierId,
+      makeupBacklog: computeTutoringBacklog(monthBookings, monthlyQuota, todayKey),
     };
   });
 }

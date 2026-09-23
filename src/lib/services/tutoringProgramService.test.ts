@@ -465,3 +465,13 @@ describe('listEnrollments 批次額度＝逐筆 getMonthlyQuotaStatus（對照�
     expect(byId.get(ec.id)!.upcoming).toBe(1);
   });
 });
+
+describe('listEnrollments makeupBacklog', () => {
+  it('每筆報名帶本月未補（預設 0）', async () => {
+    const student = await createStudent({ name: '小華', email: `lb-${Date.now()}@example.com`, password: 'x' });
+    const program = await createProgram({ name: '英文個別輔導' });
+    await createEnrollment({ studentId: student.id, programId: program.id });
+    const [row] = await listEnrollments(student.id);
+    expect(row.makeupBacklog).toEqual({ count: 0, absentCount: 0, rebooked: 0, absentDates: [] });
+  });
+});
