@@ -832,7 +832,7 @@ describe('POST /api/admin/billing/standalone GO_HALL', () => {
 
     const created = await standalonePOST(jsonReq({ kind: 'GO_HALL', preview: false, studentId: student.id, item: 'TICKETS', sessions: 4, unitPrice: 250, amountDue: 1000 }) as never);
     expect(created.status).toBe(200);
-    const res = await overviewGET(overviewReq(''));
+    const res = await overviewGET(new NextRequest('http://localhost/api/admin/billing/overview'));
     const row = (await res.json()).bills.find((b: { studentName: string }) => b.studentName === '小弈');
     expect(row).toMatchObject({ source: 'GO_HALL', goHallItem: 'TICKETS', goHallTickets: 4, targetName: '弈廳堂票 4 堂' });
   });
