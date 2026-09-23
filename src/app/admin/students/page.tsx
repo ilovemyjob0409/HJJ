@@ -168,7 +168,7 @@ function StudentsContent() {
 
   async function load() {
     try {
-      const [studentsRes, classesRes] = await Promise.all([fetch('/api/students'), fetch('/api/classes')]);
+      const [studentsRes, classesRes] = await Promise.all([fetch('/api/students?withBacklog=1'), fetch('/api/classes')]);
       setStudents(await studentsRes.json());
       setClasses(await classesRes.json());
     } finally {

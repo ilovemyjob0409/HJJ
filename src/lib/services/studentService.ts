@@ -37,7 +37,13 @@ export async function createStudent(input: CreateStudentInput) {
   });
 }
 
-export async function listStudents() {
+const EMPTY_BACKLOG = { count: 0, items: [] };
+
+// withMakeupBacklog：預設 false，不查未補堂數（每個班級報名都要撈請假／點名，
+// 學生選單等只需要基本資料的場合沒必要付這個查詢成本）。true 時才呼叫
+// getClassMakeupBacklogs 並附上 makeupBacklog；false 時仍附上固定的空值，維持型別一致。
+export async function listStudents(opts: { withMakeupBacklog?: boolean } = {}) {
+  const { withMakeupBacklog = false } = opts;
   const students = await prisma.student.findMany({
     select: {
       id: true,
@@ -54,9 +60,11 @@ export async function listStudents() {
     },
     orderBy: { user: { name: 'asc' } },
   });
-  const backlogs = await getClassMakeupBacklogs(
-    students.flatMap((s) => s.enrollments.map((e) => ({ studentId: s.id, classId: e.classId })))
-  );
+  const backlogs = withMakeupBacklog
+    ? await getClassMakeupBacklogs(
+        students.flatMap((s) => s.enrollments.map((e) => ({ studentId: s.id, classId: e.classId })))
+      )
+    : null;
   return Promise.all(
     students.map(async ({ tutoringEnrollments, ...s }) => ({
       ...s,
@@ -64,7 +72,7 @@ export async function listStudents() {
         s.enrollments.map(async (e) => ({
           classId: e.classId,
           ...(await getClassEnrollmentQuota(e.classId, s.id)),
-          makeupBacklog: backlogs.get(backlogKey(s.id, e.classId)) ?? { count: 0, items: [] },
+          makeupBacklog: backlogs?.get(backlogKey(s.id, e.classId)) ?? EMPTY_BACKLOG,
         }))
       ),
       tutoringPrograms: tutoringEnrollments.map((e) => e.program),

@@ -6,12 +6,13 @@ import { createStudent, listStudents } from '@/lib/services/studentService';
 import { setStudentEnrollments } from '@/lib/services/classService';
 import { p2002TargetsField } from '@/lib/prismaErrors';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
-  return NextResponse.json(await listStudents());
+  const withBacklog = req.nextUrl.searchParams.get('withBacklog') === '1';
+  return NextResponse.json(await listStudents({ withMakeupBacklog: withBacklog }));
 }
 
 export async function POST(req: NextRequest) {

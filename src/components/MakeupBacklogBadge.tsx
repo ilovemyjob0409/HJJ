@@ -8,7 +8,7 @@ import type { ClassBacklogItem } from '@/lib/services/makeupBacklogService';
 export type BacklogGroup = { title: string; items: { date: string; label: string }[]; note?: string };
 
 export function classItemLabel(item: ClassBacklogItem): string {
-  if (item.reason === 'ABSENT') return '缺席';
+  if (item.reason === 'ABSENT') return item.makeupPending ? '缺席（補課待審）' : '缺席';
   return item.makeupPending ? '請假（補課待審）' : '請假';
 }
 
