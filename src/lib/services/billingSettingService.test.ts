@@ -13,4 +13,14 @@ describe('billingSettingService', () => {
   it('rejects a negative cap', async () => {
     await expect(updateBillingSetting({ deductionCap: -1 })).rejects.toThrow('INVALID_CAP');
   });
+
+  it('弈廳預設價格：預設 0，可更新，負數或非整數擋下', async () => {
+    const initial = await getBillingSetting();
+    expect(initial.goHallTicketPrice).toBe(0);
+    expect(initial.goHallSeasonPassPrice).toBe(0);
+    await updateBillingSetting({ goHallTicketPrice: 300, goHallSeasonPassPrice: 4500 });
+    expect(await getBillingSetting()).toMatchObject({ goHallTicketPrice: 300, goHallSeasonPassPrice: 4500 });
+    await expect(updateBillingSetting({ goHallTicketPrice: -1 })).rejects.toThrow('INVALID_PRICE');
+    await expect(updateBillingSetting({ goHallSeasonPassPrice: 1.5 })).rejects.toThrow('INVALID_PRICE');
+  });
 });

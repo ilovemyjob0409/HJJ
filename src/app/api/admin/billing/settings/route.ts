@@ -22,7 +22,12 @@ export async function PATCH(req: NextRequest) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const body = await req.json().catch(() => ({}));
   try {
-    await updateBillingSetting({ deductionCap: body.deductionCap, paymentInfo: body.paymentInfo });
+    await updateBillingSetting({
+      deductionCap: body.deductionCap,
+      paymentInfo: body.paymentInfo,
+      goHallTicketPrice: body.goHallTicketPrice,
+      goHallSeasonPassPrice: body.goHallSeasonPassPrice,
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     const code = e instanceof Error ? e.message : 'INTERNAL';

@@ -1,5 +1,4 @@
 -- 弈廳收費單 正式環境一次性 SQL（冪等，可重複執行）
--- ⚠️ 草稿：功能實作完成、測試全綠後才執行；實作過程若 schema 有調整會同步更新本檔。
 -- 內容：1 個 enum ＋ Bill 三個欄位（含季票外鍵與唯一鍵）＋ BillingSetting 兩個價格欄位。
 -- 執行位置：Supabase Dashboard → SQL Editor
 -- 順序：先跑本檔，再 git push 部署新程式。

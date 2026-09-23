@@ -73,6 +73,11 @@ enum GoHallTicketKind {
   ADMIN_ADJUST // 管理員調整 ±N（附原因）
 }
 
+enum GoHallBillItem {
+  TICKETS
+  SEASON_PASS
+}
+
 enum TutoringBookingKind {
   REGULAR // 一般預約
   MAKEUP // 補課（由某筆計次的 REGULAR 預約衍生）
@@ -306,6 +311,7 @@ model GoHallSeasonPass {
   startDate DateTime // 含當日
   endDate   DateTime // 含當日
   createdAt DateTime @default(now())
+  bill      Bill?
 
   @@index([studentId])
 }
@@ -655,9 +661,11 @@ model TutoringFeeTier {
 
 // 單列設定（id 固定 "main"）
 model BillingSetting {
-  id           String @id @default("main")
-  deductionCap Int    @default(2) // 上期剩餘折抵上限（堂）
-  paymentInfo  String @default("") // 學生端繳費資訊卡文字（銀行帳戶等）
+  id                    String @id @default("main")
+  deductionCap          Int    @default(2) // 上期剩餘折抵上限（堂）
+  paymentInfo           String @default("") // 學生端繳費資訊卡文字（銀行帳戶等）
+  goHallTicketPrice     Int    @default(0) // 弈廳堂票預設單價；0＝未設定
+  goHallSeasonPassPrice Int    @default(0) // 弈廳季票預設價格；0＝未設定
 }
 
 // 優惠項目主表（如「台積電特約」）：只在單獨開單時勾選套用到單一帳單，
@@ -711,6 +719,12 @@ model Bill {
   class                Class?              @relation(fields: [classId], references: [id])
   tutoringEnrollmentId String?
   tutoringEnrollment   TutoringEnrollment? @relation(fields: [tutoringEnrollmentId], references: [id])
+  // 弈廳收費單（單獨開單）：goHallItem 非 null＝弈廳帳單。堂票開單即寫帳本 +N（無 FK，
+  // reason 文字快照）；季票開單即建立 GoHallSeasonPass 並關聯（刪季票要先刪帳單）。
+  goHallItem           GoHallBillItem?
+  goHallTickets        Int?
+  seasonPassId         String?             @unique
+  seasonPass           GoHallSeasonPass?   @relation(fields: [seasonPassId], references: [id], onDelete: Restrict)
   periodStart          DateTime
   periodEnd            DateTime
   sessionsTotal        Int? // 班級：區間堂數（扣假日後）

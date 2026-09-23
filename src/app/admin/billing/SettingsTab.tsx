@@ -45,6 +45,9 @@ export default function SettingsTab() {
   const [loading, setLoading] = useState(true);
   const [deductionCap, setDeductionCap] = useState('');
   const [paymentInfo, setPaymentInfo] = useState('');
+  const [goHallTicketPrice, setGoHallTicketPrice] = useState('');
+  const [goHallSeasonPassPrice, setGoHallSeasonPassPrice] = useState('');
+  const [savingGoHall, setSavingGoHall] = useState(false);
   const [savingCap, setSavingCap] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
   const [newTier, setNewTier] = useState<TierFormValues>(EMPTY_TIER_FORM);
@@ -67,6 +70,8 @@ export default function SettingsTab() {
         setFeeTiers(data.feeTiers);
         setDeductionCap(String(data.deductionCap));
         setPaymentInfo(data.paymentInfo);
+        setGoHallTicketPrice(data.goHallTicketPrice ? String(data.goHallTicketPrice) : '');
+        setGoHallSeasonPassPrice(data.goHallSeasonPassPrice ? String(data.goHallSeasonPassPrice) : '');
         setDiscountItems(data.discountItems ?? []);
       }
     } finally {
@@ -116,6 +121,30 @@ export default function SettingsTab() {
       showToast('已儲存繳費資訊');
     } finally {
       setSavingInfo(false);
+    }
+  }
+
+  async function saveGoHallPrices() {
+    const ticket = goHallTicketPrice.trim() === '' ? 0 : Number(goHallTicketPrice);
+    const pass = goHallSeasonPassPrice.trim() === '' ? 0 : Number(goHallSeasonPassPrice);
+    if (!Number.isInteger(ticket) || ticket < 0 || !Number.isInteger(pass) || pass < 0) {
+      showToast('請輸入有效的價格（留空＝不預設）');
+      return;
+    }
+    setSavingGoHall(true);
+    try {
+      const res = await fetch('/api/admin/billing/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goHallTicketPrice: ticket, goHallSeasonPassPrice: pass }),
+      });
+      if (!res.ok) {
+        showToast('儲存失敗，請稍後再試');
+        return;
+      }
+      showToast('已儲存弈廳價格');
+    } finally {
+      setSavingGoHall(false);
     }
   }
 
@@ -440,6 +469,24 @@ export default function SettingsTab() {
           </label>
           <Button onClick={createDiscountItem} loading={addingDiscount}>
             新增優惠項目
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="mb-6">
+        <p className="mb-2 font-bold text-ink">弈廳價格</p>
+        <p className="mb-3 text-xs text-inkMuted">單獨開單選弈廳時自動帶入，開單時仍可修改；留空＝不預設</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1 text-sm text-ink">
+            <span>堂票單價（元／堂）</span>
+            <Input type="number" min={0} value={goHallTicketPrice} onChange={(e) => setGoHallTicketPrice(e.target.value)} className="w-28" />
+          </div>
+          <div className="flex flex-col gap-1 text-sm text-ink">
+            <span>季票價格（元）</span>
+            <Input type="number" min={0} value={goHallSeasonPassPrice} onChange={(e) => setGoHallSeasonPassPrice(e.target.value)} className="w-28" />
+          </div>
+          <Button onClick={saveGoHallPrices} loading={savingGoHall}>
+            儲存
           </Button>
         </div>
       </Card>
