@@ -28,7 +28,10 @@ export default function MakeupBacklogBadge({
   const [open, setOpen] = useState(false);
   if (count <= 0) return <span className={`text-inkMuted ${className}`}>—</span>;
   return (
-    <>
+    // 這顆 badge 常被放在整列可點擊（role="button"）的容器裡：外層的 click／keydown
+    // 都要在這裡擋住，不然遮罩點擊關閉、或彈窗開著時按 Enter／空白鍵，會冒泡到列
+    // 上誤觸列本身的開啟動作（Esc 關閉走 document listener，不受影響）。
+    <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       <button
         type="button"
         onClick={(e) => {
@@ -40,7 +43,7 @@ export default function MakeupBacklogBadge({
         {count} 堂
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title={modalTitle} maxWidthClassName="max-w-sm">
-        <div className="flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-col gap-4">
           {groups.map((g) => (
             <div key={g.title}>
               {groups.length > 1 && <p className="mb-1 text-sm font-semibold text-ink">{g.title}</p>}
@@ -57,6 +60,6 @@ export default function MakeupBacklogBadge({
           ))}
         </div>
       </Modal>
-    </>
+    </span>
   );
 }
