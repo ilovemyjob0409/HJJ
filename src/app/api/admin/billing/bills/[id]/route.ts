@@ -3,13 +3,27 @@ import { requireAdmin } from '@/lib/apiGuards';
 import { prisma } from '@/lib/db';
 import { updateDraftBill, deleteBill } from '@/lib/services/billingBatchService';
 import { updateFinalizedBill } from '@/lib/services/billEditService';
+import { updateGoHallBill, deleteGoHallBill } from '@/lib/services/goHallBillService';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const body = await req.json().catch(() => ({}));
   try {
-    // 依帳單狀態分流：草稿走批次頁的草稿編輯，已定案走未繳帳單編輯（優惠／堂數連動）。
-    const bill = await prisma.bill.findUniqueOrThrow({ where: { id: params.id }, select: { status: true } });
+    // 依帳單狀態分流：草稿走批次頁的草稿編輯，已定案走未繳帳單編輯（優惠／堂數連動）；
+    // 弈廳帳單（goHallItem 非 null）另走 updateGoHallBill（堂票／季票連動扣回）。
+    const bill = await prisma.bill.findUniqueOrThrow({ where: { id: params.id }, select: { status: true, goHallItem: true } });
+    if (bill.goHallItem !== null) {
+      await updateGoHallBill(params.id, {
+        amountDue: body.amountDue,
+        discounts: body.discounts ?? [],
+        sessions: body.goHallTickets,
+        unitPrice: body.unitPrice,
+        startDate: body.startDate ? new Date(body.startDate) : undefined,
+        endDate: body.endDate ? new Date(body.endDate) : undefined,
+        price: body.price,
+      });
+      return NextResponse.json({ success: true });
+    }
     if (bill.status === 'FINALIZED') {
       await updateFinalizedBill(params.id, {
         billedSessions: body.billedSessions,
@@ -34,7 +48,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   if (!(await requireAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
-    await deleteBill(params.id);
+    const bill = await prisma.bill.findUniqueOrThrow({ where: { id: params.id }, select: { goHallItem: true } });
+    if (bill.goHallItem !== null) await deleteGoHallBill(params.id);
+    else await deleteBill(params.id);
     return NextResponse.json({ success: true });
   } catch (e) {
     const code = e instanceof Error ? e.message : 'INTERNAL';

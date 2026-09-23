@@ -187,8 +187,10 @@ export async function updateDraftBill(billId: string, input: { billedSessions?: 
 export async function deleteBill(billId: string): Promise<void> {
   const bill = await prisma.bill.findUniqueOrThrow({
     where: { id: billId },
-    select: { status: true, classId: true, studentId: true, billedSessions: true, payments: { select: { id: true } } },
+    select: { status: true, classId: true, studentId: true, billedSessions: true, goHallItem: true, payments: { select: { id: true } } },
   });
+  // 弈廳帳單一律走 deleteGoHallBill（連動扣回堂票／處理季票），不能繞過這裡直接刪。
+  if (bill.goHallItem !== null) throw new Error('USE_GO_HALL_DELETE');
   if (bill.payments.length > 0) throw new Error('BILL_HAS_PAYMENTS');
   const credited = bill.status === 'FINALIZED' && bill.classId !== null && (bill.billedSessions ?? 0) > 0;
   if (!credited) {

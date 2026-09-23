@@ -12,7 +12,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     await deleteSeasonPass(params.id);
     return NextResponse.json({ success: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 422 });
+    const code = err instanceof Error ? err.message : 'INTERNAL';
+    if (/^[A-Z_]+$/.test(code)) return NextResponse.json({ error: code }, { status: 422 });
+    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 });
   }
 }

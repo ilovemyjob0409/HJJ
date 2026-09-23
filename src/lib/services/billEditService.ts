@@ -36,10 +36,13 @@ export async function updateFinalizedBill(billId: string, input: UpdateFinalized
       monthlyFee: true,
       prorationRatio: true,
       detail: true,
+      goHallItem: true,
       payments: { select: { id: true } },
       tutoringEnrollment: { select: { feeTier: { select: { name: true } } } },
     },
   });
+  // 弈廳帳單一律走 updateGoHallBill（連動扣回／改堂票季票），不能繞過這裡直接改。
+  if (bill.goHallItem !== null) throw new Error('USE_GO_HALL_EDIT');
   if (bill.status !== 'FINALIZED') throw new Error('BILL_NOT_FINALIZED');
   if (bill.payments.length > 0) throw new Error('BILL_HAS_PAYMENTS');
 

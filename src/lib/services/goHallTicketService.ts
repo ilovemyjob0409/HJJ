@@ -73,6 +73,8 @@ export async function addSeasonPass(input: { studentId: string; startDate: Date;
 }
 
 export async function deleteSeasonPass(id: string): Promise<void> {
+  const bill = await prisma.bill.findUnique({ where: { seasonPassId: id }, select: { id: true } });
+  if (bill) throw new Error('SEASON_PASS_HAS_BILL');
   await prisma.goHallSeasonPass.delete({ where: { id } });
 }
 
