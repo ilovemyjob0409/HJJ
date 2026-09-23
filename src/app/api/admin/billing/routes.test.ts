@@ -7,13 +7,16 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 import { NextRequest } from 'next/server';
 import { GET as listBatchesGET, POST as createBatchPOST } from './batches/route';
 import { POST as addPaymentPOST } from './bills/[id]/payments/route';
-import { PATCH as updateBillPATCH } from './bills/[id]/route';
+import { PATCH as updateBillPATCH, DELETE as deleteBillDELETE } from './bills/[id]/route';
+import { POST as standalonePOST } from './standalone/route';
 import { GET as overviewGET } from './overview/route';
 import { prisma } from '@/lib/db';
 import { createTeacher } from '@/lib/services/teacherService';
 import { createStudent } from '@/lib/services/studentService';
 import { createClass, enrollStudent } from '@/lib/services/classService';
 import { createClassBatch, finalizeBatch, getBatchDetail } from '@/lib/services/billingBatchService';
+import { createGoHallBill } from '@/lib/services/goHallBillService';
+import { getTicketBalance } from '@/lib/services/goHallTicketService';
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
@@ -204,5 +207,83 @@ describe('PATCH /api/admin/billing/bills/[id]（已定案帳單編輯）', () =>
     asAnon();
     const res = await updateBillPATCH(patchReq({}) as never, { params: { id: 'x' } });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/admin/billing/standalone GO_HALL', () => {
+  it('試算＋建立堂票帳單；overview source=GO_HALL', async () => {
+    asAdmin();
+    const student = await createStudent({ name: '小弈', email: `gh-route-${Date.now()}@example.com`, password: 'x' });
+    const preview = await standalonePOST(jsonReq({ kind: 'GO_HALL', preview: true, studentId: student.id, item: 'TICKETS', sessions: 4, unitPrice: 250 }) as never);
+    expect(preview.status).toBe(200);
+    expect((await preview.json()).amountDue).toBe(1000);
+
+    const created = await standalonePOST(jsonReq({ kind: 'GO_HALL', preview: false, studentId: student.id, item: 'TICKETS', sessions: 4, unitPrice: 250, amountDue: 1000 }) as never);
+    expect(created.status).toBe(200);
+    const res = await overviewGET(new NextRequest('http://localhost/api/admin/billing/overview'));
+    const row = (await res.json()).bills.find((b: { studentName: string }) => b.studentName === '小弈');
+    expect(row).toMatchObject({ source: 'GO_HALL', goHallItem: 'TICKETS', goHallTickets: 4, targetName: '弈廳堂票 4 堂' });
+  });
+
+  it('缺欄位 400 MISSING_FIELDS；堂數 0 回 400 INVALID_INPUT', async () => {
+    asAdmin();
+    const r1 = await standalonePOST(jsonReq({ kind: 'GO_HALL', preview: true, item: 'TICKETS' }) as never);
+    expect(r1.status).toBe(400);
+    expect((await r1.json()).error).toBe('MISSING_FIELDS');
+    const r2 = await standalonePOST(jsonReq({ kind: 'GO_HALL', preview: true, studentId: 'x', item: 'TICKETS', sessions: 0, unitPrice: 1 }) as never);
+    expect((await r2.json()).error).toBe('INVALID_INPUT');
+  });
+
+  it('季票 startDate 格式錯誤回 400 INVALID_INPUT', async () => {
+    asAdmin();
+    const student = await createStudent({ name: '小弈2', email: `gh-route-badstart-${Date.now()}@example.com`, password: 'x' });
+    const r = await standalonePOST(jsonReq({
+      kind: 'GO_HALL', preview: true, studentId: student.id, item: 'SEASON_PASS',
+      startDate: 'not-a-date', endDate: '2026-09-30', price: 3000,
+    }) as never);
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toBe('INVALID_INPUT');
+  });
+});
+
+describe('PATCH & DELETE /api/admin/billing/bills/[id] 弈廳分流', () => {
+  function patchReq(body: unknown): Request {
+    return new Request('http://localhost/api/admin/billing/bills/x', { method: 'PATCH', body: JSON.stringify(body) }) as never;
+  }
+
+  it('弈廳堂票帳單可改堂數並連動堂票餘額；DELETE 後帳單消失、餘額扣回', async () => {
+    const student = await createStudent({ name: '小弈3', email: `gh-route-patch-${Date.now()}@example.com`, password: 'x' });
+    const { billId } = await createGoHallBill({ item: 'TICKETS', studentId: student.id, sessions: 4, unitPrice: 250, amountDue: 1000, notifyNow: false });
+    asAdmin();
+
+    const patchRes = await updateBillPATCH(
+      patchReq({ goHallTickets: 6, unitPrice: 250, amountDue: 1500, discounts: [] }) as never,
+      { params: { id: billId } }
+    );
+    expect(patchRes.status).toBe(200);
+    const updated = await prisma.bill.findUniqueOrThrow({ where: { id: billId } });
+    expect(updated.goHallTickets).toBe(6);
+    expect(await getTicketBalance(student.id)).toBe(6);
+
+    const delRes = await deleteBillDELETE(new Request('http://localhost/api/admin/billing/bills/x', { method: 'DELETE' }) as never, { params: { id: billId } });
+    expect(delRes.status).toBe(200);
+    const gone = await prisma.bill.findUnique({ where: { id: billId } });
+    expect(gone).toBeNull();
+    expect(await getTicketBalance(student.id)).toBe(0);
+  });
+
+  it('弈廳季票帳單 PATCH startDate 格式錯誤回 400 INVALID_INPUT', async () => {
+    const student = await createStudent({ name: '小弈4', email: `gh-route-patch-bad-${Date.now()}@example.com`, password: 'x' });
+    const { billId } = await createGoHallBill({
+      item: 'SEASON_PASS', studentId: student.id, startDate: new Date('2026-09-01T00:00:00Z'), endDate: new Date('2026-09-30T00:00:00Z'),
+      price: 3000, amountDue: 3000, notifyNow: false,
+    });
+    asAdmin();
+    const res = await updateBillPATCH(
+      patchReq({ startDate: 'not-a-date', endDate: '2026-09-15', amountDue: 3000, discounts: [] }) as never,
+      { params: { id: billId } }
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('INVALID_INPUT');
   });
 });

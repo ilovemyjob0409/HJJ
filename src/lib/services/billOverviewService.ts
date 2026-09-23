@@ -4,7 +4,11 @@ import { billTargetName } from './billNotifyService';
 
 export interface OverviewBillRow {
   id: string;
-  source: 'CLASS' | 'TUTORING' | null; // 批次種類；null＝單獨開單
+  source: 'CLASS' | 'TUTORING' | 'GO_HALL' | null; // 批次種類；GO_HALL＝弈廳收費單；null＝其他單獨開單
+  goHallItem: 'TICKETS' | 'SEASON_PASS' | null;
+  goHallTickets: number | null;
+  seasonPassStart: Date | null;
+  seasonPassEnd: Date | null;
   batchId: string | null;
   studentName: string;
   targetName: string;
@@ -52,6 +56,7 @@ export async function getBillingOverview(periodStart?: Date, periodEnd?: Date): 
       class: { select: { name: true } },
       tutoringEnrollment: { select: { program: { select: { name: true } } } },
       student: { select: { user: { select: { name: true } } } },
+      seasonPass: { select: { startDate: true, endDate: true } },
     },
     orderBy: { periodStart: 'desc' },
   });
@@ -60,7 +65,11 @@ export async function getBillingOverview(periodStart?: Date, periodEnd?: Date): 
     const { paid, outstanding, state } = getPaidState(b.amountDue, b.payments);
     return {
       id: b.id,
-      source: b.batch?.kind ?? null,
+      source: b.goHallItem ? 'GO_HALL' : (b.batch?.kind ?? null),
+      goHallItem: b.goHallItem,
+      goHallTickets: b.goHallTickets,
+      seasonPassStart: b.seasonPass?.startDate ?? null,
+      seasonPassEnd: b.seasonPass?.endDate ?? null,
       batchId: b.batchId,
       studentName: b.student.user.name,
       targetName: billTargetName(b),

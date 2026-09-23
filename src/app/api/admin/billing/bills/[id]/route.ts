@@ -13,13 +13,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // 弈廳帳單（goHallItem 非 null）另走 updateGoHallBill（堂票／季票連動扣回）。
     const bill = await prisma.bill.findUniqueOrThrow({ where: { id: params.id }, select: { status: true, goHallItem: true } });
     if (bill.goHallItem !== null) {
+      const startDate = body.startDate ? new Date(body.startDate) : undefined;
+      const endDate = body.endDate ? new Date(body.endDate) : undefined;
+      if ((startDate && isNaN(startDate.getTime())) || (endDate && isNaN(endDate.getTime()))) {
+        return NextResponse.json({ error: 'INVALID_INPUT' }, { status: 400 });
+      }
       await updateGoHallBill(params.id, {
         amountDue: body.amountDue,
         discounts: body.discounts ?? [],
         sessions: body.goHallTickets,
         unitPrice: body.unitPrice,
-        startDate: body.startDate ? new Date(body.startDate) : undefined,
-        endDate: body.endDate ? new Date(body.endDate) : undefined,
+        startDate,
+        endDate,
         price: body.price,
       });
       return NextResponse.json({ success: true });
