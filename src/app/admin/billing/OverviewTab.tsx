@@ -21,7 +21,7 @@ import BillDetailBlock, { BillDetailJson } from '@/components/BillDetailBlock';
 
 interface OverviewBillRow {
   id: string;
-  source: 'CLASS' | 'TUTORING' | null;
+  source: 'CLASS' | 'TUTORING' | 'GO_HALL' | null;
   batchId: string | null;
   studentName: string;
   targetName: string;
@@ -39,6 +39,10 @@ interface OverviewBillRow {
   unitPrice: number | null;
   monthlyFee: number | null;
   prorationRatio: number | null;
+  goHallItem: 'TICKETS' | 'SEASON_PASS' | null;
+  goHallTickets: number | null;
+  seasonPassStart: string | null;
+  seasonPassEnd: string | null;
   detail: BillDetailJson;
 }
 
@@ -47,14 +51,15 @@ interface Overview {
   bills: OverviewBillRow[];
 }
 
-const SOURCE_LABEL: Record<'CLASS' | 'TUTORING', string> = { CLASS: '圍棋班級批次', TUTORING: '英數個輔批次' };
+const SOURCE_LABEL: Record<'CLASS' | 'TUTORING' | 'GO_HALL', string> = { CLASS: '圍棋班級批次', TUTORING: '英數個輔批次', GO_HALL: '弈廳' };
 
 // 來源篩選鈕：STANDALONE＝單獨開單（source 為 null 的帳單）
-type SourceFilter = 'STANDALONE' | 'CLASS' | 'TUTORING';
+type SourceFilter = 'STANDALONE' | 'CLASS' | 'TUTORING' | 'GO_HALL';
 const SOURCE_FILTERS: { key: SourceFilter; label: string }[] = [
   { key: 'STANDALONE', label: '單獨開單' },
   { key: 'CLASS', label: '圍棋班級批次' },
   { key: 'TUTORING', label: '英數個輔批次' },
+  { key: 'GO_HALL', label: '弈廳' },
 ];
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -63,6 +68,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILL_HAS_PAYMENTS: '這筆帳單已有繳款紀錄，請先處理繳款後再刪除',
   BILL_SESSIONS_CONSUMED: '這筆帳單開的堂數已有部分被上課使用，扣回會讓剩餘堂數變負，請先調整出缺勤或改用退班結算',
   BILL_ENROLLMENT_GONE: '找不到對應的班級報名（學生可能已退班或換班），無法自動扣回堂數，請聯絡工程處理',
+  BILL_TICKETS_CONSUMED: '這張收費單的弈廳堂票已有部分被使用，扣回會讓餘額變負，無法刪除',
+  BILL_SEASON_PASS_USED: '這張季票已被用來簽到弈廳，無法刪除（請先調整弈廳出缺勤）',
 };
 
 // 與本頁批次明細頁的 PaidStateBadge 同一套配色；這裡 state 由 API 算好回傳，
@@ -163,11 +170,19 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
     }
   }
 
-  async function deleteBill(billId: string, rollbackSessions: number) {
+  async function deleteBill(
+    billId: string,
+    rollbackSessions: number,
+    goHall: { item: 'TICKETS' | 'SEASON_PASS'; tickets: number } | null = null
+  ) {
     const message =
-      rollbackSessions > 0
-        ? `確定要刪除這筆帳單嗎？將同時從學生剩餘堂數扣回開單的 ${rollbackSessions} 堂。此動作無法復原。`
-        : '確定要刪除這筆帳單嗎？此動作無法復原。';
+      goHall?.item === 'TICKETS'
+        ? `確定要刪除這筆帳單嗎？將同時扣回 ${goHall.tickets} 張弈廳堂票。此動作無法復原。`
+        : goHall?.item === 'SEASON_PASS'
+          ? '確定要刪除這筆帳單嗎？將同時刪除這張季票。此動作無法復原。'
+          : rollbackSessions > 0
+            ? `確定要刪除這筆帳單嗎？將同時從學生剩餘堂數扣回開單的 ${rollbackSessions} 堂。此動作無法復原。`
+            : '確定要刪除這筆帳單嗎？此動作無法復原。';
     if (!(await confirm(message, { danger: true }))) return;
     setDeletingId(billId);
     try {
@@ -265,7 +280,7 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
               items={[
                 { key: 'payment', label: '繳款', onClick: () => setPaymentBillId(r.id) },
                 ...(notifyItem ? [notifyItem] : []),
-                ...(r.settledAsWithdrawal ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(r.id) }]),
+                ...(r.settledAsWithdrawal || r.source === 'GO_HALL' ? [] : [{ key: 'settle', label: '退班結算', onClick: () => setSettleBillId(r.id) }]),
                 ...(r.batchId
                   ? [{ key: 'batch', label: '查看批次', onClick: () => router.push(`/admin/billing/${r.batchId}`) }]
                   : []),
@@ -288,10 +303,25 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
                           prorationRatio: r.prorationRatio,
                           amountDue: r.amountDue,
                           discounts: r.detail?.discounts ?? [],
+                          goHallItem: r.goHallItem,
+                          goHallTickets: r.goHallTickets,
+                          seasonPassStart: r.seasonPassStart,
+                          seasonPassEnd: r.seasonPassEnd,
                         }),
                     }]
                   : []),
-                { key: 'delete', label: '刪除帳單', tone: 'danger' as const, loading: deletingId === r.id, onClick: () => deleteBill(r.id, rollbackSessions) },
+                {
+                  key: 'delete',
+                  label: '刪除帳單',
+                  tone: 'danger' as const,
+                  loading: deletingId === r.id,
+                  onClick: () =>
+                    deleteBill(
+                      r.id,
+                      rollbackSessions,
+                      r.goHallItem ? { item: r.goHallItem, tickets: r.goHallTickets ?? 0 } : null
+                    ),
+                },
               ]}
             />
           </div>
@@ -303,7 +333,7 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
   const query = search.trim().toLowerCase();
   const filteredBills = (data?.bills ?? []).filter((r) => {
     if (sourceFilter === 'STANDALONE' && r.source !== null) return false;
-    if ((sourceFilter === 'CLASS' || sourceFilter === 'TUTORING') && r.source !== sourceFilter) return false;
+    if ((sourceFilter === 'CLASS' || sourceFilter === 'TUTORING' || sourceFilter === 'GO_HALL') && r.source !== sourceFilter) return false;
     if (query && !r.studentName.toLowerCase().includes(query) && !r.targetName.toLowerCase().includes(query)) return false;
     return true;
   });

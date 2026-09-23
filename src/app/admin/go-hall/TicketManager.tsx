@@ -150,7 +150,8 @@ export default function TicketManager() {
     try {
       const res = await fetch(`/api/go-hall-season-passes/${id}`, { method: 'DELETE' });
       if (!res.ok) {
-        showToast('刪除失敗，季票可能已被刪除');
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error === 'SEASON_PASS_HAS_BILL' ? '這張季票是由收費單開立的，請到「收費」的收費清單刪除該帳單' : '刪除失敗，季票可能已被刪除');
         await refreshAfterMutation();
         return;
       }

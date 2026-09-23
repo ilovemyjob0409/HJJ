@@ -24,6 +24,10 @@ export interface EditableBillInfo {
   prorationRatio: number | null;
   amountDue: number;
   discounts: { name: string; amount: number }[];
+  goHallItem?: 'TICKETS' | 'SEASON_PASS' | null;
+  goHallTickets?: number | null;
+  seasonPassStart?: string | null;
+  seasonPassEnd?: string | null;
 }
 
 interface DiscountItemOption {
@@ -39,6 +43,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_DISCOUNTS: '請填寫完整的優惠項目資訊',
   INVALID_INPUT: '請確認堂數與金額為有效數字',
   MISSING_PRICE: '這筆帳單沒有單價資料，無法重新計算',
+  BILL_TICKETS_CONSUMED: '這張收費單的弈廳堂票已有部分被使用，調整會讓餘額變負，無法調整',
+  BILL_SEASON_PASS_USED: '這張季票已被用來簽到弈廳，無法調整（請先調整弈廳出缺勤）',
+  INVALID_RANGE: '季票結束日不能早於開始日',
 };
 
 export default function EditBillModal({
@@ -54,6 +61,9 @@ export default function EditBillModal({
   const [discountItems, setDiscountItems] = useState<DiscountItemOption[]>([]);
   const [discountRows, setDiscountRows] = useState<{ name: string; amount: string }[]>([]);
   const [billedSessionsDraft, setBilledSessionsDraft] = useState('');
+  const [goHallSessionsDraft, setGoHallSessionsDraft] = useState('');
+  const [seasonStartDraft, setSeasonStartDraft] = useState('');
+  const [seasonEndDraft, setSeasonEndDraft] = useState('');
   const [amountDueDraft, setAmountDueDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -61,6 +71,9 @@ export default function EditBillModal({
     if (!bill) return;
     setDiscountRows(bill.discounts.map((d) => ({ name: d.name, amount: String(d.amount) })));
     setBilledSessionsDraft(bill.billedSessions === null ? '' : String(bill.billedSessions));
+    setGoHallSessionsDraft(bill.goHallTickets == null ? '' : String(bill.goHallTickets));
+    setSeasonStartDraft(bill.seasonPassStart ? bill.seasonPassStart.slice(0, 10) : '');
+    setSeasonEndDraft(bill.seasonPassEnd ? bill.seasonPassEnd.slice(0, 10) : '');
     setAmountDueDraft(String(bill.amountDue));
     fetch('/api/admin/billing/settings')
       .then((r) => (r.ok ? r.json() : { discountItems: [] }))
@@ -71,8 +84,14 @@ export default function EditBillModal({
 
   const isClassBill = bill.classId !== null;
 
-  // 毛額：班級＝堂數×單價；個輔＝月費×折算比例（帳單建立時凍結的值）。
+  // 毛額：班級＝堂數×單價；個輔＝月費×折算比例（帳單建立時凍結的值）；
+  // 弈廳堂票＝堂數×單價；弈廳季票＝季票價格（存在 unitPrice，不受起訖影響）。
   function grossFor(sessionsText: string): number | null {
+    if (bill!.goHallItem === 'TICKETS') {
+      const n = Number(sessionsText);
+      return Number.isFinite(n) && bill!.unitPrice !== null ? n * bill!.unitPrice : null;
+    }
+    if (bill!.goHallItem === 'SEASON_PASS') return bill!.unitPrice; // 季票價格存在 unitPrice
     if (isClassBill) {
       if (bill!.unitPrice === null) return null;
       const n = Number(sessionsText);
@@ -102,6 +121,11 @@ export default function EditBillModal({
     suggestAmount(value, discountRows);
   }
 
+  function onGoHallSessionsChange(value: string) {
+    setGoHallSessionsDraft(value);
+    suggestAmount(value, discountRows);
+  }
+
   function addPresetDiscount(id: string) {
     const item = discountItems.find((d) => d.id === id);
     if (!item) return;
@@ -128,11 +152,13 @@ export default function EditBillModal({
     }
     setSaving(true);
     try {
-      const body: { amountDue: number; discounts: { name: string; amount: number }[]; billedSessions?: number } = {
+      const body: Record<string, unknown> = {
         amountDue: Number(amountDueDraft),
         discounts,
       };
-      if (isClassBill) body.billedSessions = Number(billedSessionsDraft);
+      if (bill!.goHallItem === 'TICKETS') Object.assign(body, { goHallTickets: Number(goHallSessionsDraft), unitPrice: bill!.unitPrice });
+      else if (bill!.goHallItem === 'SEASON_PASS') Object.assign(body, { startDate: seasonStartDraft, endDate: seasonEndDraft, price: bill!.unitPrice });
+      else if (isClassBill) body.billedSessions = Number(billedSessionsDraft);
       const res = await fetch(`/api/admin/billing/bills/${bill!.id}`, { method: 'PATCH', body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -146,7 +172,13 @@ export default function EditBillModal({
     }
   }
 
-  const canSave = amountDueDraft !== '' && (!isClassBill || billedSessionsDraft !== '');
+  const canSave =
+    amountDueDraft !== '' &&
+    (bill.goHallItem === 'TICKETS'
+      ? goHallSessionsDraft !== ''
+      : bill.goHallItem === 'SEASON_PASS'
+        ? seasonStartDraft !== '' && seasonEndDraft !== '' && seasonStartDraft <= seasonEndDraft
+        : !isClassBill || billedSessionsDraft !== '');
 
   return (
     <Modal open onClose={onClose} title="編輯帳單" maxWidthClassName="max-w-lg">
@@ -156,7 +188,7 @@ export default function EditBillModal({
             學生：<span className="font-semibold">{bill.studentName}</span>／項目：<span className="font-semibold">{bill.itemName}</span>
           </p>
           <p className="mt-1 text-inkMuted">
-            收費區間：{formatDateWithWeekday(bill.periodStart)} ～ {formatDateWithWeekday(bill.periodEnd)}
+            {bill.goHallItem === 'TICKETS' ? '開單日' : '收費區間'}：{formatDateWithWeekday(bill.periodStart)} ～ {formatDateWithWeekday(bill.periodEnd)}
           </p>
         </div>
 
@@ -214,11 +246,29 @@ export default function EditBillModal({
           </div>
         </div>
 
-        {isClassBill && (
+        {isClassBill && bill.goHallItem == null && (
           <label className="flex flex-col gap-1 text-sm text-ink">
             計費堂數（調整後學生剩餘堂數會同步增減）
             <Input type="number" min={0} value={billedSessionsDraft} onChange={(e) => onBilledSessionsChange(e.target.value)} className="w-28" />
           </label>
+        )}
+        {bill.goHallItem === 'TICKETS' && (
+          <label className="flex flex-col gap-1 text-sm text-ink">
+            弈廳堂票張數（調整後帳本會同步增減）
+            <Input type="number" min={0} value={goHallSessionsDraft} onChange={(e) => onGoHallSessionsChange(e.target.value)} className="w-28" />
+          </label>
+        )}
+        {bill.goHallItem === 'SEASON_PASS' && (
+          <div className="flex flex-wrap gap-3">
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              季票起
+              <Input type="date" value={seasonStartDraft} onChange={(e) => { setSeasonStartDraft(e.target.value); suggestAmount(goHallSessionsDraft, discountRows); }} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-ink">
+              季票訖
+              <Input type="date" value={seasonEndDraft} onChange={(e) => { setSeasonEndDraft(e.target.value); suggestAmount(goHallSessionsDraft, discountRows); }} />
+            </label>
+          </div>
         )}
         <label className="flex flex-col gap-1 text-sm text-ink">
           金額
