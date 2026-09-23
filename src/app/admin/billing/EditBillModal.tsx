@@ -102,9 +102,22 @@ export default function EditBillModal({
     return Math.round(bill!.monthlyFee * (bill!.prorationRatio ?? 1));
   }
 
+  // 依帳單類型決定 grossFor 該吃哪個堂數 draft：弈廳堂票＝goHallSessionsDraft、
+  // 班級＝billedSessionsDraft；季票／個輔的 grossFor 不吃這個參數，回傳什麼都無所謂。
+  // 集中在這裡取值，避免呼叫端各自誤用到不相干帳單類型的 draft（曾經因此在弈廳
+  // 堂票帳單動優惠列時誤讀空字串的 billedSessionsDraft，把金額算成 0）。
+  function currentSessionsText(): string {
+    if (bill!.goHallItem === 'TICKETS') return goHallSessionsDraft;
+    if (isClassBill) return billedSessionsDraft;
+    return '';
+  }
+
   // 堂數或優惠變動時自動帶入建議金額（毛額－優惠），行政仍可手動覆寫。
-  function suggestAmount(sessionsText: string, rows: { name: string; amount: string }[]) {
-    const gross = grossFor(sessionsText);
+  // sessionsOverride：堂數輸入框自己的 onChange 觸發時，state 還沒套用新值，
+  // 必須把新值明確傳進來；其餘呼叫（優惠列變動、季票日期變動）省略即可，
+  // 會用 currentSessionsText() 讀目前帳單類型對應的 draft。
+  function suggestAmount(rows: { name: string; amount: string }[], sessionsOverride?: string) {
+    const gross = grossFor(sessionsOverride ?? currentSessionsText());
     if (gross === null) return;
     const discountTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     setAmountDueDraft(String(Math.max(0, gross - discountTotal)));
@@ -113,17 +126,17 @@ export default function EditBillModal({
   function mutateDiscountRows(mutate: (rows: { name: string; amount: string }[]) => { name: string; amount: string }[]) {
     const next = mutate(discountRows);
     setDiscountRows(next);
-    suggestAmount(billedSessionsDraft, next);
+    suggestAmount(next);
   }
 
   function onBilledSessionsChange(value: string) {
     setBilledSessionsDraft(value);
-    suggestAmount(value, discountRows);
+    suggestAmount(discountRows, value);
   }
 
   function onGoHallSessionsChange(value: string) {
     setGoHallSessionsDraft(value);
-    suggestAmount(value, discountRows);
+    suggestAmount(discountRows, value);
   }
 
   function addPresetDiscount(id: string) {
@@ -262,11 +275,11 @@ export default function EditBillModal({
           <div className="flex flex-wrap gap-3">
             <label className="flex flex-col gap-1 text-sm text-ink">
               季票起
-              <Input type="date" value={seasonStartDraft} onChange={(e) => { setSeasonStartDraft(e.target.value); suggestAmount(goHallSessionsDraft, discountRows); }} />
+              <Input type="date" value={seasonStartDraft} onChange={(e) => { setSeasonStartDraft(e.target.value); suggestAmount(discountRows); }} />
             </label>
             <label className="flex flex-col gap-1 text-sm text-ink">
               季票訖
-              <Input type="date" value={seasonEndDraft} onChange={(e) => { setSeasonEndDraft(e.target.value); suggestAmount(goHallSessionsDraft, discountRows); }} />
+              <Input type="date" value={seasonEndDraft} onChange={(e) => { setSeasonEndDraft(e.target.value); suggestAmount(discountRows); }} />
             </label>
           </div>
         )}
