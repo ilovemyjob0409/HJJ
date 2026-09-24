@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { listClosedDays } from './closedDayService';
 import { getBillingSetting } from './billingSettingService';
 import {
-  buildClassBillDetail, computeClassSessionDates, computeDeduction, computeTutoringProration, countOpenSessions, DEFAULT_FEE_PER_SESSION,
+  buildClassBillDetail, buildDeduction, computeClassSessionDates, computeDeduction, computeTutoringProration, countOpenSessions, DEFAULT_FEE_PER_SESSION,
 } from '@/lib/billingCalc';
 import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
@@ -65,9 +65,7 @@ async function computeClassBillCore(studentId: string, classId: string, periodSt
   const billed = Math.max(0, open - deducted);
   const unitPrice = enrollment.feeOverride ?? cls.feePerSession ?? DEFAULT_FEE_PER_SESSION;
   const amountDue = billed * unitPrice;
-  const deduction: Deduction = deducted > 0
-    ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted, ...(upcoming.length > 0 ? { upcoming } : {}) }
-    : null;
+  const deduction: Deduction = buildDeduction(remaining, setting.deductionCap, deducted, upcoming);
   return { entries, open, deducted, deduction, billed, unitPrice, amountDue };
 }
 
@@ -115,13 +113,13 @@ export async function createStandaloneClassBill(input: {
   let netFormula: string | undefined;
   if (discounts.length === 0) {
     const amount = input.amountDue.toLocaleString('en-US');
-    const baseFormula = core.deduction
+    const baseFormula = core.deduction && core.deduction.deducted > 0
       ? `${core.open} − ${core.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${amount} 元`
       : `${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${amount} 元`;
     formula = adjusted ? `${baseFormula}（手動調整）` : baseFormula;
   } else {
     const grossStr = grossAmount.toLocaleString('en-US');
-    formula = core.deduction
+    formula = core.deduction && core.deduction.deducted > 0
       ? `${core.open} − ${core.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${grossStr} 元`
       : `${input.billedSessions} 堂 × ${core.unitPrice} ＝ ${grossStr} 元`;
     netFormula = buildNetFormula(grossAmount, discounts, input.amountDue, adjusted);

@@ -54,6 +54,19 @@ export function countOpenSessions(entries: SessionDateEntry[]): number {
   return entries.filter((e) => !e.closed).length;
 }
 
+// 帳單明細要不要寫折抵說明：有折抵，或有剩餘但被「開單時尚未上的課」吃掉（折抵 0
+// 也要讓行政／家長看得出為什麼沒折抵）。算式只在 deducted > 0 時才出現「− N」。
+export function buildDeduction(
+  previousRemaining: number | null,
+  cap: number,
+  deducted: number,
+  upcoming: string[]
+): ClassBillDeduction | null {
+  const remaining = previousRemaining ?? 0;
+  if (deducted <= 0 && !(remaining > 0 && upcoming.length > 0)) return null;
+  return { previousRemaining: remaining, cap, deducted, ...(upcoming.length > 0 ? { upcoming } : {}) };
+}
+
 export function computeDeduction(previousRemaining: number | null, cap: number): number {
   return Math.max(0, Math.min(previousRemaining ?? 0, cap));
 }
@@ -75,7 +88,8 @@ export function buildClassBillDetail(
   const formula = deduction && deduction.deducted > 0
     ? `${open} − ${deduction.deducted} ＝ ${billedSessions} 堂 × ${unitPrice} ＝ ${amount} 元`
     : `${billedSessions} 堂 × ${unitPrice} ＝ ${amount} 元`;
-  return { sessionDates: entries, deduction: deduction && deduction.deducted > 0 ? deduction : null, formula };
+  const keep = deduction && (deduction.deducted > 0 || (deduction.upcoming?.length ?? 0) > 0);
+  return { sessionDates: entries, deduction: keep ? deduction : null, formula };
 }
 
 // 已繳/待繳/繳費狀態的唯一算法——billPaymentService、billNotifyService（提醒繳費）、

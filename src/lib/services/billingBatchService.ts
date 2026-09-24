@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { listClosedDays } from './closedDayService';
 import { getBillingSetting } from './billingSettingService';
 import {
-  buildClassBillDetail, computeClassSessionDates, computeDeduction, countOpenSessions, DEFAULT_FEE_PER_SESSION,
+  buildClassBillDetail, buildDeduction, computeClassSessionDates, computeDeduction, countOpenSessions, DEFAULT_FEE_PER_SESSION,
 } from '@/lib/billingCalc';
 import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
@@ -78,9 +78,7 @@ export async function createClassBatch(input: { periodStart: Date; periodEnd: Da
       const deducted = computeDeduction(remaining === null ? null : remaining - upcoming.length, setting.deductionCap);
       const billed = Math.max(0, open - deducted);
       const unitPrice = e.feeOverride ?? cls.feePerSession ?? DEFAULT_FEE_PER_SESSION;
-      const deduction = deducted > 0
-        ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted, ...(upcoming.length > 0 ? { upcoming } : {}) }
-        : null;
+      const deduction = buildDeduction(remaining, setting.deductionCap, deducted, upcoming);
       const detail = buildClassBillDetail(entries, deduction, billed, unitPrice) as unknown as Prisma.InputJsonValue;
       await prisma.bill.create({
         data: {
@@ -179,7 +177,7 @@ export async function updateDraftBill(billId: string, input: { billedSessions?: 
     data.amountDue = input.billedSessions * bill.unitPrice;
     const detail = bill.detail as { sessionDates: unknown[]; deduction: { previousRemaining: number; cap: number; deducted: number } | null };
     const amount = data.amountDue.toLocaleString('en-US');
-    const formula = detail.deduction
+    const formula = detail.deduction && detail.deduction.deducted > 0
       ? `${bill.sessionsTotal} − ${detail.deduction.deducted} ＝ ${input.billedSessions} 堂 × ${bill.unitPrice} ＝ ${amount} 元（手動調整）`
       : `${input.billedSessions} 堂 × ${bill.unitPrice} ＝ ${amount} 元`;
     data.detail = { ...detail, formula };

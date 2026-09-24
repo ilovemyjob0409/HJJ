@@ -5,7 +5,7 @@ import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
 import { addClosedDay } from './closedDayService';
 import { createClassBatch, getBatchDetail } from './billingBatchService';
-import { previewStandaloneClassBill } from './standaloneBillService';
+import { previewStandaloneClassBill, createStandaloneClassBill } from './standaloneBillService';
 import { getUpcomingSessionKeys } from './billingUpcomingService';
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
@@ -56,7 +56,16 @@ describe('開單折抵扣除尚未上的課', () => {
     const bill = (await getBatchDetail(batchId)).bills[0];
     // 10 月 5 個週六，無折抵
     expect(bill).toMatchObject({ sessionsTotal: 5, deductedSessions: 0, billedSessions: 5 });
-    expect((bill.detail as { deduction: unknown }).deduction).toBeNull();
+    // 折抵 0 仍保留說明，讓明細看得出為什麼沒折抵；算式不出現「5 − 0」
+    const detail = bill.detail as { deduction: unknown; formula: string };
+    expect(detail.deduction).toEqual({ previousRemaining: 1, cap: 2, deducted: 0, upcoming: ['2026-09-26'] });
+    expect(detail.formula).toBe('5 堂 × 500 ＝ 2,500 元');
+  });
+
+  it('批次：沒有剩餘堂數時不寫折抵說明（即使有尚未上的課）', async () => {
+    const { cls } = await setup(0);
+    const { batchId } = await createClassBatch({ ...OCT, classIds: [cls.id] }, NOW);
+    expect(((await getBatchDetail(batchId)).bills[0].detail as { deduction: unknown }).deduction).toBeNull();
   });
 
   it('批次：剩 5 堂、9/26 要上 → 可折抵 4，受上限 2；明細記下尚未上課日期', async () => {
@@ -80,5 +89,18 @@ describe('開單折抵扣除尚未上的課', () => {
     const { student, cls } = await setup(1);
     const preview = await previewStandaloneClassBill({ studentId: student.id, classId: cls.id, ...OCT }, NOW);
     expect(preview).toMatchObject({ sessionsTotal: 5, deductedSessions: 0, billedSessions: 5, amountDue: 2500 });
+    expect(preview.detail.deduction).toEqual({ previousRemaining: 1, cap: 2, deducted: 0, upcoming: ['2026-09-26'] });
+  });
+
+  it('單獨開單建立：折抵 0 但有說明時，算式不出現「− 0」', async () => {
+    const { student, cls } = await setup(1);
+    const { billId } = await createStandaloneClassBill(
+      { studentId: student.id, classId: cls.id, ...OCT, billedSessions: 5, amountDue: 2500, notifyNow: false },
+      NOW
+    );
+    const bill = await prisma.bill.findUniqueOrThrow({ where: { id: billId } });
+    const detail = bill.detail as { deduction: { deducted: number } | null; formula: string };
+    expect(detail.deduction?.deducted).toBe(0);
+    expect(detail.formula).toBe('5 堂 × 500 ＝ 2,500 元');
   });
 });

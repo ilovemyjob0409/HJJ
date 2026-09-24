@@ -81,13 +81,13 @@ export async function updateFinalizedBill(billId: string, input: UpdateFinalized
     let netFormula: string | undefined;
     if (discounts.length === 0) {
       const amount = input.amountDue.toLocaleString('en-US');
-      const base = oldDetail.deduction
+      const base = oldDetail.deduction && oldDetail.deduction.deducted > 0
         ? `${bill.sessionsTotal} − ${oldDetail.deduction.deducted} ＝ ${newBilled} 堂 × ${bill.unitPrice} ＝ ${amount} 元`
         : `${newBilled} 堂 × ${bill.unitPrice} ＝ ${amount} 元`;
       formula = adjusted ? `${base}（手動調整）` : base;
     } else {
       const grossStr = gross.toLocaleString('en-US');
-      formula = oldDetail.deduction
+      formula = oldDetail.deduction && oldDetail.deduction.deducted > 0
         ? `${bill.sessionsTotal} − ${oldDetail.deduction.deducted} ＝ ${newBilled} 堂 × ${bill.unitPrice} ＝ ${grossStr} 元`
         : `${newBilled} 堂 × ${bill.unitPrice} ＝ ${grossStr} 元`;
       netFormula = buildNetFormula(gross, discounts, input.amountDue, adjusted);

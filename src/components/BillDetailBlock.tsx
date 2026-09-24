@@ -58,11 +58,19 @@ export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) 
           上期剩餘 {detail.deduction.previousRemaining} 堂
           {detail.deduction.upcoming && detail.deduction.upcoming.length > 0 && (
             <>
-              （其中 {`${detail.deduction.upcoming.map((k) => formatDateWithWeekday(k)).join('、')}尚未上課，共 ${detail.deduction.upcoming.length} 堂不列入折抵`}）
+              （其中 {`${detail.deduction.upcoming.map((k) => formatDateWithWeekday(k)).join('、')}開單時尚未上課，共 ${detail.deduction.upcoming.length} 堂不列入折抵`}）
             </>
           )}
-          ｜折抵上限 {detail.deduction.cap} 堂 → 本期折抵 {detail.deduction.deducted} 堂，其餘{' '}
-          {detail.deduction.previousRemaining - (detail.deduction.upcoming?.length ?? 0) - detail.deduction.deducted} 堂保留至本期繼續使用
+          {detail.deduction.deducted > 0 ? (
+            <>
+              ｜折抵上限 {detail.deduction.cap} 堂 → 本期折抵 {detail.deduction.deducted} 堂，其餘{' '}
+              {Math.max(0, detail.deduction.previousRemaining - (detail.deduction.upcoming?.length ?? 0) - detail.deduction.deducted)}{' '}
+              堂保留至本期繼續使用
+            </>
+          ) : (
+            // 剩餘全被開單時尚未上的課用掉（或更多）：沒有可折抵的堂數
+            '｜本期不折抵'
+          )}
         </p>
       )}
       <p className="font-bold text-ink">{detail.formula}</p>

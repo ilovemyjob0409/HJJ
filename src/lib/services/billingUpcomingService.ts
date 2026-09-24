@@ -9,6 +9,8 @@ import { taipeiDateKey } from '@/lib/taipeiDate';
 // 堂，那堂本來就該留著折抵）、已點名（不論狀態，已反映在已扣堂數）的日子不算。
 // 回傳 key 為 `${studentId}:${classId}`，值為日期（'YYYY-MM-DD'，舊→新）；沒有
 // 尚未上的課的組合不會出現在 Map 裡。收費區間已開始（起日 ≤ 今天）時一律為空。
+// 已知限制：開單當下預測不到的變化——開單後才撤銷請假、或過去漏點名事後才補登——
+// 仍可能讓同一堂既折抵又扣堂，需行政在帳單上手動調整。
 export async function getUpcomingSessionKeys(
   pairs: { studentId: string; classId: string; weekday: number }[],
   periodStart: Date,
