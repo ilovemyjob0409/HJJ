@@ -4,7 +4,8 @@ import { formatDateWithWeekday } from '@/lib/dateFormat';
 // 定案後寫進 Bill.detail 欄位凍結，行政草稿頁與學生端都從這裡渲染。
 export interface BillDetailJson {
   sessionDates: { dateKey: string; closed: boolean; closedName?: string }[];
-  deduction: { previousRemaining: number; cap: number; deducted: number } | null;
+  // upcoming：收費區間開始前還會上的課（'YYYY-MM-DD'），不列入折抵；舊帳單沒有此欄位
+  deduction: { previousRemaining: number; cap: number; deducted: number; upcoming?: string[] } | null;
   discounts?: { name: string; amount: number }[];
   formula: string;
   // 有優惠項目時才會有值——formula 只顯示未扣優惠的毛額算式，netFormula 是完整的
@@ -54,8 +55,14 @@ export default function BillDetailBlock({ detail }: { detail: BillDetailJson }) 
       )}
       {detail.deduction && (
         <p className="mb-1 border-t border-borderSubtle pt-2 text-brandDark">
-          上期剩餘 {detail.deduction.previousRemaining} 堂｜折抵上限 {detail.deduction.cap} 堂 → 本期折抵 {detail.deduction.deducted}{' '}
-          堂，其餘 {detail.deduction.previousRemaining - detail.deduction.deducted} 堂保留至本期繼續使用
+          上期剩餘 {detail.deduction.previousRemaining} 堂
+          {detail.deduction.upcoming && detail.deduction.upcoming.length > 0 && (
+            <>
+              （其中 {`${detail.deduction.upcoming.map((k) => formatDateWithWeekday(k)).join('、')}尚未上課，共 ${detail.deduction.upcoming.length} 堂不列入折抵`}）
+            </>
+          )}
+          ｜折抵上限 {detail.deduction.cap} 堂 → 本期折抵 {detail.deduction.deducted} 堂，其餘{' '}
+          {detail.deduction.previousRemaining - (detail.deduction.upcoming?.length ?? 0) - detail.deduction.deducted} 堂保留至本期繼續使用
         </p>
       )}
       <p className="font-bold text-ink">{detail.formula}</p>

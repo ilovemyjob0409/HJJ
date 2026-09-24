@@ -9,6 +9,8 @@ import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
 import { BILL_DETAIL_INCLUDE } from './billingBatchService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { getUpcomingSessionKeys } from './billingUpcomingService';
+import type { ClassBillDeduction } from '@/lib/billingCalc';
 
 const fmtRange = (s: Date, e: Date) => `${formatDateWithWeekday(s)}～${formatDateWithWeekday(e)}`;
 const overlapMessage = (existing: { periodStart: Date; periodEnd: Date }) =>
@@ -41,11 +43,11 @@ export function buildNetFormula(grossAmount: number, discounts: { name: string; 
   return `${grossAmount.toLocaleString('en-US')} 元 ${discountText} ＝ ${finalAmount.toLocaleString('en-US')} 元${adjusted ? '（手動調整）' : ''}`;
 }
 
-type Deduction = { previousRemaining: number; cap: number; deducted: number } | null;
+type Deduction = ClassBillDeduction | null;
 
 // 單一 (studentId, classId) 版的 createClassBatch 迴圈內邏輯：同一批 import、同一段
 // 剩餘堂數 count 查詢、同一個單價解析順序（feeOverride ?? feePerSession）。
-async function computeClassBillCore(studentId: string, classId: string, periodStart: Date, periodEnd: Date) {
+async function computeClassBillCore(studentId: string, classId: string, periodStart: Date, periodEnd: Date, now: Date) {
   const [closedDays, setting, cls, enrollment] = await Promise.all([
     listClosedDays(periodStart, periodEnd),
     getBillingSetting(),
@@ -57,20 +59,24 @@ async function computeClassBillCore(studentId: string, classId: string, periodSt
   // 剩餘＝totalSessions − 已扣堂（請假/未報名不扣，同 getClassEnrollmentQuota 語意）
   const used = await prisma.classAttendance.count({ where: { classId, studentId, status: { notIn: ['ON_LEAVE', 'NOT_REGISTERED'] } } });
   const remaining = enrollment.totalSessions === null ? null : enrollment.totalSessions - used;
-  const deducted = computeDeduction(remaining, setting.deductionCap);
+  // 收費區間開始前還會上的課不列入折抵（見 billingUpcomingService）
+  const upcoming = (await getUpcomingSessionKeys([{ studentId, classId, weekday: cls.weekday }], periodStart, now)).get(`${studentId}:${classId}`) ?? [];
+  const deducted = computeDeduction(remaining === null ? null : remaining - upcoming.length, setting.deductionCap);
   const billed = Math.max(0, open - deducted);
   const unitPrice = enrollment.feeOverride ?? cls.feePerSession ?? DEFAULT_FEE_PER_SESSION;
   const amountDue = billed * unitPrice;
-  const deduction: Deduction = deducted > 0 ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted } : null;
+  const deduction: Deduction = deducted > 0
+    ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted, ...(upcoming.length > 0 ? { upcoming } : {}) }
+    : null;
   return { entries, open, deducted, deduction, billed, unitPrice, amountDue };
 }
 
 export async function previewStandaloneClassBill(input: {
   studentId: string; classId: string; periodStart: Date; periodEnd: Date; discounts?: BillDiscount[];
-}) {
+}, now: Date = new Date()) {
   const discounts = input.discounts ?? [];
   const [core, existing] = await Promise.all([
-    computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd),
+    computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd, now),
     findOverlappingClassBill(input.studentId, input.classId, input.periodStart, input.periodEnd),
   ]);
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
@@ -92,9 +98,9 @@ export async function previewStandaloneClassBill(input: {
 export async function createStandaloneClassBill(input: {
   studentId: string; classId: string; periodStart: Date; periodEnd: Date;
   billedSessions: number; amountDue: number; note?: string; notifyNow: boolean; discounts?: BillDiscount[];
-}): Promise<{ billId: string }> {
+}, now: Date = new Date()): Promise<{ billId: string }> {
   const discounts = input.discounts ?? [];
-  const core = await computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd);
+  const core = await computeClassBillCore(input.studentId, input.classId, input.periodStart, input.periodEnd, now);
   const discountTotal = discounts.reduce((s, d) => s + d.amount, 0);
   const netAmountDue = Math.max(0, core.amountDue - discountTotal);
 

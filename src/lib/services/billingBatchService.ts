@@ -8,12 +8,13 @@ import {
 import { addEnrollmentSessions } from './classService';
 import { notifyBills } from './billNotifyService';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { getUpcomingSessionKeys } from './billingUpcomingService';
 
 export interface SkippedRow { studentName: string; targetName: string; reason: string }
 
 const fmtRange = (s: Date, e: Date) => `${formatDateWithWeekday(s)}～${formatDateWithWeekday(e)}`;
 
-export async function createClassBatch(input: { periodStart: Date; periodEnd: Date; classIds: string[] }) {
+export async function createClassBatch(input: { periodStart: Date; periodEnd: Date; classIds: string[] }, now: Date = new Date()) {
   const [closedDays, setting, classes] = await Promise.all([
     listClosedDays(input.periodStart, input.periodEnd),
     getBillingSetting(),
@@ -54,6 +55,11 @@ export async function createClassBatch(input: { periodStart: Date; periodEnd: Da
     if (!overlapByKey.has(key)) overlapByKey.set(key, { periodStart: o.periodStart, periodEnd: o.periodEnd });
   }
   const usedByKey = new Map(usedCounts.map((c) => [`${c.classId}:${c.studentId}`, c._count._all]));
+  const upcomingByKey = await getUpcomingSessionKeys(
+    classes.flatMap((c) => c.enrollments.map((e) => ({ studentId: e.studentId, classId: c.id, weekday: c.weekday }))),
+    input.periodStart,
+    now
+  );
 
   for (const cls of classes) {
     const entries = computeClassSessionDates(cls.weekday, input.periodStart, input.periodEnd, closedDays);
@@ -67,12 +73,15 @@ export async function createClassBatch(input: { periodStart: Date; periodEnd: Da
       // 剩餘＝totalSessions − 已扣堂（請假/未報名不扣，同 getClassEnrollmentQuota 語意）
       const used = usedByKey.get(`${cls.id}:${e.studentId}`) ?? 0;
       const remaining = e.totalSessions === null ? null : e.totalSessions - used;
-      const deducted = computeDeduction(remaining, setting.deductionCap);
+      // 收費區間開始前還會上的課不列入折抵（見 billingUpcomingService）
+      const upcoming = upcomingByKey.get(`${e.studentId}:${cls.id}`) ?? [];
+      const deducted = computeDeduction(remaining === null ? null : remaining - upcoming.length, setting.deductionCap);
       const billed = Math.max(0, open - deducted);
       const unitPrice = e.feeOverride ?? cls.feePerSession ?? DEFAULT_FEE_PER_SESSION;
-      const detail = buildClassBillDetail(
-        entries, deducted > 0 ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted } : null, billed, unitPrice
-      ) as unknown as Prisma.InputJsonValue;
+      const deduction = deducted > 0
+        ? { previousRemaining: remaining ?? 0, cap: setting.deductionCap, deducted, ...(upcoming.length > 0 ? { upcoming } : {}) }
+        : null;
+      const detail = buildClassBillDetail(entries, deduction, billed, unitPrice) as unknown as Prisma.InputJsonValue;
       await prisma.bill.create({
         data: {
           batchId: batch.id, studentId: e.studentId, classId: cls.id,

@@ -11,8 +11,18 @@ export interface SessionDateEntry {
 
 export interface BillDetail {
   sessionDates: SessionDateEntry[];
-  deduction: { previousRemaining: number; cap: number; deducted: number } | null;
+  deduction: ClassBillDeduction | null;
   formula: string;
+}
+
+// previousRemaining＝開單當下的剩餘堂數；upcoming＝其中收費區間開始前還會上的課
+// （見 billingUpcomingService），不列入折抵。可折抵＝previousRemaining − upcoming 數。
+// upcoming 是後來才加的欄位，舊帳單沒有。
+export interface ClassBillDeduction {
+  previousRemaining: number;
+  cap: number;
+  deducted: number;
+  upcoming?: string[];
 }
 
 export function utcKey(d: Date): string {
@@ -56,7 +66,7 @@ export function computeTutoringProration(periodStart: Date, periodEnd: Date): nu
 
 export function buildClassBillDetail(
   entries: SessionDateEntry[],
-  deduction: { previousRemaining: number; cap: number; deducted: number } | null,
+  deduction: ClassBillDeduction | null,
   billedSessions: number,
   unitPrice: number
 ): BillDetail {
