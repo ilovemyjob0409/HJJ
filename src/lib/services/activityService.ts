@@ -4,7 +4,7 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { createSignedThumbUrls, deleteActivityImages } from '@/lib/storage';
 import { isBeforeToday } from '@/lib/pastDate';
 import { taipeiDateKey } from './tutoringBookingService';
-import { getActivitySnapshot, notifyActivityCreated, safeNotify } from './activityNotifyService';
+import { getActivitySnapshot, notifyActivityChanges, notifyActivityCreated, safeNotify } from './activityNotifyService';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -99,10 +99,17 @@ export async function createActivity(input: CreateActivityInput, options: Create
   return created;
 }
 
+export interface UpdateActivityOptions {
+  // 通知已報名學生與帶隊老師（後台編輯彈窗的勾選框，前端預設不勾）
+  notifyRegistered?: boolean;
+}
+
 // Replaces the teacher list wholesale — assignments are current state, not
 // history, so the delete-and-recreate inside one transaction is safe.
-export function updateActivity(id: string, input: CreateActivityInput) {
-  return prisma.$transaction(async (tx) => {
+export async function updateActivity(id: string, input: CreateActivityInput, options: UpdateActivityOptions = {}) {
+  // 更新前抓快照，事後比對老師增減與日期／地點變動
+  const before = await getActivitySnapshot(id).catch(() => null);
+  const updated = await prisma.$transaction(async (tx) => {
     await tx.activityTeacher.deleteMany({ where: { activityId: id } });
     return tx.activity.update({
       where: { id },
@@ -118,6 +125,13 @@ export function updateActivity(id: string, input: CreateActivityInput) {
       },
     });
   });
+  await safeNotify('updated', async () => {
+    const after = await getActivitySnapshot(id);
+    if (before && after) {
+      await notifyActivityChanges(before, after, { notifyRegistered: options.notifyRegistered ?? false });
+    }
+  });
+  return updated;
 }
 
 export async function listAllActivities() {

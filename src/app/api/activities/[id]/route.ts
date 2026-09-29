@@ -34,16 +34,20 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (teacherIds.length === 0) {
     return NextResponse.json({ error: 'TEACHER_REQUIRED' }, { status: 400 });
   }
-  const updated = await updateActivity(params.id, {
-    title: body.title,
-    description: body.description,
-    categoryId: body.categoryId,
-    location: body.location || undefined,
-    startDate: new Date(body.startDate),
-    endDate: new Date(body.endDate),
-    capacity: Number(body.capacity),
-    teacherIds,
-  });
+  const updated = await updateActivity(
+    params.id,
+    {
+      title: body.title,
+      description: body.description,
+      categoryId: body.categoryId,
+      location: body.location || undefined,
+      startDate: new Date(body.startDate),
+      endDate: new Date(body.endDate),
+      capacity: Number(body.capacity),
+      teacherIds,
+    },
+    { notifyRegistered: body.notifyRegistered === true }
+  );
   return NextResponse.json(updated);
 }
 

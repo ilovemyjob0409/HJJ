@@ -13,7 +13,8 @@ vi.mock('@/lib/storage', () => ({
 
 import { PUT } from './route';
 import { createTeacher } from '@/lib/services/teacherService';
-import { createActivity } from '@/lib/services/activityService';
+import { createStudent } from '@/lib/services/studentService';
+import { createActivity, registerForActivity } from '@/lib/services/activityService';
 
 async function makeFixture() {
   const teacher = await createTeacher({ name: '師', email: `t${Date.now()}@x.com`, password: 'pw', subjects: '棋' });
@@ -98,5 +99,36 @@ describe('PUT /api/activities/:id', () => {
     expect(updated.endDate).toEqual(new Date('2026-08-12'));
     expect(updated.capacity).toBe(30);
     expect(updated.teachers.map((t) => t.teacherId)).toEqual([otherTeacher.id]);
+  });
+
+  it('notifyRegistered: true 才通知已報名學生（沒帶視為 false）', async () => {
+    const teacher = await createTeacher({ name: '師', email: `nt${Date.now()}@x.com`, password: 'pw', subjects: '棋' });
+    const category = await prisma.activityCategory.create({ data: { name: `nc${Date.now()}` } });
+    const student = await createStudent({ name: '生', email: `ns${Date.now()}@x.com` });
+    const activity = await createActivity({
+      title: 'a',
+      description: 'd',
+      categoryId: category.id,
+      startDate: new Date('2099-01-10'),
+      endDate: new Date('2099-01-10'),
+      capacity: 5,
+      teacherIds: [teacher.id],
+    });
+    await registerForActivity(activity.id, student.id);
+    const { userId } = await prisma.student.findUniqueOrThrow({ where: { id: student.id }, select: { userId: true } });
+    const base = {
+      title: 'a',
+      description: 'd',
+      categoryId: category.id,
+      startDate: '2099-01-10',
+      endDate: '2099-01-10',
+      capacity: 5,
+      teacherIds: [teacher.id],
+    };
+    asAdmin();
+    await PUT(putReq(activity.id, base), { params: { id: activity.id } });
+    expect(await prisma.notification.count({ where: { userId } })).toBe(0);
+    await PUT(putReq(activity.id, { ...base, notifyRegistered: true }), { params: { id: activity.id } });
+    expect(await prisma.notification.count({ where: { userId, title: '活動資訊更新' } })).toBe(1);
   });
 });

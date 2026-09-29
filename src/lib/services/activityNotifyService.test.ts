@@ -11,7 +11,7 @@ vi.mock('@/lib/storage', () => ({
   deleteActivityImages: vi.fn(async () => {}),
 }));
 
-import { createActivity, createCategory, CreateActivityInput } from './activityService';
+import { createActivity, createCategory, CreateActivityInput, registerForActivity, updateActivity } from './activityService';
 
 // 2099 一定是「未來」、2020 一定「已結束」——測試結果不受執行日期影響
 const FUTURE = new Date(Date.UTC(2099, 0, 10));
@@ -63,6 +63,10 @@ function inbox(userId: string) {
   });
 }
 
+async function clearInbox() {
+  await prisma.notification.deleteMany();
+}
+
 describe('新增活動通知', () => {
   it('勾選通知時：全體學生收到「新活動開放報名」、帶隊老師收到指派通知', async () => {
     const f = await setup();
@@ -90,6 +94,68 @@ describe('新增活動通知', () => {
   it('已結束的活動不發任何自動通知', async () => {
     const f = await setup();
     await createActivity(input(f.category.id, [f.t1.id], { startDate: PAST, endDate: PAST }), { notifyStudents: true });
+    expect(await prisma.notification.count()).toBe(0);
+  });
+});
+
+describe('編輯活動通知', () => {
+  it('老師名單增減：新增者收指派、被移除者收取消指派；沒勾通知時學生收不到', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    await updateActivity(a.id, input(f.category.id, [f.t2.id]));
+    const range = formatActivityDateRange(FUTURE, FUTURE);
+    expect(await inbox(f.users.t2)).toEqual([{ title: '活動帶隊指派', body: `你被指派帶領「冬令營」，${range}`, url: T_URL }]);
+    expect(await inbox(f.users.t1)).toEqual([{ title: '活動帶隊取消指派', body: `你已不再帶領「冬令營」，${range}`, url: T_URL }]);
+    expect(await inbox(f.users.s1)).toEqual([]);
+  });
+
+  it('勾選通知＋日期與地點都改：已報名學生與留任老師收到變更內容，新加入老師只收指派', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    const newStart = new Date(Date.UTC(2099, 0, 20));
+    const newEnd = new Date(Date.UTC(2099, 0, 22));
+    await updateActivity(
+      a.id,
+      input(f.category.id, [f.t1.id, f.t2.id], { startDate: newStart, endDate: newEnd, location: '大禮堂' }),
+      { notifyRegistered: true }
+    );
+    const newRange = formatActivityDateRange(newStart, newEnd);
+    const body = `「冬令營」日期改為 ${newRange}；地點改為 大禮堂`;
+    expect(await inbox(f.users.s1)).toEqual([{ title: '活動資訊更新', body, url: S_URL }]);
+    expect(await inbox(f.users.t1)).toEqual([{ title: '活動資訊更新', body, url: T_URL }]);
+    expect(await inbox(f.users.t2)).toEqual([{ title: '活動帶隊指派', body: `你被指派帶領「冬令營」，${newRange}`, url: T_URL }]);
+    expect(await inbox(f.users.s2)).toEqual([]);
+  });
+
+  it('勾選通知＋只改名稱：寫出原名稱與「活動資訊已更新」', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    await updateActivity(a.id, input(f.category.id, [f.t1.id], { title: '冬季營隊' }), { notifyRegistered: true });
+    expect(await inbox(f.users.s1)).toEqual([
+      { title: '活動資訊更新', body: '「冬季營隊」（原「冬令營」）活動資訊已更新，點擊查看', url: S_URL },
+    ]);
+  });
+
+  it('勾選通知＋清空地點：寫「地點改為未定」', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    await updateActivity(a.id, input(f.category.id, [f.t1.id], { location: undefined }), { notifyRegistered: true });
+    expect(await inbox(f.users.s1)).toEqual([{ title: '活動資訊更新', body: '「冬令營」地點改為未定', url: S_URL }]);
+  });
+
+  it('已結束的活動：老師增減與勾選通知都不發', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id], { startDate: PAST, endDate: PAST }));
+    await registerForActivity(a.id, f.s1.id);
+    await updateActivity(a.id, input(f.category.id, [f.t2.id], { startDate: PAST, endDate: PAST }), { notifyRegistered: true });
     expect(await prisma.notification.count()).toBe(0);
   });
 });

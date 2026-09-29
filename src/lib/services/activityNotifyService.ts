@@ -92,3 +92,45 @@ export async function notifyActivityCreated(s: ActivitySnapshot, options: { noti
     url: STUDENT_ACTIVITY_URL,
   });
 }
+
+// 編輯後的「活動資訊更新」內容：只寫出日期／地點的變動；名稱改了就附上原名稱
+function buildUpdateBody(before: ActivitySnapshot, after: ActivitySnapshot): string {
+  const name = before.title !== after.title ? `「${after.title}」（原「${before.title}」）` : `「${after.title}」`;
+  const changes: string[] = [];
+  if (
+    before.startDate.getTime() !== after.startDate.getTime() ||
+    before.endDate.getTime() !== after.endDate.getTime()
+  ) {
+    changes.push(`日期改為 ${dateRange(after)}`);
+  }
+  if ((before.location ?? '') !== (after.location ?? '')) {
+    changes.push(after.location ? `地點改為 ${after.location}` : '地點改為未定');
+  }
+  return changes.length > 0 ? `${name}${changes.join('；')}` : `${name}活動資訊已更新，點擊查看`;
+}
+
+// 老師增減一律自動通知；「活動資訊更新」只在行政勾選時發給已報名學生＋留任老師
+// （新加入的老師只收指派通知、被移除的只收取消指派，不重複）
+export async function notifyActivityChanges(
+  before: ActivitySnapshot,
+  after: ActivitySnapshot,
+  options: { notifyRegistered: boolean }
+): Promise<void> {
+  if (isEnded(after)) return;
+  const beforeIds = new Set(before.teachers.map((t) => t.teacherId));
+  const afterIds = new Set(after.teachers.map((t) => t.teacherId));
+  const added = after.teachers.filter((t) => !beforeIds.has(t.teacherId)).map((t) => t.userId);
+  const removed = before.teachers.filter((t) => !afterIds.has(t.teacherId)).map((t) => t.userId);
+  const retained = after.teachers.filter((t) => beforeIds.has(t.teacherId)).map((t) => t.userId);
+
+  await notifyTeachersAssigned(after, added);
+  await notifyUsers(removed, {
+    title: '活動帶隊取消指派',
+    body: `你已不再帶領「${after.title}」，${dateRange(after)}`,
+    url: TEACHER_ACTIVITY_URL,
+  });
+  if (!options.notifyRegistered) return;
+  const body = buildUpdateBody(before, after);
+  await notifyUsers(after.studentUserIds, { title: '活動資訊更新', body, url: STUDENT_ACTIVITY_URL });
+  await notifyUsers(retained, { title: '活動資訊更新', body, url: TEACHER_ACTIVITY_URL });
+}
