@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db';
 import { notifyUsers } from './notificationService';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
 import { isBeforeToday } from '@/lib/pastDate';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
+import { taipeiDateKey } from '@/lib/taipeiDate';
 
 export const STUDENT_ACTIVITY_URL = '/student/activities';
 export const TEACHER_ACTIVITY_URL = '/teacher/activities';
@@ -176,4 +178,34 @@ export async function notifyAdminRemoved(s: ActivitySnapshot, studentUserId: str
     body: `行政已取消你「${s.title}」的報名，原訂 ${dateRange(s)}`,
     url: STUDENT_ACTIVITY_URL,
   });
+}
+
+// 行前提醒：活動「第一天」＝台北明天才提醒——天然只發一次、不需旗標
+// （比照補課前一天提醒：cron 當天沒跑就永久跳過，spec 接受）
+export async function sendActivityDayBeforeReminders(
+  now: Date = new Date()
+): Promise<{ activities: number; notified: number }> {
+  const [y, m, d] = taipeiDateKey(now).split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(y, m - 1, d + 1));
+  const activities = await prisma.activity.findMany({ where: { startDate: tomorrow }, select: { id: true } });
+  let notified = 0;
+  for (const { id } of activities) {
+    const s = await getActivitySnapshot(id);
+    if (!s) continue;
+    const start = formatDateWithWeekday(s.startDate);
+    const loc = locationSuffix(s);
+    const multiDay = s.startDate.getTime() !== s.endDate.getTime();
+    const studentBody = multiDay
+      ? `「${s.title}」明天 ${start} 開始，至 ${formatDateWithWeekday(s.endDate)}${loc}`
+      : `明天 ${start} 是「${s.title}」${loc}，記得準時參加`;
+    await notifyUsers(s.studentUserIds, { title: '活動行前提醒', body: studentBody, url: STUDENT_ACTIVITY_URL });
+    const teacherUserIds = s.teachers.map((t) => t.userId);
+    await notifyUsers(teacherUserIds, {
+      title: '活動行前提醒',
+      body: `明天 ${start} 帶領「${s.title}」，目前報名 ${s.studentUserIds.length} 人${loc}`,
+      url: TEACHER_ACTIVITY_URL,
+    });
+    notified += s.studentUserIds.length + teacherUserIds.length;
+  }
+  return { activities: activities.length, notified };
 }

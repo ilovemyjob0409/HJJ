@@ -35,5 +35,6 @@ describe('GET /api/cron/daily-reminders', () => {
     expect(data.makeupDayBefore).toEqual({ notified: 0 });
     expect(data.makeupNotFiled).toEqual({ notified: 0 });
     expect(data.pendingMakeupDigest).toEqual({ notified: false });
+    expect(data.activityDayBefore).toEqual({ activities: 0, notified: 0 });
   });
 });

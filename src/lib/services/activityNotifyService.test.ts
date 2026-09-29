@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { formatActivityDateRange } from '@/lib/activityDateRange';
+import { formatDateWithWeekday } from '@/lib/dateFormat';
 
 vi.mock('@/lib/storage', () => ({
   uploadActivityImage: vi.fn(),
@@ -22,7 +23,7 @@ import {
   adminRegisterStudent,
   adminRemoveRegistration,
 } from './activityService';
-import { getActivitySnapshotSafe } from './activityNotifyService';
+import { getActivitySnapshotSafe, sendActivityDayBeforeReminders } from './activityNotifyService';
 
 // 2099 一定是「未來」、2020 一定「已結束」——測試結果不受執行日期影響
 const FUTURE = new Date(Date.UTC(2099, 0, 10));
@@ -259,5 +260,75 @@ describe('刪除活動與行政代報名／移除通知', () => {
     const reg = await adminRegisterStudent(a.id, f.s1.id);
     await adminRemoveRegistration(reg.id);
     expect(await prisma.notification.count()).toBe(0);
+  });
+});
+
+describe('sendActivityDayBeforeReminders', () => {
+  // 台北 2026-10-01 10:00 → 「明天」＝ 10/2
+  const NOW = new Date('2026-10-01T02:00:00Z');
+  const oct = (day: number) => new Date(Date.UTC(2026, 9, day));
+
+  it('單日活動：已報名學生與帶隊老師收到行前提醒', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id], { startDate: oct(2), endDate: oct(2) }));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    expect(await sendActivityDayBeforeReminders(NOW)).toEqual({ activities: 1, notified: 2 });
+    const start = formatDateWithWeekday(oct(2));
+    expect(await inbox(f.users.s1)).toEqual([
+      { title: '活動行前提醒', body: `明天 ${start} 是「冬令營」，地點：活動中心，記得準時參加`, url: S_URL },
+    ]);
+    expect(await inbox(f.users.t1)).toEqual([
+      { title: '活動行前提醒', body: `明天 ${start} 帶領「冬令營」，目前報名 1 人，地點：活動中心`, url: T_URL },
+    ]);
+    expect(await inbox(f.users.s2)).toEqual([]);
+  });
+
+  it('多日活動：學生文案寫「明天開始，至結束日」；沒地點不帶地點字樣', async () => {
+    const f = await setup();
+    const a = await createActivity(
+      input(f.category.id, [f.t1.id], { startDate: oct(2), endDate: oct(4), location: undefined })
+    );
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    await sendActivityDayBeforeReminders(NOW);
+    expect(await inbox(f.users.s1)).toEqual([
+      {
+        title: '活動行前提醒',
+        body: `「冬令營」明天 ${formatDateWithWeekday(oct(2))} 開始，至 ${formatDateWithWeekday(oct(4))}`,
+        url: S_URL,
+      },
+    ]);
+  });
+
+  it('沒人報名時老師仍收到（目前報名 0 人）', async () => {
+    const f = await setup();
+    await createActivity(input(f.category.id, [f.t1.id], { startDate: oct(2), endDate: oct(2), location: undefined }));
+    await clearInbox();
+    expect(await sendActivityDayBeforeReminders(NOW)).toEqual({ activities: 1, notified: 1 });
+    expect(await inbox(f.users.t1)).toEqual([
+      { title: '活動行前提醒', body: `明天 ${formatDateWithWeekday(oct(2))} 帶領「冬令營」，目前報名 0 人`, url: T_URL },
+    ]);
+  });
+
+  it('只看第一天：今天開始、明天仍在進行的活動不提醒', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id], { startDate: oct(1), endDate: oct(3) }));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    expect(await sendActivityDayBeforeReminders(NOW)).toEqual({ activities: 0, notified: 0 });
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('「明天」以台北日期計算：UTC 還是 9/30、台北已是 10/1 凌晨時，明天＝10/2', async () => {
+    const f = await setup();
+    await createActivity(input(f.category.id, [f.t1.id], { title: '明天的', startDate: oct(2), endDate: oct(2) }));
+    await createActivity(input(f.category.id, [f.t1.id], { title: '今天的', startDate: oct(1), endDate: oct(1) }));
+    await clearInbox();
+    const result = await sendActivityDayBeforeReminders(new Date('2026-09-30T17:00:00Z'));
+    expect(result.activities).toBe(1);
+    const bodies = (await inbox(f.users.t1)).map((n) => n.body);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toContain('「明天的」');
   });
 });
