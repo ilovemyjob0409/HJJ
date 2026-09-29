@@ -12,6 +12,7 @@ vi.mock('@/lib/storage', () => ({
 }));
 
 import { createActivity, createCategory, CreateActivityInput, registerForActivity, updateActivity } from './activityService';
+import { getActivitySnapshotSafe } from './activityNotifyService';
 
 // 2099 一定是「未來」、2020 一定「已結束」——測試結果不受執行日期影響
 const FUTURE = new Date(Date.UTC(2099, 0, 10));
@@ -157,5 +158,18 @@ describe('編輯活動通知', () => {
     await registerForActivity(a.id, f.s1.id);
     await updateActivity(a.id, input(f.category.id, [f.t2.id], { startDate: PAST, endDate: PAST }), { notifyRegistered: true });
     expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('getActivitySnapshotSafe 快照失敗時記 log 並回傳 null', async () => {
+    const spyFindUnique = vi.spyOn(prisma.activity, 'findUnique').mockRejectedValueOnce(new Error('boom'));
+    const spyError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await getActivitySnapshotSafe('x', 'updated');
+    expect(result).toBeNull();
+    expect(spyError).toHaveBeenCalledWith(
+      expect.stringContaining('activity notify (updated) snapshot failed'),
+      expect.any(Error)
+    );
+    spyFindUnique.mockRestore();
+    spyError.mockRestore();
   });
 });

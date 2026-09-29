@@ -4,7 +4,7 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { createSignedThumbUrls, deleteActivityImages } from '@/lib/storage';
 import { isBeforeToday } from '@/lib/pastDate';
 import { taipeiDateKey } from './tutoringBookingService';
-import { getActivitySnapshot, notifyActivityChanges, notifyActivityCreated, safeNotify } from './activityNotifyService';
+import { getActivitySnapshot, getActivitySnapshotSafe, notifyActivityChanges, notifyActivityCreated, safeNotify } from './activityNotifyService';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -108,7 +108,7 @@ export interface UpdateActivityOptions {
 // history, so the delete-and-recreate inside one transaction is safe.
 export async function updateActivity(id: string, input: CreateActivityInput, options: UpdateActivityOptions = {}) {
   // 更新前抓快照，事後比對老師增減與日期／地點變動
-  const before = await getActivitySnapshot(id).catch(() => null);
+  const before = await getActivitySnapshotSafe(id, 'updated');
   const updated = await prisma.$transaction(async (tx) => {
     await tx.activityTeacher.deleteMany({ where: { activityId: id } });
     return tx.activity.update({

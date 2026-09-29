@@ -57,6 +57,16 @@ export async function safeNotify(label: string, task: () => Promise<void>): Prom
   }
 }
 
+// 寫入「前」的快照也是 best-effort：抓不到就不發通知，但要留 log（不得默默吞掉）
+export async function getActivitySnapshotSafe(activityId: string, label: string): Promise<ActivitySnapshot | null> {
+  try {
+    return await getActivitySnapshot(activityId);
+  } catch (err) {
+    console.error(`activity notify (${label}) snapshot failed`, err);
+    return null;
+  }
+}
+
 // 已結束的活動不發自動通知（行政補登舊資料時不打擾人）；手動推播不受此限
 function isEnded(s: ActivitySnapshot): boolean {
   return isBeforeToday(s.endDate);
