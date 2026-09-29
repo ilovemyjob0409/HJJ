@@ -4,6 +4,9 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { createActivity, listAllActivities, listActivitiesForTeacher, listOpenActivitiesForStudent } from '@/lib/services/activityService';
 
+// 勾選「發布後通知全體學生」時要逐筆推播，給足背景推播時間（比照 admin/billing/notify）
+export const maxDuration = 60;
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -30,15 +33,18 @@ export async function POST(req: NextRequest) {
   if (teacherIds.length === 0) {
     return NextResponse.json({ error: 'TEACHER_REQUIRED' }, { status: 400 });
   }
-  const created = await createActivity({
-    title: body.title,
-    description: body.description,
-    categoryId: body.categoryId,
-    location: body.location || undefined,
-    startDate: new Date(body.startDate),
-    endDate: new Date(body.endDate),
-    capacity: Number(body.capacity),
-    teacherIds,
-  });
+  const created = await createActivity(
+    {
+      title: body.title,
+      description: body.description,
+      categoryId: body.categoryId,
+      location: body.location || undefined,
+      startDate: new Date(body.startDate),
+      endDate: new Date(body.endDate),
+      capacity: Number(body.capacity),
+      teacherIds,
+    },
+    { notifyStudents: body.notifyStudents === true }
+  );
   return NextResponse.json(created, { status: 201 });
 }

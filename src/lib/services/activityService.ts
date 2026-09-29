@@ -4,6 +4,7 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { createSignedThumbUrls, deleteActivityImages } from '@/lib/storage';
 import { isBeforeToday } from '@/lib/pastDate';
 import { taipeiDateKey } from './tutoringBookingService';
+import { getActivitySnapshot, notifyActivityCreated, safeNotify } from './activityNotifyService';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -73,8 +74,13 @@ export interface CreateActivityInput {
   teacherIds: string[];
 }
 
-export function createActivity(input: CreateActivityInput) {
-  return prisma.activity.create({
+export interface CreateActivityOptions {
+  // 發布後通知全體學生（後台新增表單的勾選框，前端預設勾）
+  notifyStudents?: boolean;
+}
+
+export async function createActivity(input: CreateActivityInput, options: CreateActivityOptions = {}) {
+  const created = await prisma.activity.create({
     data: {
       title: input.title,
       description: input.description,
@@ -86,6 +92,11 @@ export function createActivity(input: CreateActivityInput) {
       teachers: { create: input.teacherIds.map((teacherId) => ({ teacherId })) },
     },
   });
+  await safeNotify('created', async () => {
+    const snapshot = await getActivitySnapshot(created.id);
+    if (snapshot) await notifyActivityCreated(snapshot, { notifyStudents: options.notifyStudents ?? false });
+  });
+  return created;
 }
 
 // Replaces the teacher list wholesale — assignments are current state, not
