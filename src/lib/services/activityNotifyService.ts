@@ -76,6 +76,10 @@ function dateRange(s: ActivitySnapshot): string {
   return formatActivityDateRange(s.startDate, s.endDate);
 }
 
+function locationSuffix(s: ActivitySnapshot): string {
+  return s.location ? `，地點：${s.location}` : '';
+}
+
 async function allStudentUserIds(): Promise<string[]> {
   const users = await prisma.user.findMany({ where: { role: 'STUDENT' }, select: { id: true } });
   return users.map((u) => u.id);
@@ -143,4 +147,33 @@ export async function notifyActivityChanges(
   const body = buildUpdateBody(before, after);
   await notifyUsers(after.studentUserIds, { title: '活動資訊更新', body, url: STUDENT_ACTIVITY_URL });
   await notifyUsers(retained, { title: '活動資訊更新', body, url: TEACHER_ACTIVITY_URL });
+}
+
+// s 是刪除「前」抓的快照：刪完就查不到報名學生與帶隊老師了
+export async function notifyActivityCancelled(s: ActivitySnapshot): Promise<void> {
+  if (isEnded(s)) return;
+  const body = `「${s.title}」已取消，原訂 ${dateRange(s)}`;
+  await notifyUsers(s.studentUserIds, { title: '活動取消', body, url: STUDENT_ACTIVITY_URL });
+  await notifyUsers(
+    s.teachers.map((t) => t.userId),
+    { title: '活動取消', body, url: TEACHER_ACTIVITY_URL }
+  );
+}
+
+export async function notifyAdminRegistered(s: ActivitySnapshot, studentUserId: string): Promise<void> {
+  if (isEnded(s)) return;
+  await notifyUsers([studentUserId], {
+    title: '活動報名成功',
+    body: `行政已幫你報名「${s.title}」，${dateRange(s)}${locationSuffix(s)}`,
+    url: STUDENT_ACTIVITY_URL,
+  });
+}
+
+export async function notifyAdminRemoved(s: ActivitySnapshot, studentUserId: string): Promise<void> {
+  if (isEnded(s)) return;
+  await notifyUsers([studentUserId], {
+    title: '活動報名已取消',
+    body: `行政已取消你「${s.title}」的報名，原訂 ${dateRange(s)}`,
+    url: STUDENT_ACTIVITY_URL,
+  });
 }

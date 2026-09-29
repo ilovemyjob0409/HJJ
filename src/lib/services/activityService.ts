@@ -4,7 +4,16 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { createSignedThumbUrls, deleteActivityImages } from '@/lib/storage';
 import { isBeforeToday } from '@/lib/pastDate';
 import { taipeiDateKey } from './tutoringBookingService';
-import { getActivitySnapshot, getActivitySnapshotSafe, notifyActivityChanges, notifyActivityCreated, safeNotify } from './activityNotifyService';
+import {
+  getActivitySnapshot,
+  getActivitySnapshotSafe,
+  notifyActivityCancelled,
+  notifyActivityChanges,
+  notifyActivityCreated,
+  notifyAdminRegistered,
+  notifyAdminRemoved,
+  safeNotify,
+} from './activityNotifyService';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -188,7 +197,17 @@ export async function cancelRegistration(id: string, studentId: string) {
 }
 
 export async function adminRemoveRegistration(id: string) {
+  // 刪除前先記下活動與學生，刪完才能通知
+  const registration = await prisma.activityRegistration.findUnique({
+    where: { id },
+    select: { activityId: true, student: { select: { userId: true } } },
+  });
   await prisma.activityRegistration.delete({ where: { id } });
+  if (!registration) return;
+  await safeNotify('adminRemoved', async () => {
+    const snapshot = await getActivitySnapshot(registration.activityId);
+    if (snapshot) await notifyAdminRemoved(snapshot, registration.student.userId);
+  });
 }
 
 // 行政代報名：不受名額限制（現場判斷權在行政，比照弈廳代報慣例）；
@@ -196,12 +215,18 @@ export async function adminRemoveRegistration(id: string) {
 export async function adminRegisterStudent(activityId: string, studentId: string) {
   const activity = await prisma.activity.findUnique({ where: { id: activityId } });
   if (!activity) throw new Error('NOT_FOUND');
-  try {
-    return await prisma.activityRegistration.create({ data: { activityId, studentId } });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new Error('ALREADY_REGISTERED');
-    throw err;
-  }
+  const registration = await prisma.activityRegistration
+    .create({ data: { activityId, studentId } })
+    .catch((err: unknown) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new Error('ALREADY_REGISTERED');
+      throw err;
+    });
+  await safeNotify('adminRegistered', async () => {
+    const snapshot = await getActivitySnapshot(activityId);
+    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { userId: true } });
+    if (snapshot && student) await notifyAdminRegistered(snapshot, student.userId);
+  });
+  return registration;
 }
 
 // Blocks deletion when the activity has attendance history — that's a
@@ -212,6 +237,8 @@ export async function deleteActivity(id: string) {
   if (attendanceCount > 0) {
     throw new Error('ACTIVITY_HAS_ATTENDANCE');
   }
+  // 刪除前抓快照：刪完就查不到報名學生與帶隊老師，無法通知
+  const snapshot = await getActivitySnapshotSafe(id, 'cancelled');
   const images = await prisma.activityImage.findMany({ where: { activityId: id }, select: { storagePath: true } });
   await prisma.$transaction([
     prisma.activityImage.deleteMany({ where: { activityId: id } }),
@@ -222,6 +249,7 @@ export async function deleteActivity(id: string) {
   try {
     await deleteActivityImages(images.map((i) => i.storagePath));
   } catch {}
+  if (snapshot) await safeNotify('cancelled', () => notifyActivityCancelled(snapshot));
 }
 
 export async function listRegistrationsForStudent(studentId: string) {

@@ -11,7 +11,17 @@ vi.mock('@/lib/storage', () => ({
   deleteActivityImages: vi.fn(async () => {}),
 }));
 
-import { createActivity, createCategory, CreateActivityInput, registerForActivity, updateActivity } from './activityService';
+import {
+  createActivity,
+  createCategory,
+  CreateActivityInput,
+  registerForActivity,
+  cancelRegistration,
+  updateActivity,
+  deleteActivity,
+  adminRegisterStudent,
+  adminRemoveRegistration,
+} from './activityService';
 import { getActivitySnapshotSafe } from './activityNotifyService';
 
 // 2099 一定是「未來」、2020 一定「已結束」——測試結果不受執行日期影響
@@ -171,5 +181,83 @@ describe('編輯活動通知', () => {
     );
     spyFindUnique.mockRestore();
     spyError.mockRestore();
+  });
+});
+
+describe('刪除活動與行政代報名／移除通知', () => {
+  it('刪除未結束活動：已報名學生與帶隊老師收到「活動取消」', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    await deleteActivity(a.id);
+    const body = `「冬令營」已取消，原訂 ${formatActivityDateRange(FUTURE, FUTURE)}`;
+    expect(await inbox(f.users.s1)).toEqual([{ title: '活動取消', body, url: S_URL }]);
+    expect(await inbox(f.users.t1)).toEqual([{ title: '活動取消', body, url: T_URL }]);
+    expect(await inbox(f.users.s2)).toEqual([]);
+  });
+
+  it('刪除已結束活動不發通知', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id], { startDate: PAST, endDate: PAST }));
+    await registerForActivity(a.id, f.s1.id);
+    await deleteActivity(a.id);
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('行政代報名：學生收到「活動報名成功」含地點', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await clearInbox();
+    await adminRegisterStudent(a.id, f.s1.id);
+    expect(await inbox(f.users.s1)).toEqual([
+      {
+        title: '活動報名成功',
+        body: `行政已幫你報名「冬令營」，${formatActivityDateRange(FUTURE, FUTURE)}，地點：活動中心`,
+        url: S_URL,
+      },
+    ]);
+  });
+
+  it('行政代報名：活動沒有地點時不帶地點字樣', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id], { location: undefined }));
+    await clearInbox();
+    await adminRegisterStudent(a.id, f.s1.id);
+    expect(await inbox(f.users.s1)).toEqual([
+      { title: '活動報名成功', body: `行政已幫你報名「冬令營」，${formatActivityDateRange(FUTURE, FUTURE)}`, url: S_URL },
+    ]);
+  });
+
+  it('行政移除報名：學生收到「活動報名已取消」', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    const reg = await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    await adminRemoveRegistration(reg.id);
+    expect(await inbox(f.users.s1)).toEqual([
+      {
+        title: '活動報名已取消',
+        body: `行政已取消你「冬令營」的報名，原訂 ${formatActivityDateRange(FUTURE, FUTURE)}`,
+        url: S_URL,
+      },
+    ]);
+  });
+
+  it('學生自己報名／取消不發任何通知', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await clearInbox();
+    const reg = await registerForActivity(a.id, f.s1.id);
+    await cancelRegistration(reg.id, f.s1.id);
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('已結束活動的代報名／移除不發通知', async () => {
+    const f = await setup();
+    const a = await createActivity(input(f.category.id, [f.t1.id], { startDate: PAST, endDate: PAST }));
+    const reg = await adminRegisterStudent(a.id, f.s1.id);
+    await adminRemoveRegistration(reg.id);
+    expect(await prisma.notification.count()).toBe(0);
   });
 });
