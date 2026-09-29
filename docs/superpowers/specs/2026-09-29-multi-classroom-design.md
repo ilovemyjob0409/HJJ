@@ -28,7 +28,7 @@
 ## 資料結構
 
 - 新增 `Classroom` 與 `PlatformAdmin` 兩張表。
-- 現有 47 個 model 全部加上 `classroomId`，不可為 null，並建外鍵與索引。
+- 現有 48 個 model 全部加上 `classroomId`，不可為 null，並建外鍵與索引。
   - 附屬表也要加，例如 `BillPayment`、`ClassAttendance`、`PointTransaction`。這樣過濾器可以對每一張表套同一套規則，不必靠上層資料間接推斷。
   - 常用查詢的複合索引以 `classroomId` 開頭。
 - 以下「全系統唯一」改成「教室內唯一」：
@@ -46,23 +46,37 @@
 - **國定假日**：每日同步改成逐間教室寫入。各教室刪除某個假日，只影響自己。
 - **Supabase Storage**：活動照片的路徑前綴加上 `classroomId/`。
 
-## 隔離機制（統一過濾器）
+## 隔離機制（統一過濾器＋複合外鍵）
 
-- **請求情境**：用 AsyncLocalStorage 保存「目前教室 ID」。
-  - 現有每個 API route 開頭都會呼叫授權檢查（`requireAdmin` 或 `getServerSession` 等）。這些檢查改成一組共用 guard，在驗證 session 之後把教室 ID 放進情境。
-  - Server component 頁面走同一組 guard。
-- **Prisma 擴充（`$extends`）**：對所有租戶 model 自動處理教室 ID。
-  - 讀取、更新、刪除、計數、彙總：自動加上 `where.classroomId = 目前教室`。
-  - 建立（含 `createMany`）：自動寫入 `classroomId`。
-  - `findUnique` 也加上 `classroomId` 條件（Prisma 7 支援在唯一查詢裡加非唯一欄位）。
-- **fail-closed**：租戶 model 的查詢若在沒有教室情境下執行，一律拋錯，不會回傳全部資料。
-- **明確的例外入口**：
-  - `withClassroom(id, fn)`：給排程或系統工作在指定教室下執行。
-  - `asPlatform(fn)`：給平台後台與登入流程做跨教室查詢，例如依代碼找教室、統計人數。
-  - 程式碼審查時要特別檢查這兩個入口的每一處使用。
-- **巢狀寫入**：因為 `classroomId` 不可為 null，巢狀 create 若漏帶教室 ID，會在型別或資料庫層失敗，由測試抓出，不會默默寫進錯的教室。
-- **原生 SQL**：3 處 `$executeRaw`，分別在 `billingBatchService`、`billEditService`、`classService`，不經過擴充，必須手動加上 `classroomId` 條件並加測試。`resetDb` 是測試工具，不受影響。
-- **互動式 transaction**：沿用擴充後的 client，tx 也會被過濾。實作時要以測試確認。
+兩道防線：統一過濾器負責「只能讀寫自己教室的資料」，複合外鍵負責「不能關聯到別間教室的資料」。兩者都已在 2026-09-29 用 Prisma 7.8 做過 spike 驗證。
+
+**解析「目前在哪間教室」**（`src/lib/tenant.ts`），依序：
+1. `withClassroom(id, fn)`／`asPlatform(fn)` 設下的明確範圍（AsyncLocalStorage）。排程、登入流程、平台後台用這個。
+2. 測試：每個測試前自動建立的預設教室。
+3. 正式執行：當次請求的 session（`next/headers` 讀 cookie → `getServerSession`），以 cookie 為 key 快取 60 秒。所以既有 131 支 API 與 server component 頁面都不用改，只要在請求裡查資料庫，就自動拿到登入者的教室。
+4. 都沒有 → 丟 `NO_CLASSROOM_CONTEXT`（fail-closed）。
+
+**Prisma 擴充（`$extends`）**：租戶 model（有 `classroomId` 的 model，執行時從 `Prisma.dmmf` 判斷）的
+- 讀取、更新、刪除、計數、彙總、`findUnique`：自動加 `where.classroomId`。
+- `create`、`createMany`：自動寫入 `classroomId`，並覆蓋呼叫端傳入的值。
+- `upsert`：`where` 和 `create` 都處理。
+- 平台範圍不過濾。
+- 不支援的操作一律拋錯。
+
+**DB 預設值**：`classroomId` 的 DB 預設值是 `current_setting('app.classroom_id')`。
+- 好處：Prisma 型別裡 create 不必帶 `classroomId`，既有程式不用改。
+- 巢狀 create 漏帶 `classroomId` 時，DB 會直接報錯（fail-closed）。
+- 一次性腳本和正式站搬遷可以用 `SET app.classroom_id` 或連線參數自動回填。
+
+**複合外鍵**：所有指向租戶 model 的關聯改成 `(classroomId, xId) → (classroomId, id)`，每個租戶 model 加 `@@unique([classroomId, id])`。A 教室的資料即使拿到 B 教室的 id，也無法建立關聯；資料庫直接回 P2003。
+- 唯一例外：`GoHallTicketTransaction.session`。它是 `onDelete: SetNull`，改成複合外鍵會把 classroomId 一起設成 null，所以維持單欄外鍵。
+- 一對一關聯：FK 欄位保留 `@unique`，另外加 `@@unique([classroomId, fk])`。
+
+**寫法規範**：
+- 租戶 model 的寫入一律寫純量 FK id，不用 `connect` 語法（spike 顯示 checked 寫法和自動注入的 `classroomId` 不相容；目前程式裡沒有任何 `connect`）。
+- 巢狀 create 要明確帶 `classroomId`。
+- 原生 SQL 不經過過濾器：3 處 `$executeRaw`（`billingBatchService`、`billEditService`、`classService`）要手動加上 `classroomId` 條件。`resetDb` 是測試工具，不受影響。
+- 延後執行的背景工作（`deferBestEffort`）要在呼叫當下先記住教室範圍，再在同一個範圍裡執行。
 
 ## 登入與權限
 
@@ -124,7 +138,7 @@
 
 | 階段 | 內容 | 可見改變 |
 |---|---|---|
-| 一、教室隔離 | Classroom 表、47 表加 `classroomId`、統一過濾器與 guard、登入改三欄、原生 SQL 修正、排程逐教室執行、Storage 路徑、正式站搬遷 SQL | 登入多一欄教室代碼 |
+| 一、教室隔離 | Classroom 表、48 表加 `classroomId`＋複合外鍵、統一過濾器、登入改三欄、原生 SQL 修正、排程逐教室執行、Storage 路徑、正式站搬遷 SQL | 登入多一欄教室代碼 |
 | 二、平台後台 | PlatformAdmin、`/platform` 登入與後台、停用機制 | 僅平台管理員可見 |
 | 三、模組與品牌 | 模組開關（選單、頁面、API、跨模組區塊、排程）、教室設定頁、教室 logo 與名稱、課表匯出品牌 | 行政可開關功能、左上角換成教室 logo |
 
@@ -143,7 +157,7 @@
 ## 測試
 
 1. **結構守門**：自動測試讀取 Prisma DMMF，斷言除了白名單（`Classroom`、`PlatformAdmin`）以外，每個 model 都有 `classroomId`。
-2. **跨教室隔離**：建立 A、B 兩間教室的資料，對各 API 群組驗證 A 的 session 讀不到、也改不到 B 的資料（列表、單筆、更新、刪除都要測）。
+2. **跨教室隔離**：建立 A、B 兩間教室的資料，驗證三件事：A 範圍對「每一張租戶表」都查不到 B 的列；用 B 的 id 查詢、更新、刪除都碰不到；不能建立指向 B 資料的關聯。另外要抽查 service 與 API 層。
 3. **fail-closed**：沒有教室情境時查詢租戶 model 必須拋錯。
 4. **現有測試全部通過**：測試 fixture 預設在一間教室的情境下執行。
 5. **登入**：代碼錯、帳號錯、密碼錯的訊息一致；教室停用；`?c=` 預填；跨教室同 email 各自登入。
