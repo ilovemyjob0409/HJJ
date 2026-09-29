@@ -95,13 +95,14 @@ describe('prize storage', () => {
     expect(prizeImagePublicUrl('p1/a.jpg')).toBeNull();
   });
 
-  it('prizeImageThumbUrl points at the render endpoint with width/quality', async () => {
+  // 只給 width 時 Supabase 會保留原高度、裁出窄長條（400×1000），必須連 height 一起給
+  it('prizeImageThumbUrl asks the render endpoint for a square cover crop', async () => {
     const { prizeImageThumbUrl } = await import('./storage');
     expect(prizeImageThumbUrl('p1/a.jpg')).toBe(
-      'https://example.supabase.co/storage/v1/render/image/public/prize-images/p1/a.jpg?width=800&quality=75'
+      'https://example.supabase.co/storage/v1/render/image/public/prize-images/p1/a.jpg?width=800&height=800&resize=cover&quality=75'
     );
     expect(prizeImageThumbUrl('p1/a.jpg', 'sm')).toBe(
-      'https://example.supabase.co/storage/v1/render/image/public/prize-images/p1/a.jpg?width=400&quality=75'
+      'https://example.supabase.co/storage/v1/render/image/public/prize-images/p1/a.jpg?width=400&height=400&resize=cover&quality=75'
     );
   });
 
@@ -111,7 +112,7 @@ describe('prize storage', () => {
     expect((await createSignedThumbUrls(['act1/a.jpg'])).get('act1/a.jpg')).toBe('https://signed-thumb/a');
     expect((await createSignedThumbUrls(['act1/a.jpg'])).get('act1/a.jpg')).toBe('https://signed-thumb/a');
     expect(createSignedUrlMock).toHaveBeenCalledTimes(1);
-    expect(createSignedUrlMock).toHaveBeenCalledWith('act1/a.jpg', 86_400, { transform: { width: 800, quality: 75 } });
+    expect(createSignedUrlMock).toHaveBeenCalledWith('act1/a.jpg', 86_400, { transform: { width: 800, quality: 75, resize: 'contain' } });
   });
 
   it('uploads set a long cacheControl (UUID paths never change content)', async () => {

@@ -96,11 +96,13 @@ export function prizeImagePublicUrl(path: string): string | null {
 }
 
 // 獎品縮圖：圖片變形端點即時縮圖。'md'（800px）給詳情大圖，'sm'（400px）給卡片/小圖。
+// 獎品圖在各端一律正方形顯示，直接請伺服器等比縮放後置中裁成正方形——
+// 只給 width 的話 Supabase 會保留原高度、裁出窄長條（400×1000），畫面變成放大的局部。
 // 變形按原圖張數計費，多一種尺寸不多收錢。
 export function prizeImageThumbUrl(path: string, size: 'sm' | 'md' = 'md'): string | null {
   if (!process.env.SUPABASE_URL) return null;
-  const width = size === 'sm' ? SMALL_THUMB_WIDTH : THUMB_WIDTH;
-  return `${process.env.SUPABASE_URL}/storage/v1/render/image/public/${PRIZE_BUCKET}/${path}?width=${width}&quality=${THUMB_QUALITY}`;
+  const edge = size === 'sm' ? SMALL_THUMB_WIDTH : THUMB_WIDTH;
+  return `${process.env.SUPABASE_URL}/storage/v1/render/image/public/${PRIZE_BUCKET}/${path}?width=${edge}&height=${edge}&resize=cover&quality=${THUMB_QUALITY}`;
 }
 
 // 私有活動圖縮圖：批次簽名 API 不支援 transform，逐張並行簽（有記憶化，
@@ -119,7 +121,8 @@ export async function createSignedThumbUrls(paths: string[]): Promise<Map<string
     missing.map(async (path) => {
       const { data, error } = await getClient()
         .storage.from(BUCKET)
-        .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, { transform: { width: THUMB_WIDTH, quality: THUMB_QUALITY } });
+        // resize: 'contain' 才會等比縮放；只給 width 會保留原高度裁出窄長條
+        .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, { transform: { width: THUMB_WIDTH, quality: THUMB_QUALITY, resize: 'contain' } });
       if (error || !data?.signedUrl) return;
       result.set(path, data.signedUrl);
       signedUrlCache.set(`thumb:${BUCKET}/${path}`, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000 });

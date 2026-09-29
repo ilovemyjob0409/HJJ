@@ -10,16 +10,7 @@ import CollapsibleDataTable from '@/components/ui/CollapsibleDataTable';
 import { Column } from '@/components/ui/DataTable';
 import { useConfirm } from '@/components/ui/ConfirmModal';
 import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
-
-interface Prize {
-  id: string;
-  name: string;
-  points: number;
-  stock: number;
-  imageUrl: string | null;
-  thumbUrl: string | null;
-  alreadyRedeemed: boolean;
-}
+import PrizeCatalog, { type Prize } from './PrizeCatalog';
 
 interface Redemption {
   id: string;
@@ -158,78 +149,7 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
 
   return (
     <>
-      <h2 className="mb-2 font-bold text-ink">獎品目錄</h2>
-      <Card className="mb-6">
-        {prizes.length === 0 ? (
-          <p className="text-sm text-inkMuted">目前沒有可兌換的獎品</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {prizes.map((prize) => {
-              const shortBy = prize.points - total;
-              return (
-                // 整張卡可點開詳情；快速兌換鈕自行擋冒泡
-                // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
-                <div
-                  key={prize.id}
-                  className="relative flex cursor-pointer flex-col gap-2 rounded-lg border border-borderSubtle p-3 transition-shadow hover:shadow-md"
-                  onClick={() => setViewingPrize(prize)}
-                >
-                  {prize.alreadyRedeemed ? (
-                    <span className="absolute right-2 top-2 rounded-full bg-approvedBg px-2 py-0.5 text-xs font-bold text-approved">
-                      已兌換
-                    </span>
-                  ) : prize.stock === 0 ? (
-                    <span className="absolute right-2 top-2 rounded-full bg-rejectedBg px-2 py-0.5 text-xs font-bold text-rejected">
-                      已換完
-                    </span>
-                  ) : null}
-
-                  {prize.thumbUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-                    <img src={prize.thumbUrl}
-                  loading="lazy"
-                  decoding="async" alt={prize.name} className="h-24 w-full rounded object-cover" />
-                  ) : (
-                    <div className="flex h-24 w-full items-center justify-center rounded bg-stripe text-3xl" aria-hidden="true">
-                      🎁
-                    </div>
-                  )}
-
-                  <p className="truncate text-sm font-semibold text-ink" title={prize.name}>
-                    {prize.name}
-                  </p>
-                  <p className="text-sm font-bold text-brandDark">{prize.points} 點</p>
-
-                  {prize.alreadyRedeemed ? (
-                    <Button variant="secondary" disabled className="w-full">
-                      已兌換
-                    </Button>
-                  ) : prize.stock === 0 ? (
-                    <Button variant="secondary" disabled className="w-full">
-                      已換完
-                    </Button>
-                  ) : shortBy > 0 ? (
-                    <Button variant="secondary" disabled className="w-full">
-                      還差 {shortBy} 點
-                    </Button>
-                  ) : (
-                    <Button
-                      loading={redeemingId === prize.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRedeem(prize);
-                      }}
-                      className="w-full"
-                    >
-                      兌換
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
+      <PrizeCatalog prizes={prizes} total={total} redeemingId={redeemingId} onView={setViewingPrize} />
 
       <h2 className="mb-2 font-bold text-ink">我的兌換紀錄</h2>
       <Card className="mb-6">
