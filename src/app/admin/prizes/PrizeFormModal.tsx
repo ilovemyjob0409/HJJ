@@ -17,6 +17,7 @@ export interface PrizeRow {
   active: boolean;
   sortOrder: number;
   imageUrl: string | null;
+  thumbUrl: string | null;
 }
 
 interface ErrorInfo {
@@ -135,7 +136,7 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
     if (!file) return;
     setUploadingImage(true);
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressImage(file, 'prize');
       if (mode === 'create') {
         // 還沒有獎品 id：先留檔＋本地預覽，儲存時才上傳
         setPendingImage(compressed);
@@ -158,7 +159,7 @@ export default function PrizeFormModal({ open, mode, prize, onClose, onSaved, on
     }
   }
 
-  const previewUrl = localPreviewUrl ?? prize?.imageUrl ?? null;
+  const previewUrl = localPreviewUrl ?? prize?.thumbUrl ?? null;
 
   return (
     <>

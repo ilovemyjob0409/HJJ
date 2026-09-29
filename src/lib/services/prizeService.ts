@@ -159,6 +159,7 @@ export async function listPrizesForStudent(studentId: string) {
     points: p.points,
     stock: p.stock,
     imageUrl: p.imagePath ? prizeImageThumbUrl(p.imagePath) : null,
+    thumbUrl: p.imagePath ? prizeImageThumbUrl(p.imagePath, 'sm') : null,
     alreadyRedeemed: redeemed.has(p.id),
   }));
 }
@@ -173,6 +174,7 @@ export async function listPrizesForAdmin() {
     active: p.active,
     sortOrder: p.sortOrder,
     imageUrl: p.imagePath ? prizeImageThumbUrl(p.imagePath) : null,
+    thumbUrl: p.imagePath ? prizeImageThumbUrl(p.imagePath, 'sm') : null,
   }));
 }
 

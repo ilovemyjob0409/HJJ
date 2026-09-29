@@ -17,6 +17,7 @@ interface Prize {
   points: number;
   stock: number;
   imageUrl: string | null;
+  thumbUrl: string | null;
   alreadyRedeemed: boolean;
 }
 
@@ -183,9 +184,9 @@ export default function PrizeZone({ prizes, redemptions, total }: { prizes: Priz
                     </span>
                   ) : null}
 
-                  {prize.imageUrl ? (
+                  {prize.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- signed URL, short-lived
-                    <img src={prize.imageUrl}
+                    <img src={prize.thumbUrl}
                   loading="lazy"
                   decoding="async" alt={prize.name} className="h-24 w-full rounded object-cover" />
                   ) : (

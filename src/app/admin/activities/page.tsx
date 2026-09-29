@@ -123,7 +123,7 @@ export default function AdminActivitiesPage() {
     setCropQueue([]);
     for (const blob of blobs) {
       try {
-        const compressed = await compressImage(blob);
+        const compressed = await compressImage(blob, 'activity');
         setStagedPhotos((prev) => [...prev, { blob: compressed, previewUrl: URL.createObjectURL(compressed) }]);
       } catch {
         showToast('有照片壓縮失敗');

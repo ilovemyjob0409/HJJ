@@ -12,6 +12,8 @@ const SIGNED_URL_REFRESH_MARGIN_MS = 3_600_000;
 const UPLOAD_CACHE_CONTROL = '31536000';
 // 清單/卡片縮圖（Supabase 圖片變形，Pro 已開通）：CSS 寬 ≤400px、800 供 retina
 const THUMB_WIDTH = 800;
+// 小格縮圖（獎品卡片、後台 64px 小圖）：CSS 寬 ≤200px，體積約再砍一半
+const SMALL_THUMB_WIDTH = 400;
 const THUMB_QUALITY = 75;
 
 const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
@@ -93,10 +95,12 @@ export function prizeImagePublicUrl(path: string): string | null {
   return `${process.env.SUPABASE_URL}/storage/v1/object/public/${PRIZE_BUCKET}/${path}`;
 }
 
-// 獎品縮圖（清單/卡片用）：圖片變形端點即時縮到 800px，體積約砍 8 成。
-export function prizeImageThumbUrl(path: string): string | null {
+// 獎品縮圖：圖片變形端點即時縮圖。'md'（800px）給詳情大圖，'sm'（400px）給卡片/小圖。
+// 變形按原圖張數計費，多一種尺寸不多收錢。
+export function prizeImageThumbUrl(path: string, size: 'sm' | 'md' = 'md'): string | null {
   if (!process.env.SUPABASE_URL) return null;
-  return `${process.env.SUPABASE_URL}/storage/v1/render/image/public/${PRIZE_BUCKET}/${path}?width=${THUMB_WIDTH}&quality=${THUMB_QUALITY}`;
+  const width = size === 'sm' ? SMALL_THUMB_WIDTH : THUMB_WIDTH;
+  return `${process.env.SUPABASE_URL}/storage/v1/render/image/public/${PRIZE_BUCKET}/${path}?width=${width}&quality=${THUMB_QUALITY}`;
 }
 
 // 私有活動圖縮圖：批次簽名 API 不支援 transform，逐張並行簽（有記憶化，

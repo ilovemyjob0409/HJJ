@@ -100,6 +100,9 @@ describe('prize storage', () => {
     expect(prizeImageThumbUrl('p1/a.jpg')).toBe(
       'https://example.supabase.co/storage/v1/render/image/public/prize-images/p1/a.jpg?width=800&quality=75'
     );
+    expect(prizeImageThumbUrl('p1/a.jpg', 'sm')).toBe(
+      'https://example.supabase.co/storage/v1/render/image/public/prize-images/p1/a.jpg?width=400&quality=75'
+    );
   });
 
   it('createSignedThumbUrls signs per path with transform and memoizes', async () => {

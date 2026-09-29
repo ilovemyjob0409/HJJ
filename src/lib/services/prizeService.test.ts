@@ -205,6 +205,22 @@ describe('prize catalog', () => {
 
     expect((await listPrizesForAdmin()).map((r) => r.name).sort()).toEqual(['下架品', '恐龍模型']);
   });
+
+  it('both lists return an 800px imageUrl for detail views and a 400px thumbUrl for cards', async () => {
+    const original = process.env.SUPABASE_URL;
+    process.env.SUPABASE_URL = 'https://example.supabase.co';
+    try {
+      const { student, prize } = await setup();
+      await prisma.prize.update({ where: { id: prize.id }, data: { imagePath: 'p1/a.jpg' } });
+      for (const row of [(await listPrizesForStudent(student.id))[0], (await listPrizesForAdmin())[0]]) {
+        expect(row.imageUrl).toContain('width=800');
+        expect(row.thumbUrl).toContain('width=400');
+      }
+    } finally {
+      if (original === undefined) delete process.env.SUPABASE_URL;
+      else process.env.SUPABASE_URL = original;
+    }
+  });
 });
 
 describe('deletePrize', () => {
