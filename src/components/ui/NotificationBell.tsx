@@ -46,6 +46,7 @@ const ICON_KINDS: { match: string[]; stroke: string; bg: string; icon: string }[
   { match: ['點數', '集點'], stroke: '#FFBD5A', bg: 'rgba(255,189,90,0.16)', icon: 'star' },
   { match: ['堂數', '堂票', '額度'], stroke: '#E8A94A', bg: 'rgba(232,169,74,0.16)', icon: 'alert' },
   { match: ['補課', '請假', '缺課', '缺席'], stroke: '#F2994A', bg: 'rgba(242,153,74,0.16)', icon: 'calendar' },
+  { match: ['活動'], stroke: '#5fb8a8', bg: 'rgba(47,138,122,0.18)', icon: 'flag' },
 ];
 
 function notificationIcon(title: string): { stroke: string; bg: string; icon: string } {
@@ -96,6 +97,13 @@ function IconGlyph({ icon }: { icon: string }) {
           <line x1="16" y1="2" x2="16" y2="6" />
           <line x1="8" y1="2" x2="8" y2="6" />
           <line x1="3" y1="10" x2="21" y2="10" />
+        </>
+      );
+    case 'flag':
+      return (
+        <>
+          <path d="M4 22V4" />
+          <path d="M4 4h13l-2.5 4.5L17 13H4" />
         </>
       );
     default:
