@@ -107,6 +107,7 @@ model User {
   markedTutoringAttendances TutoringAttendance[]
   pushSubscriptions         PushSubscription[]
   notifications             Notification[]
+  activityAnnouncements     ActivityAnnouncement[]
 }
 
 model Teacher {
@@ -354,6 +355,7 @@ model Activity {
   images        ActivityImage[]
   createdAt     DateTime               @default(now())
   attendances   ActivityAttendance[]
+  announcements ActivityAnnouncement[]
 }
 
 model ActivityRegistration {
@@ -812,4 +814,25 @@ model PrizeRedemption {
 
   @@index([studentId])
   @@index([status])
+}
+
+enum ActivityAnnouncementAudience {
+  REGISTERED
+  ALL_STUDENTS
+}
+
+// 活動手動推播的發送紀錄（行政在詳情彈窗送出的訊息）
+model ActivityAnnouncement {
+  id              String                       @id @default(cuid())
+  activityId      String
+  activity        Activity                     @relation(fields: [activityId], references: [id])
+  senderId        String
+  sender          User                         @relation(fields: [senderId], references: [id])
+  audience        ActivityAnnouncementAudience
+  includeTeachers Boolean
+  message         String
+  recipientCount  Int
+  createdAt       DateTime                     @default(now())
+
+  @@index([activityId, createdAt])
 }

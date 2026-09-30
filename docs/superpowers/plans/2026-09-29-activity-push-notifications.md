@@ -593,7 +593,7 @@ function buildUpdateBody(before: ActivitySnapshot, after: ActivitySnapshot): str
     changes.push(`日期改為 ${dateRange(after)}`);
   }
   if ((before.location ?? '') !== (after.location ?? '')) {
-    changes.push(`地點改為 ${after.location || '未定'}`);
+    changes.push(after.location ? `地點改為 ${after.location}` : '地點改為未定');
   }
   return changes.length > 0 ? `${name}${changes.join('；')}` : `${name}活動資訊已更新，點擊查看`;
 }

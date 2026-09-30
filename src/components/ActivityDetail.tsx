@@ -39,6 +39,8 @@ interface ActivityDetailProps {
   rosterItemAction?: (r: ActivityDetailData['registrations'][number]) => ReactNode;
   // 報名名單標題右側的自訂控件（行政端放「幫學生報名」）
   rosterHeaderAction?: ReactNode;
+  // 報名名單下方的額外區塊（行政端放「通知紀錄」）
+  extraSection?: ReactNode;
   footer?: ReactNode;
 }
 
@@ -87,6 +89,7 @@ export default function ActivityDetail({
   onImagesChanged,
   rosterItemAction,
   rosterHeaderAction,
+  extraSection,
   footer,
 }: ActivityDetailProps) {
   type RosterRow = ActivityDetailData['registrations'][number];
@@ -339,6 +342,8 @@ export default function ActivityDetail({
             <DataTable columns={rosterColumns} rows={activity.registrations} keyField={(r) => r.id} />
           )}
         </div>
+
+        {extraSection}
 
         {!albumLoading && images.length === 0 && (
           <div>

@@ -11,10 +11,12 @@ import { useToast } from '@/components/ui/Toast';
 import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 import ActivityDetail from '@/components/ActivityDetail';
+import ActivityAnnouncements from '@/components/ActivityAnnouncements';
 import ActivityCardGrid from '@/components/ActivityCardGrid';
 import ActivityFormFields, { ActivityFormValues, EMPTY_ACTIVITY_FORM } from '@/components/ActivityFormFields';
 import ImageCropModal from '@/components/ImageCropModal';
 import { compressImage } from '@/lib/imageCompression';
+import { isBeforeToday } from '@/lib/pastDate';
 import { uploadCompressedImage } from '@/lib/uploadActivityImage';
 
 interface StagedPhoto {
@@ -77,6 +79,8 @@ export default function AdminActivitiesPage() {
   const [addingStudent, setAddingStudent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [notifyStudentsOnCreate, setNotifyStudentsOnCreate] = useState(true);
+  const [notifyRegisteredOnEdit, setNotifyRegisteredOnEdit] = useState(false);
   const [categorySubmitting, setCategorySubmitting] = useState(false);
   const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
   const [cropQueue, setCropQueue] = useState<File[]>([]);
@@ -149,7 +153,7 @@ export default function AdminActivitiesPage() {
       }
       const res = await fetch('/api/activities', {
         method: 'POST',
-        body: JSON.stringify({ ...form, capacity: Number(form.capacity) }),
+        body: JSON.stringify({ ...form, capacity: Number(form.capacity), notifyStudents: notifyStudentsOnCreate }),
       });
       if (!res.ok) {
         setFormError('新增活動失敗，請稍後再試');
@@ -163,6 +167,7 @@ export default function AdminActivitiesPage() {
       }
       clearStagedPhotos();
       setForm(EMPTY_ACTIVITY_FORM);
+      setNotifyStudentsOnCreate(true);
       setShowAddForm(false);
       showToast(failedPhotos === 0 ? '已新增活動' : `已新增活動，但有 ${failedPhotos} 張照片上傳失敗`);
       load();
@@ -183,6 +188,7 @@ export default function AdminActivitiesPage() {
       teacherIds: a.teachers.map((t) => t.teacherId),
     });
     setEditError('');
+    setNotifyRegisteredOnEdit(false);
     setViewing(null);
     setEditing(a);
   }
@@ -199,7 +205,7 @@ export default function AdminActivitiesPage() {
       }
       const res = await fetch(`/api/activities/${editing.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ ...editForm, capacity: Number(editForm.capacity) }),
+        body: JSON.stringify({ ...editForm, capacity: Number(editForm.capacity), notifyRegistered: notifyRegisteredOnEdit }),
       });
       if (!res.ok) {
         setEditError('更新活動失敗，請稍後再試');
@@ -244,10 +250,16 @@ export default function AdminActivitiesPage() {
 
   async function handleDeleteActivity() {
     if (!viewing) return;
-    const confirmMessage =
-      viewing.registrations.length > 0
-        ? `已有 ${viewing.registrations.length} 人報名，刪除將一併取消他們的報名，確定嗎？`
+    const registeredCount = viewing.registrations.length;
+    const baseMessage =
+      registeredCount > 0
+        ? `已有 ${registeredCount} 人報名，刪除將一併取消他們的報名，確定嗎？`
         : '確定要刪除此活動嗎？';
+    // 已結束的活動刪除時不發通知（與後端規則一致），就不提示
+    const confirmMessage =
+      registeredCount > 0 && !isBeforeToday(viewing.endDate)
+        ? `${baseMessage}\n將通知 ${registeredCount} 位已報名學生與帶隊老師。`
+        : baseMessage;
     if (!(await confirm(confirmMessage, { danger: true }))) return;
     const res = await fetch(`/api/activities/${viewing.id}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -379,6 +391,14 @@ export default function AdminActivitiesPage() {
                 </div>
               )}
             </div>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={notifyStudentsOnCreate}
+                onChange={(e) => setNotifyStudentsOnCreate(e.target.checked)}
+              />
+              發布後通知全體學生
+            </label>
             {formError && <p className="text-sm text-rejected">{formError}</p>}
             <Button type="submit" loading={submitting}>新增</Button>
           </form>
@@ -486,6 +506,14 @@ export default function AdminActivitiesPage() {
                 移除
               </Button>
             )}
+            extraSection={
+              <ActivityAnnouncements
+                activityId={viewing.id}
+                registeredCount={viewing.registrations.length}
+                teacherCount={viewing.teachers.length}
+                allStudentCount={allStudents.length}
+              />
+            }
             footer={
               <div className="flex items-center gap-4">
                 <Button variant="link" className="text-sm" onClick={() => openEdit(viewing)}>
@@ -503,6 +531,15 @@ export default function AdminActivitiesPage() {
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="編輯活動">
         <form onSubmit={handleEditSubmit} className="flex flex-col gap-2">
           <ActivityFormFields values={editForm} onChange={setEditForm} categories={categories} teachers={teachers} />
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={notifyRegisteredOnEdit}
+              onChange={(e) => setNotifyRegisteredOnEdit(e.target.checked)}
+            />
+            通知已報名學生與帶隊老師
+            <span className="text-xs text-inkMuted">（目前報名 {editing?.registrations.length ?? 0} 人）</span>
+          </label>
           {editError && <p className="text-sm text-rejected">{editError}</p>}
           <Button type="submit" loading={editSubmitting}>儲存</Button>
         </form>

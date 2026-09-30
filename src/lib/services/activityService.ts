@@ -4,6 +4,16 @@ import { runSerializableWithRetry } from '@/lib/transaction';
 import { createSignedThumbUrls, deleteActivityImages } from '@/lib/storage';
 import { isBeforeToday } from '@/lib/pastDate';
 import { taipeiDateKey } from './tutoringBookingService';
+import {
+  getActivitySnapshot,
+  getActivitySnapshotSafe,
+  notifyActivityCancelled,
+  notifyActivityChanges,
+  notifyActivityCreated,
+  notifyAdminRegistered,
+  notifyAdminRemoved,
+  safeNotify,
+} from './activityNotifyService';
 
 // Activity rosters are sent to STUDENT-role requesters (with names masked)
 // as well as ADMIN/TEACHER (real names) — email must not be selected here
@@ -73,8 +83,13 @@ export interface CreateActivityInput {
   teacherIds: string[];
 }
 
-export function createActivity(input: CreateActivityInput) {
-  return prisma.activity.create({
+export interface CreateActivityOptions {
+  // 發布後通知全體學生（後台新增表單的勾選框，前端預設勾）
+  notifyStudents?: boolean;
+}
+
+export async function createActivity(input: CreateActivityInput, options: CreateActivityOptions = {}) {
+  const created = await prisma.activity.create({
     data: {
       title: input.title,
       description: input.description,
@@ -86,12 +101,24 @@ export function createActivity(input: CreateActivityInput) {
       teachers: { create: input.teacherIds.map((teacherId) => ({ teacherId })) },
     },
   });
+  await safeNotify('created', async () => {
+    const snapshot = await getActivitySnapshot(created.id);
+    if (snapshot) await notifyActivityCreated(snapshot, { notifyStudents: options.notifyStudents ?? false });
+  });
+  return created;
+}
+
+export interface UpdateActivityOptions {
+  // 通知已報名學生與帶隊老師（後台編輯彈窗的勾選框，前端預設不勾）
+  notifyRegistered?: boolean;
 }
 
 // Replaces the teacher list wholesale — assignments are current state, not
 // history, so the delete-and-recreate inside one transaction is safe.
-export function updateActivity(id: string, input: CreateActivityInput) {
-  return prisma.$transaction(async (tx) => {
+export async function updateActivity(id: string, input: CreateActivityInput, options: UpdateActivityOptions = {}) {
+  // 更新前抓快照，事後比對老師增減與日期／地點變動
+  const before = await getActivitySnapshotSafe(id, 'updated');
+  const updated = await prisma.$transaction(async (tx) => {
     await tx.activityTeacher.deleteMany({ where: { activityId: id } });
     return tx.activity.update({
       where: { id },
@@ -107,6 +134,13 @@ export function updateActivity(id: string, input: CreateActivityInput) {
       },
     });
   });
+  await safeNotify('updated', async () => {
+    const after = await getActivitySnapshot(id);
+    if (before && after) {
+      await notifyActivityChanges(before, after, { notifyRegistered: options.notifyRegistered ?? false });
+    }
+  });
+  return updated;
 }
 
 export async function listAllActivities() {
@@ -163,7 +197,17 @@ export async function cancelRegistration(id: string, studentId: string) {
 }
 
 export async function adminRemoveRegistration(id: string) {
+  // 刪除前先記下活動與學生，刪完才能通知
+  const registration = await prisma.activityRegistration.findUnique({
+    where: { id },
+    select: { activityId: true, student: { select: { userId: true } } },
+  });
   await prisma.activityRegistration.delete({ where: { id } });
+  if (!registration) return;
+  await safeNotify('adminRemoved', async () => {
+    const snapshot = await getActivitySnapshot(registration.activityId);
+    if (snapshot) await notifyAdminRemoved(snapshot, registration.student.userId);
+  });
 }
 
 // 行政代報名：不受名額限制（現場判斷權在行政，比照弈廳代報慣例）；
@@ -171,32 +215,42 @@ export async function adminRemoveRegistration(id: string) {
 export async function adminRegisterStudent(activityId: string, studentId: string) {
   const activity = await prisma.activity.findUnique({ where: { id: activityId } });
   if (!activity) throw new Error('NOT_FOUND');
-  try {
-    return await prisma.activityRegistration.create({ data: { activityId, studentId } });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new Error('ALREADY_REGISTERED');
-    throw err;
-  }
+  const registration = await prisma.activityRegistration
+    .create({ data: { activityId, studentId } })
+    .catch((err: unknown) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new Error('ALREADY_REGISTERED');
+      throw err;
+    });
+  await safeNotify('adminRegistered', async () => {
+    const snapshot = await getActivitySnapshot(activityId);
+    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { userId: true } });
+    if (snapshot && student) await notifyAdminRegistered(snapshot, student.userId);
+  });
+  return registration;
 }
 
 // Blocks deletion when the activity has attendance history — that's a
-// record and must survive. Registrations/teacher assignments/images are
+// record and must survive. Registrations/teacher assignments/images/announcements are
 // current state, not history, so they're cleared as part of the delete.
 export async function deleteActivity(id: string) {
   const attendanceCount = await prisma.activityAttendance.count({ where: { activityId: id } });
   if (attendanceCount > 0) {
     throw new Error('ACTIVITY_HAS_ATTENDANCE');
   }
+  // 刪除前抓快照：刪完就查不到報名學生與帶隊老師，無法通知
+  const snapshot = await getActivitySnapshotSafe(id, 'cancelled');
   const images = await prisma.activityImage.findMany({ where: { activityId: id }, select: { storagePath: true } });
   await prisma.$transaction([
     prisma.activityImage.deleteMany({ where: { activityId: id } }),
     prisma.activityRegistration.deleteMany({ where: { activityId: id } }),
     prisma.activityTeacher.deleteMany({ where: { activityId: id } }),
+    prisma.activityAnnouncement.deleteMany({ where: { activityId: id } }),
     prisma.activity.delete({ where: { id } }),
   ]);
   try {
     await deleteActivityImages(images.map((i) => i.storagePath));
   } catch {}
+  if (snapshot) await safeNotify('cancelled', () => notifyActivityCancelled(snapshot));
 }
 
 export async function listRegistrationsForStudent(studentId: string) {
