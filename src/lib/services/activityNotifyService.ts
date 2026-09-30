@@ -84,8 +84,9 @@ function locationSuffix(s: ActivitySnapshot): string {
 }
 
 async function allStudentUserIds(): Promise<string[]> {
-  const users = await prisma.user.findMany({ where: { role: 'STUDENT' }, select: { id: true } });
-  return users.map((u) => u.id);
+  // 以 Student 資料表為準（與行政 UI 的「全體學生（M 人）」同一來源）；沒有 Student 資料的孤兒 STUDENT 帳號不算
+  const students = await prisma.student.findMany({ select: { userId: true } });
+  return students.map((st) => st.userId);
 }
 
 async function notifyTeachersAssigned(s: ActivitySnapshot, userIds: string[]): Promise<void> {
@@ -191,7 +192,8 @@ export async function sendActivityDayBeforeReminders(
   const activities = await prisma.activity.findMany({ where: { startDate: tomorrow }, select: { id: true } });
   let notified = 0;
   for (const { id } of activities) {
-    const s = await getActivitySnapshot(id);
+    // 單一活動讀取失敗只跳過它，不中斷其他活動的提醒
+    const s = await getActivitySnapshotSafe(id, 'dayBefore');
     if (!s) continue;
     const start = formatDateWithWeekday(s.startDate);
     const loc = locationSuffix(s);

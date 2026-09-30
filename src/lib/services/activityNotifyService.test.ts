@@ -108,6 +108,17 @@ describe('新增活動通知', () => {
     expect(await inbox(f.users.t2)).toHaveLength(1);
   });
 
+  it('「全體學生」以 Student 資料表為準：沒有 Student 資料的孤兒 STUDENT 帳號不收通知', async () => {
+    const f = await setup();
+    const orphan = await prisma.user.create({
+      data: { name: '孤兒', email: 'orphan@example.com', password: 'x', role: 'STUDENT' },
+    });
+    await createActivity(input(f.category.id, [f.t1.id]), { notifyStudents: true });
+    expect(await inbox(orphan.id)).toEqual([]);
+    expect(await inbox(f.users.s1)).toHaveLength(1);
+    expect(await inbox(f.users.s2)).toHaveLength(1);
+  });
+
   it('已結束的活動不發任何自動通知', async () => {
     const f = await setup();
     await createActivity(input(f.category.id, [f.t1.id], { startDate: PAST, endDate: PAST }), { notifyStudents: true });
@@ -314,6 +325,32 @@ describe('sendActivityDayBeforeReminders', () => {
     expect(await inbox(f.users.t1)).toEqual([
       { title: '活動行前提醒', body: `明天 ${formatDateWithWeekday(oct(2))} 帶領「冬令營」，目前報名 0 人`, url: T_URL },
     ]);
+  });
+
+  it('其中一個活動的快照讀取失敗：只跳過它，另一個活動照常提醒', async () => {
+    const f = await setup();
+    const a1 = await createActivity(
+      input(f.category.id, [f.t1.id], { title: '甲活動', startDate: oct(2), endDate: oct(2) })
+    );
+    const a2 = await createActivity(
+      input(f.category.id, [f.t2.id], { title: '乙活動', startDate: oct(2), endDate: oct(2) })
+    );
+    await registerForActivity(a1.id, f.s1.id);
+    await registerForActivity(a2.id, f.s2.id);
+    await clearInbox();
+    const spyFindUnique = vi.spyOn(prisma.activity, 'findUnique').mockRejectedValueOnce(new Error('boom'));
+    const spyError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = await sendActivityDayBeforeReminders(NOW);
+      expect(result.activities).toBe(2);
+      // 兩個活動裡恰好一個被跳過、一個收到（學生＋老師各一則）
+      expect(result.notified).toBe(2);
+      expect(await prisma.notification.count()).toBe(2);
+      expect(spyError).toHaveBeenCalled();
+    } finally {
+      spyFindUnique.mockRestore();
+      spyError.mockRestore();
+    }
   });
 
   it('只看第一天：今天開始、明天仍在進行的活動不提醒', async () => {

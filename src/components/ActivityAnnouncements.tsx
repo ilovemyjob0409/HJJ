@@ -41,11 +41,11 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 const columns: Column<AnnouncementRow>[] = [
-  { header: '時間', render: (r) => formatAnnouncementTime(r.createdAt), sortValue: (r) => r.createdAt, width: 'w-44' },
-  { header: '發送人', render: (r) => r.sender.name, width: 'w-24' },
-  { header: '對象', render: (r) => `${AUDIENCE_LABEL[r.audience]}${r.includeTeachers ? '＋老師' : ''}`, width: 'w-32' },
+  { header: '時間', render: (r) => formatAnnouncementTime(r.createdAt), sortValue: (r) => r.createdAt, width: 'w-36' },
+  { header: '發送人', render: (r) => r.sender.name },
+  { header: '對象', render: (r) => `${AUDIENCE_LABEL[r.audience]}${r.includeTeachers ? '＋老師' : ''}` },
   { header: '內容', render: (r) => <span className="whitespace-pre-wrap break-words">{r.message}</span> },
-  { header: '人數', render: (r) => r.recipientCount, sortValue: (r) => r.recipientCount, width: 'w-16' },
+  { header: '人數', render: (r) => r.recipientCount, sortValue: (r) => r.recipientCount, width: 'w-14' },
 ];
 
 // 行政端活動詳情的「通知紀錄」區塊：列出手動推播紀錄，並提供發送彈窗
@@ -58,6 +58,7 @@ export default function ActivityAnnouncements({
   const { showToast } = useToast();
   const [rows, setRows] = useState<AnnouncementRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [open, setOpen] = useState(false);
   const [audience, setAudience] = useState<AnnouncementAudience>('REGISTERED');
@@ -70,11 +71,19 @@ export default function ActivityAnnouncements({
     // stale guard：切換活動或重抓時，舊請求晚回來不得蓋掉新資料
     let cancelled = false;
     fetch(`/api/activities/${activityId}/announcements`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: AnnouncementRow[]) => {
-        if (!cancelled) setRows(Array.isArray(data) ? data : []);
+      .then((r) => {
+        if (!r.ok) throw new Error('load failed');
+        return r.json();
       })
-      .catch(() => {})
+      .then((data: AnnouncementRow[]) => {
+        if (cancelled) return;
+        setRows(Array.isArray(data) ? data : []);
+        setLoadError('');
+      })
+      .catch(() => {
+        // 載入失敗保留原有資料，只顯示錯誤提示（不要誤顯示「尚未發送過通知」）
+        if (!cancelled) setLoadError('通知紀錄載入失敗，請重新開啟');
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -112,6 +121,8 @@ export default function ActivityAnnouncements({
       showToast(`已通知 ${data.recipientCount} 人`);
       setOpen(false);
       setRefreshKey((k) => k + 1);
+    } catch {
+      setError('發送失敗，請稍後再試');
     } finally {
       setSending(false);
     }
@@ -133,6 +144,7 @@ export default function ActivityAnnouncements({
         loading={loading}
         emptyText="尚未發送過通知"
       />
+      {loadError && <p className="mt-1 text-xs text-rejected">{loadError}</p>}
 
       <Modal open={open} onClose={() => setOpen(false)} title="發送活動通知">
         <form onSubmit={handleSend} className="flex flex-col gap-3">
