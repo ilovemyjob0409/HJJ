@@ -4,6 +4,7 @@ import { formatActivityDateRange } from '@/lib/activityDateRange';
 import { isBeforeToday } from '@/lib/pastDate';
 import { formatDateWithWeekday } from '@/lib/dateFormat';
 import { taipeiDateKey } from '@/lib/taipeiDate';
+import type { AnnouncementAudience } from '@/lib/activityAnnouncement';
 
 export const STUDENT_ACTIVITY_URL = '/student/activities';
 export const TEACHER_ACTIVITY_URL = '/teacher/activities';
@@ -208,4 +209,59 @@ export async function sendActivityDayBeforeReminders(
     notified += s.studentUserIds.length + teacherUserIds.length;
   }
   return { activities: activities.length, notified };
+}
+
+export interface SendAnnouncementInput {
+  activityId: string;
+  senderId: string;
+  audience: AnnouncementAudience;
+  includeTeachers: boolean;
+  message: string;
+}
+
+// 行政手動推播：已結束的活動也能送（例如「照片已上傳到相簿」）。
+// 順序＝算收件人 → 先寫發送紀錄 → 才發通知；紀錄寫失敗就整個不送
+// （寧可沒送，不要送了沒紀錄）。
+export async function sendActivityAnnouncement(input: SendAnnouncementInput): Promise<{ recipientCount: number }> {
+  const s = await getActivitySnapshot(input.activityId);
+  if (!s) throw new Error('NOT_FOUND');
+  const studentUserIds = Array.from(
+    new Set(input.audience === 'ALL_STUDENTS' ? await allStudentUserIds() : s.studentUserIds)
+  );
+  const teacherUserIds = input.includeTeachers
+    ? Array.from(new Set(s.teachers.map((t) => t.userId))).filter((id) => !studentUserIds.includes(id))
+    : [];
+  const recipientCount = studentUserIds.length + teacherUserIds.length;
+  if (recipientCount === 0) throw new Error('NO_RECIPIENTS');
+
+  await prisma.activityAnnouncement.create({
+    data: {
+      activityId: s.id,
+      senderId: input.senderId,
+      audience: input.audience,
+      includeTeachers: input.includeTeachers,
+      message: input.message,
+      recipientCount,
+    },
+  });
+  const title = `活動通知：${s.title}`;
+  await notifyUsers(studentUserIds, { title, body: input.message, url: STUDENT_ACTIVITY_URL });
+  await notifyUsers(teacherUserIds, { title, body: input.message, url: TEACHER_ACTIVITY_URL });
+  return { recipientCount };
+}
+
+export function listActivityAnnouncements(activityId: string) {
+  return prisma.activityAnnouncement.findMany({
+    where: { activityId },
+    select: {
+      id: true,
+      createdAt: true,
+      audience: true,
+      includeTeachers: true,
+      message: true,
+      recipientCount: true,
+      sender: { select: { name: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 }

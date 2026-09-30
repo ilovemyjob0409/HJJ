@@ -23,7 +23,12 @@ import {
   adminRegisterStudent,
   adminRemoveRegistration,
 } from './activityService';
-import { getActivitySnapshotSafe, sendActivityDayBeforeReminders } from './activityNotifyService';
+import {
+  getActivitySnapshotSafe,
+  sendActivityDayBeforeReminders,
+  sendActivityAnnouncement,
+  listActivityAnnouncements,
+} from './activityNotifyService';
 
 // 2099 一定是「未來」、2020 一定「已結束」——測試結果不受執行日期影響
 const FUTURE = new Date(Date.UTC(2099, 0, 10));
@@ -330,5 +335,130 @@ describe('sendActivityDayBeforeReminders', () => {
     const bodies = (await inbox(f.users.t1)).map((n) => n.body);
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toContain('「明天的」');
+  });
+});
+
+describe('手動推播 sendActivityAnnouncement', () => {
+  function createAdmin() {
+    return prisma.user.create({ data: { name: '王行政', email: 'admin@example.com', password: 'x', role: 'ADMIN' } });
+  }
+
+  it('對象＝已報名學生：只通知已報名者，並寫一筆發送紀錄', async () => {
+    const f = await setup();
+    const admin = await createAdmin();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await registerForActivity(a.id, f.s1.id);
+    await clearInbox();
+    const result = await sendActivityAnnouncement({
+      activityId: a.id,
+      senderId: admin.id,
+      audience: 'REGISTERED',
+      includeTeachers: false,
+      message: '明天記得帶水壺',
+    });
+    expect(result).toEqual({ recipientCount: 1 });
+    expect(await inbox(f.users.s1)).toEqual([{ title: '活動通知：冬令營', body: '明天記得帶水壺', url: S_URL }]);
+    expect(await inbox(f.users.s2)).toEqual([]);
+    expect(await inbox(f.users.t1)).toEqual([]);
+    const log = await listActivityAnnouncements(a.id);
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({
+      audience: 'REGISTERED',
+      includeTeachers: false,
+      message: '明天記得帶水壺',
+      recipientCount: 1,
+      sender: { name: '王行政' },
+    });
+  });
+
+  it('對象＝全體學生＋含老師：全體學生與帶隊老師都收到', async () => {
+    const f = await setup();
+    const admin = await createAdmin();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await clearInbox();
+    const result = await sendActivityAnnouncement({
+      activityId: a.id,
+      senderId: admin.id,
+      audience: 'ALL_STUDENTS',
+      includeTeachers: true,
+      message: '名額剩 3 位',
+    });
+    expect(result).toEqual({ recipientCount: 3 });
+    expect(await inbox(f.users.s1)).toEqual([{ title: '活動通知：冬令營', body: '名額剩 3 位', url: S_URL }]);
+    expect(await inbox(f.users.s2)).toEqual([{ title: '活動通知：冬令營', body: '名額剩 3 位', url: S_URL }]);
+    expect(await inbox(f.users.t1)).toEqual([{ title: '活動通知：冬令營', body: '名額剩 3 位', url: T_URL }]);
+    expect(await inbox(f.users.t2)).toEqual([]);
+  });
+
+  it('已結束的活動也能手動推播', async () => {
+    const f = await setup();
+    const admin = await createAdmin();
+    const a = await createActivity(input(f.category.id, [f.t1.id], { startDate: PAST, endDate: PAST }));
+    await registerForActivity(a.id, f.s1.id);
+    const result = await sendActivityAnnouncement({
+      activityId: a.id,
+      senderId: admin.id,
+      audience: 'REGISTERED',
+      includeTeachers: false,
+      message: '活動照片已上傳到相簿',
+    });
+    expect(result).toEqual({ recipientCount: 1 });
+    expect(await inbox(f.users.s1)).toHaveLength(1);
+  });
+
+  it('收件人 0 人時丟 NO_RECIPIENTS，且不寫紀錄、不發通知', async () => {
+    const f = await setup();
+    const admin = await createAdmin();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await clearInbox();
+    await expect(
+      sendActivityAnnouncement({ activityId: a.id, senderId: admin.id, audience: 'REGISTERED', includeTeachers: false, message: 'x' })
+    ).rejects.toThrow('NO_RECIPIENTS');
+    expect(await listActivityAnnouncements(a.id)).toEqual([]);
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('只勾老師（沒人報名）也能送：只通知帶隊老師', async () => {
+    const f = await setup();
+    const admin = await createAdmin();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await clearInbox();
+    const result = await sendActivityAnnouncement({
+      activityId: a.id,
+      senderId: admin.id,
+      audience: 'REGISTERED',
+      includeTeachers: true,
+      message: '集合時間提早',
+    });
+    expect(result).toEqual({ recipientCount: 1 });
+    expect(await inbox(f.users.t1)).toHaveLength(1);
+  });
+
+  it('活動不存在時丟 NOT_FOUND', async () => {
+    const admin = await createAdmin();
+    await expect(
+      sendActivityAnnouncement({ activityId: 'nope', senderId: admin.id, audience: 'ALL_STUDENTS', includeTeachers: false, message: 'x' })
+    ).rejects.toThrow('NOT_FOUND');
+  });
+
+  it('發送紀錄新到舊排序', async () => {
+    const f = await setup();
+    const admin = await createAdmin();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    const base = { activityId: a.id, senderId: admin.id, audience: 'REGISTERED' as const, includeTeachers: false, recipientCount: 1 };
+    await prisma.activityAnnouncement.create({ data: { ...base, message: '舊', createdAt: new Date('2099-01-01T01:00:00Z') } });
+    await prisma.activityAnnouncement.create({ data: { ...base, message: '新', createdAt: new Date('2099-01-02T01:00:00Z') } });
+    expect((await listActivityAnnouncements(a.id)).map((r) => r.message)).toEqual(['新', '舊']);
+  });
+
+  it('刪除活動時一併清掉發送紀錄', async () => {
+    const f = await setup();
+    const admin = await createAdmin();
+    const a = await createActivity(input(f.category.id, [f.t1.id]));
+    await registerForActivity(a.id, f.s1.id);
+    await sendActivityAnnouncement({ activityId: a.id, senderId: admin.id, audience: 'REGISTERED', includeTeachers: false, message: 'x' });
+    await deleteActivity(a.id);
+    expect(await prisma.activityAnnouncement.count()).toBe(0);
+    expect(await prisma.activity.count()).toBe(0);
   });
 });
