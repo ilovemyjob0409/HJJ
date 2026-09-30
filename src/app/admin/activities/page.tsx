@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import ExportExcelButton from '@/components/ui/ExportExcelButton';
 import { formatDateWithWeekday, formatTimestampWithWeekdayTaipei } from '@/lib/dateFormat';
 import ActivityDetail from '@/components/ActivityDetail';
+import ActivityAnnouncements from '@/components/ActivityAnnouncements';
 import ActivityCardGrid from '@/components/ActivityCardGrid';
 import ActivityFormFields, { ActivityFormValues, EMPTY_ACTIVITY_FORM } from '@/components/ActivityFormFields';
 import ImageCropModal from '@/components/ImageCropModal';
@@ -505,6 +506,14 @@ export default function AdminActivitiesPage() {
                 移除
               </Button>
             )}
+            extraSection={
+              <ActivityAnnouncements
+                activityId={viewing.id}
+                registeredCount={viewing.registrations.length}
+                teacherCount={viewing.teachers.length}
+                allStudentCount={allStudents.length}
+              />
+            }
             footer={
               <div className="flex items-center gap-4">
                 <Button variant="link" className="text-sm" onClick={() => openEdit(viewing)}>
