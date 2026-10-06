@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { createTeacher } from './teacherService';
 import { createStudent } from './studentService';
 import { createClass, enrollStudent } from './classService';
-import { saveClassAttendance } from './attendanceService';
+import { saveClassAttendance, getClassRoster } from './attendanceService';
 import { addClosedDay, markGoClassAttendanceNotRegistered, markGoClassAttendanceNotRegisteredOnAllClosedDays, seedNationalHolidays } from './closedDayService';
 
 const HOLIDAY = new Date(Date.UTC(2026, 9, 10)); // 種子內的國慶日
@@ -70,5 +70,16 @@ describe('closed day → Go class attendance becomes NOT_REGISTERED', () => {
     // 直接寫入模擬不經 saveClassAttendance 的路徑（如掃碼簽到）；beforeEach 已有 PRESENT 的點名
     expect(await markGoClassAttendanceNotRegisteredOnAllClosedDays()).toBe(1);
     expect(await statusOf(ctx.go.id, ctx.student.id, NORMAL_DAY)).toBe('NOT_REGISTERED');
+  });
+
+  it('roster shows NOT_REGISTERED for Go students without a record on a closed day', async () => {
+    const future = new Date(Date.UTC(2026, 9, 25));
+    await prisma.closedDay.upsert({ where: { date: future }, update: {}, create: { date: future, name: '光復節', source: 'NATIONAL' } });
+    const go = await getClassRoster(ctx.go.id, future);
+    const en = await getClassRoster(ctx.en.id, future);
+    expect(go.map((r) => r.status)).toEqual(['NOT_REGISTERED']);
+    expect(en.map((r) => r.status)).toEqual([null]);
+    const normal = await getClassRoster(ctx.go.id, new Date(Date.UTC(2026, 9, 17)));
+    expect(normal.map((r) => r.status)).toEqual([null]);
   });
 });

@@ -30,7 +30,7 @@ export interface ClassRosterEntry {
 }
 
 export async function getClassRoster(classId: string, date: Date): Promise<ClassRosterEntry[]> {
-  const [enrollments, insertions, leaves, existing] = await Promise.all([
+  const [enrollments, insertions, leaves, existing, closedDay, cls] = await Promise.all([
     prisma.classEnrollment.findMany({
       where: { classId },
       select: { studentId: true, student: { select: NAME_SELECT } },
@@ -41,7 +41,12 @@ export async function getClassRoster(classId: string, date: Date): Promise<Class
     }),
     prisma.leaveRequest.findMany({ where: { classId, date }, select: { studentId: true } }),
     prisma.classAttendance.findMany({ where: { classId, date } }),
+    prisma.closedDay.findUnique({ where: { date }, select: { id: true } }),
+    prisma.class.findUnique({ where: { id: classId }, select: { subject: true } }),
   ]);
+  // 停課日的圍棋班：還沒有紀錄的學生直接顯示「未報名」（只是顯示，不寫入；
+  // 存檔時 saveClassAttendance 會一律存成未報名）。
+  const defaultStatus: AttendanceStatusValue | null = closedDay && cls?.subject === GO_SUBJECT ? 'NOT_REGISTERED' : null;
 
   const onLeaveStudentIds = new Set(leaves.map((l) => l.studentId));
   const existingByStudentId = new Map(existing.filter((a) => a.makeupRequestId === null).map((a) => [a.studentId, a]));
@@ -56,7 +61,7 @@ export async function getClassRoster(classId: string, date: Date): Promise<Class
       studentName: e.student.user.name,
       makeupRequestId: null,
       onLeave: onLeaveStudentIds.has(e.studentId),
-      status: (record?.status as AttendanceStatusValue) ?? null,
+      status: (record?.status as AttendanceStatusValue) ?? defaultStatus,
       checkInTime: record?.checkInTime ?? null,
       checkOutTime: record?.checkOutTime ?? null,
     };
@@ -72,7 +77,7 @@ export async function getClassRoster(classId: string, date: Date): Promise<Class
         studentName: ins.leaveRequest.student.user.name,
         makeupRequestId: ins.id,
         onLeave: false,
-        status: (record?.status as AttendanceStatusValue) ?? null,
+        status: (record?.status as AttendanceStatusValue) ?? defaultStatus,
         checkInTime: record?.checkInTime ?? null,
         checkOutTime: record?.checkOutTime ?? null,
       };
