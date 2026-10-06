@@ -108,6 +108,9 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
   const [remindingId, setRemindingId] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 批次通知：勾選的帳單 id；實際動作只作用在「勾選且目前篩選後看得到」的列
+  const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>({});
+  const [bulkBusy, setBulkBusy] = useState<'notify' | 'remind' | null>(null);
   const [editBill, setEditBill] = useState<EditableBillInfo | null>(null);
 
   const rangeInvalid = !!startDate && !!endDate && startDate > endDate;
@@ -170,6 +173,59 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
     }
   }
 
+  // 批次動作的資格（與每列「操作」選單同一套規則）：未通知過＝可通知；
+  // 已通知過且未繳清＝可提醒繳費。其餘勾選的列在批次動作中略過。
+  async function bulkNotify(rows: OverviewBillRow[]) {
+    const ids = rows.filter((r) => !r.notifiedAt).map((r) => r.id);
+    if (ids.length === 0) return;
+    const skipped = rows.length - ids.length;
+    const note = skipped > 0 ? `，略過 ${skipped} 筆已通知過的` : '';
+    if (!(await confirm(`將通知 ${ids.length} 筆帳單的家長${note}，確定嗎？`))) return;
+    setBulkBusy('notify');
+    try {
+      const res = await fetch('/api/admin/billing/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billIds: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(ERROR_MESSAGES[data.error] ?? '通知失敗，請稍後再試');
+        return;
+      }
+      showToast(data.failed > 0 ? `已通知 ${data.succeeded} 筆，${data.failed} 筆失敗，請稍後再試` : `已通知 ${data.succeeded} 筆`);
+      setCheckedIds({});
+      reload();
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  async function bulkRemind(rows: OverviewBillRow[]) {
+    const ids = rows.filter((r) => r.notifiedAt && r.state !== 'PAID').map((r) => r.id);
+    if (ids.length === 0) return;
+    const skipped = rows.length - ids.length;
+    const note = skipped > 0 ? `，略過 ${skipped} 筆（尚未通知或已繳清）` : '';
+    if (!(await confirm(`將對 ${ids.length} 筆帳單的家長發送提醒繳費${note}，確定嗎？`))) return;
+    setBulkBusy('remind');
+    try {
+      const res = await fetch('/api/admin/billing/remind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billIds: ids }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(ERROR_MESSAGES[data.error] ?? '提醒繳費失敗，請稍後再試');
+        return;
+      }
+      showToast(data.failed > 0 ? `已提醒 ${data.sent} 筆，${data.failed} 筆失敗，請稍後再試` : `已提醒 ${data.sent} 筆`);
+      setCheckedIds({});
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
   async function deleteBill(
     billId: string,
     rollbackSessions: number,
@@ -205,7 +261,53 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
     return r.payments.reduce((max, p) => (p.paidOn > max ? p.paidOn : max), r.payments[0].paidOn);
   }
 
+  const query = search.trim().toLowerCase();
+  const filteredBills = (data?.bills ?? []).filter((r) => {
+    if (sourceFilter === 'STANDALONE' && r.source !== null) return false;
+    if ((sourceFilter === 'CLASS' || sourceFilter === 'TUTORING' || sourceFilter === 'GO_HALL') && r.source !== sourceFilter) return false;
+    if (query && !r.studentName.toLowerCase().includes(query) && !r.targetName.toLowerCase().includes(query)) return false;
+    return true;
+  });
+  const isFiltered = sourceFilter !== null || query !== '';
+
+  // 勾選只作用在目前篩選後的列：切換篩選後，被濾掉的列即使還勾著也不會被批次動作碰到
+  const selectedRows = filteredBills.filter((r) => checkedIds[r.id]);
+  const notifyEligible = selectedRows.filter((r) => !r.notifiedAt);
+  const remindEligible = selectedRows.filter((r) => r.notifiedAt && r.state !== 'PAID');
+  const allChecked = filteredBills.length > 0 && selectedRows.length === filteredBills.length;
+
   const columns: Column<OverviewBillRow>[] = [
+    {
+      header: (
+        <input
+          type="checkbox"
+          aria-label={`全選（共 ${filteredBills.length} 筆）`}
+          title={`全選（共 ${filteredBills.length} 筆）`}
+          checked={allChecked}
+          disabled={filteredBills.length === 0}
+          onChange={() =>
+            setCheckedIds((prev) => {
+              const next = { ...prev };
+              for (const r of filteredBills) {
+                if (allChecked) delete next[r.id];
+                else next[r.id] = true;
+              }
+              return next;
+            })
+          }
+        />
+      ),
+      width: 'w-10',
+      render: (r) => (
+        <input
+          type="checkbox"
+          aria-label={`勾選 ${r.studentName} ${r.targetName}`}
+          checked={!!checkedIds[r.id]}
+          onChange={() => setCheckedIds((prev) => ({ ...prev, [r.id]: !prev[r.id] }))}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
     {
       header: '來源',
       render: (r) => (r.source ? SOURCE_LABEL[r.source] : '單獨開單'),
@@ -330,15 +432,6 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
     },
   ];
 
-  const query = search.trim().toLowerCase();
-  const filteredBills = (data?.bills ?? []).filter((r) => {
-    if (sourceFilter === 'STANDALONE' && r.source !== null) return false;
-    if ((sourceFilter === 'CLASS' || sourceFilter === 'TUTORING' || sourceFilter === 'GO_HALL') && r.source !== sourceFilter) return false;
-    if (query && !r.studentName.toLowerCase().includes(query) && !r.targetName.toLowerCase().includes(query)) return false;
-    return true;
-  });
-  const isFiltered = sourceFilter !== null || query !== '';
-
   // 統計卡跟著畫面上的清單連動：來源篩選／搜尋／區間都會影響，
   // 所以不用 API 回的整體 summary，直接由篩選後的列即時加總
   const summary = data
@@ -455,6 +548,31 @@ export default function OverviewTab({ refreshKey = 0 }: { refreshKey?: number })
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </label>
           {rangeInvalid && <p className="pb-2 text-xs text-rejected">起日不能晚於訖日</p>}
+        </div>
+      )}
+      {selectedRows.length > 0 && (
+        <div className="animate-rise-in mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-borderSubtle bg-card px-4 py-2">
+          <span className="mr-1 text-sm font-semibold text-ink">已勾選 {selectedRows.length} 筆</span>
+          <Button
+            className="px-3 py-1 text-xs"
+            disabled={notifyEligible.length === 0 || bulkBusy !== null}
+            loading={bulkBusy === 'notify'}
+            onClick={() => bulkNotify(selectedRows)}
+          >
+            通知（{notifyEligible.length}）
+          </Button>
+          <Button
+            variant="secondary"
+            className="px-3 py-1 text-xs"
+            disabled={remindEligible.length === 0 || bulkBusy !== null}
+            loading={bulkBusy === 'remind'}
+            onClick={() => bulkRemind(selectedRows)}
+          >
+            提醒繳費（{remindEligible.length}）
+          </Button>
+          <Button variant="secondary" className="px-3 py-1 text-xs" disabled={bulkBusy !== null} onClick={() => setCheckedIds({})}>
+            取消勾選
+          </Button>
         </div>
       )}
       <div key={`list-${filterMotionKey}`} className="animate-rise-in">

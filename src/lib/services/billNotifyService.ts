@@ -24,11 +24,17 @@ export function billTargetName(bill: {
   );
 }
 
-export async function notifyBills(billIds: string[]): Promise<void> {
+export interface NotifyBillsResult {
+  succeeded: number;
+  failed: number;
+}
+
+export async function notifyBills(billIds: string[]): Promise<NotifyBillsResult> {
   const bills = await prisma.bill.findMany({ where: { id: { in: billIds } }, include: BILL_NOTIFY_INCLUDE });
   if (bills.some((b) => b.status !== 'FINALIZED')) throw new Error('BILL_NOT_FINALIZED');
   const now = new Date();
   const succeededIds: string[] = [];
+  let failed = 0;
   for (const bill of bills) {
     try {
       await notifyUser(bill.student.userId, {
@@ -38,12 +44,14 @@ export async function notifyBills(billIds: string[]): Promise<void> {
       });
       succeededIds.push(bill.id);
     } catch (err) {
+      failed += 1;
       console.error(`notifyBills: failed to notify bill ${bill.id}`, err);
     }
   }
   if (succeededIds.length > 0) {
     await prisma.bill.updateMany({ where: { id: { in: succeededIds } }, data: { notifiedAt: now } });
   }
+  return { succeeded: succeededIds.length, failed };
 }
 
 export async function remindBill(billId: string): Promise<void> {
@@ -55,4 +63,35 @@ export async function remindBill(billId: string): Promise<void> {
     body: `${billTargetName(bill)} 待繳 ${outstanding.toLocaleString('en-US')} 元，再麻煩您撥空繳費，感謝`,
     url: '/student/billing',
   });
+}
+
+export interface RemindBillsResult {
+  sent: number;
+  skipped: number; // 已繳清或非已定案，不需提醒
+  failed: number;
+}
+
+// 批次提醒繳費：逐筆發送，已繳清／非已定案的略過，單筆失敗不中斷其餘（同 notifyBills）。
+export async function remindBills(billIds: string[]): Promise<RemindBillsResult> {
+  const bills = await prisma.bill.findMany({ where: { id: { in: billIds } }, include: { ...BILL_NOTIFY_INCLUDE, payments: true } });
+  const result: RemindBillsResult = { sent: 0, skipped: billIds.length - bills.length, failed: 0 };
+  for (const bill of bills) {
+    const { outstanding } = getPaidState(bill.amountDue, bill.payments);
+    if (bill.status !== 'FINALIZED' || outstanding <= 0) {
+      result.skipped += 1;
+      continue;
+    }
+    try {
+      await notifyUser(bill.student.userId, {
+        title: '繳費提醒',
+        body: `${billTargetName(bill)} 待繳 ${outstanding.toLocaleString('en-US')} 元，再麻煩您撥空繳費，感謝`,
+        url: '/student/billing',
+      });
+      result.sent += 1;
+    } catch (err) {
+      result.failed += 1;
+      console.error(`remindBills: failed to remind bill ${bill.id}`, err);
+    }
+  }
+  return result;
 }

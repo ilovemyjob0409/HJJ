@@ -6,7 +6,7 @@ import { createClass, enrollStudent } from './classService';
 import { saveClassAttendance } from './attendanceService';
 import { createClassBatch, finalizeBatch, getBatchDetail } from './billingBatchService';
 import { addPayment } from './billPaymentService';
-import { remindBill } from './billNotifyService';
+import { remindBill, remindBills, notifyBills } from './billNotifyService';
 import { previewSettlement, settleBill } from './billSettlementService';
 
 const D = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
@@ -42,6 +42,25 @@ describe('remindBill', () => {
 
     await addPayment(bill.id, { amount: 1500, paidOn: D(2026, 9, 4), method: 'CASH' }, 'admin-1');
     await expect(remindBill(bill.id)).rejects.toThrow('ALREADY_PAID');
+  });
+});
+
+describe('notifyBills / remindBills (batch)', () => {
+  it('notifyBills reports how many bills were notified', async () => {
+    const { bill } = await fixture();
+    expect(await notifyBills([bill.id])).toEqual({ succeeded: 1, failed: 0 });
+  });
+
+  it('remindBills reminds unpaid bills, skips paid / unknown ones, never throws on them', async () => {
+    const { student, bill } = await fixture();
+    const userId = (await prisma.student.findUniqueOrThrow({ where: { id: student.id } })).userId;
+
+    expect(await remindBills([bill.id, 'no-such-bill'])).toEqual({ sent: 1, skipped: 1, failed: 0 });
+    expect(await prisma.notification.count({ where: { userId, title: '繳費提醒' } })).toBe(1);
+
+    await addPayment(bill.id, { amount: 2000, paidOn: D(2026, 9, 4), method: 'CASH' }, 'admin-1');
+    expect(await remindBills([bill.id])).toEqual({ sent: 0, skipped: 1, failed: 0 });
+    expect(await prisma.notification.count({ where: { userId, title: '繳費提醒' } })).toBe(1);
   });
 });
 

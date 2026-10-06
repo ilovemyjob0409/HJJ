@@ -9,6 +9,8 @@ import { GET as listBatchesGET, POST as createBatchPOST } from './batches/route'
 import { POST as addPaymentPOST } from './bills/[id]/payments/route';
 import { PATCH as updateBillPATCH, DELETE as deleteBillDELETE } from './bills/[id]/route';
 import { POST as standalonePOST } from './standalone/route';
+import { POST as notifyPOST } from './notify/route';
+import { POST as remindPOST } from './remind/route';
 import { GET as overviewGET } from './overview/route';
 import { prisma } from '@/lib/db';
 import { createTeacher } from '@/lib/services/teacherService';
@@ -285,5 +287,40 @@ describe('PATCH & DELETE /api/admin/billing/bills/[id] 弈廳分流', () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe('INVALID_INPUT');
+  });
+});
+
+describe('POST /api/admin/billing/notify and /remind (batch)', () => {
+  it('403 when not logged in or for a STUDENT', async () => {
+    asAnon();
+    expect((await notifyPOST(jsonReq({ billIds: ['x'] }) as never)).status).toBe(403);
+    expect((await remindPOST(jsonReq({ billIds: ['x'] }) as never)).status).toBe(403);
+    asStudent();
+    expect((await notifyPOST(jsonReq({ billIds: ['x'] }) as never)).status).toBe(403);
+    expect((await remindPOST(jsonReq({ billIds: ['x'] }) as never)).status).toBe(403);
+  });
+
+  it('400 on a missing, empty or non-string billIds', async () => {
+    asAdmin();
+    for (const body of [{}, { billIds: [] }, { billIds: 'x' }, { billIds: [1] }]) {
+      expect((await remindPOST(jsonReq(body) as never)).status).toBe(400);
+    }
+    expect((await notifyPOST(jsonReq({ billIds: [] }) as never)).status).toBe(400);
+  });
+
+  it('notify returns succeeded/failed counts; remind returns sent/skipped/failed counts', async () => {
+    const { cls } = await setupClassFixture();
+    const { batchId } = await createClassBatch({ periodStart: D(2026, 9, 1), periodEnd: D(2026, 9, 30), classIds: [cls.id] });
+    await finalizeBatch(batchId, { notifyNow: false });
+    const bill = (await getBatchDetail(batchId)).bills[0];
+    asAdmin();
+
+    const notifyRes = await notifyPOST(jsonReq({ billIds: [bill.id] }) as never);
+    expect(notifyRes.status).toBe(200);
+    expect(await notifyRes.json()).toEqual({ success: true, succeeded: 1, failed: 0 });
+
+    const remindRes = await remindPOST(jsonReq({ billIds: [bill.id, 'no-such-bill'] }) as never);
+    expect(remindRes.status).toBe(200);
+    expect(await remindRes.json()).toEqual({ success: true, sent: 1, skipped: 1, failed: 0 });
   });
 });
