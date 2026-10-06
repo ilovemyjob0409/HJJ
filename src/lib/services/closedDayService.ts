@@ -1,4 +1,18 @@
 import { prisma } from '@/lib/db';
+import { GO_SUBJECT } from '@/lib/services/makeupRequestService';
+
+// 停課日（國定假日／自訂休假）當天的圍棋班級點名一律視為「未報名」（不扣堂）。
+// 個別輔導、弈廳、活動不在此規則內。已經是未報名的列不動；簽到/簽退時間保留。
+// 新增停課日的每一條路徑（種子、DGPA 自動更新、後台手動新增）都要呼叫，
+// 另有 prisma/backfill-closed-day-go-attendance.ts 處理既有資料。
+export async function markGoClassAttendanceNotRegistered(dates: Date[]): Promise<number> {
+  if (dates.length === 0) return 0;
+  const result = await prisma.classAttendance.updateMany({
+    where: { date: { in: dates }, status: { not: 'NOT_REGISTERED' }, class: { subject: GO_SUBJECT } },
+    data: { status: 'NOT_REGISTERED' },
+  });
+  return result.count;
+}
 
 // 台灣國定假日種子。資料來源：data.gov.tw/dataset/14718（人事行政總處）115/116年版，
 // 2026-08-28 人工核對。後續年度用停課日曆後台自行增補；專用自動更新機制另行開發。
@@ -41,6 +55,12 @@ function toUtcDate(key: string): Date {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+// 每日排程兜底：掃所有停課日，捕捉不經 saveClassAttendance 的寫入（例如掃碼簽到）。
+export async function markGoClassAttendanceNotRegisteredOnAllClosedDays(): Promise<number> {
+  const closed = await prisma.closedDay.findMany({ select: { date: true } });
+  return markGoClassAttendanceNotRegistered(closed.map((c) => c.date));
+}
+
 export async function seedNationalHolidays(): Promise<number> {
   // 只在完全沒種過的時候才種——避免管理員手動刪掉某天（該日照常上課）後，
   // 下次 GET /closed-days 又把它種回來。跟 Task 18 的 refreshYearIfMissing
@@ -51,6 +71,7 @@ export async function seedNationalHolidays(): Promise<number> {
     data: NATIONAL_HOLIDAYS.map((h) => ({ date: toUtcDate(h.date), name: h.name, source: 'NATIONAL' as const })),
     skipDuplicates: true,
   });
+  await markGoClassAttendanceNotRegistered(NATIONAL_HOLIDAYS.map((h) => toUtcDate(h.date)));
   return result.count;
 }
 
@@ -64,7 +85,9 @@ export async function listClosedDays(from?: Date, to?: Date) {
 export async function addClosedDay(date: Date, name: string) {
   const existing = await prisma.closedDay.findUnique({ where: { date } });
   if (existing) throw new Error('DUPLICATE_DATE');
-  return prisma.closedDay.create({ data: { date, name, source: 'CUSTOM' } });
+  const created = await prisma.closedDay.create({ data: { date, name, source: 'CUSTOM' } });
+  await markGoClassAttendanceNotRegistered([date]);
+  return created;
 }
 
 export async function removeClosedDay(id: string): Promise<void> {
@@ -141,6 +164,7 @@ async function refreshYearIfMissing(year: number): Promise<{ year: number; inser
     data: rows.map((r) => ({ date: r.date, name: r.name, source: 'NATIONAL' as const })),
     skipDuplicates: true,
   });
+  await markGoClassAttendanceNotRegistered(rows.map((r) => r.date));
   return { year, inserted: result.count };
 }
 

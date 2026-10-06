@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { notifyUser } from './notificationService';
+import { GO_SUBJECT } from './makeupRequestService';
 import { runSerializableWithRetry } from '@/lib/transaction';
 import { determineQualification, getTicketBalance, LOW_TICKET_THRESHOLD, type GoHallQualificationValue } from './goHallTicketService';
 import { LOW_CLASS_QUOTA_THRESHOLD } from '@/lib/lowQuota';
@@ -84,8 +85,19 @@ export async function saveClassAttendance(
   classId: string,
   date: Date,
   markedById: string,
-  records: SaveAttendanceRecordInput[]
+  rawRecords: SaveAttendanceRecordInput[]
 ): Promise<void> {
+  // 停課日（國定假日／自訂休假）的圍棋班點名一律存成「未報名」（不扣堂），
+  // 跟 closedDayService.markGoClassAttendanceNotRegistered 同一條規則，擋住「假日已在
+  // 清單裡、之後才有人點名」的缺口。
+  const [closedDay, cls] = await Promise.all([
+    prisma.closedDay.findUnique({ where: { date }, select: { id: true } }),
+    prisma.class.findUnique({ where: { id: classId }, select: { subject: true } }),
+  ]);
+  const records: SaveAttendanceRecordInput[] =
+    closedDay && cls?.subject === GO_SUBJECT
+      ? rawRecords.map((r) => ({ ...r, status: 'NOT_REGISTERED', checkInTime: null, checkOutTime: null }))
+      : rawRecords;
   await prisma.$transaction(
     records.map((r) =>
       prisma.classAttendance.upsert({
